@@ -1,0 +1,2 @@
+- [x] Edit src/routes/ProtectedRoute.jsx: change navigates to "/" (already done)
+- [x] Edit src/pages/customer/Dashboard.jsx: fix function name to CustomerDashboard
