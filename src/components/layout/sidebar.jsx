@@ -61,7 +61,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
 
     return (
         <aside
-            className={`hidden h-screen shrink-0 border-r shadow-lg border-gray-100 bg-white px-3 py-4 transition-all duration-200 md:block ${
+            className={`hidden h-screen shrink-0 border-r shadow-lg border-gray-100 bg-white px-3 py-4 transition-all duration-200 md:sticky md:top-0 md:block ${
                 collapsed ? "w-28" : "w-75"
             }`}
         >
