@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
+import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 
 const initialForm = {
     customerId: "",
@@ -51,7 +52,8 @@ const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
 
 export default function AdminNewJobPage() {
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
+        useSidebarCollapsed();
     const [form, setForm] = useState(initialForm);
     const [customers, setCustomers] = useState([]);
     const [projects, setProjects] = useState([]);
@@ -300,7 +302,7 @@ export default function AdminNewJobPage() {
             <div className="flex min-h-screen">
                 <Sidebar
                     collapsed={sidebarCollapsed}
-                    onToggle={() => setSidebarCollapsed((prev) => !prev)}
+                    onToggle={toggleSidebar}
                 />
 
                 <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8">

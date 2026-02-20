@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/routes/ProtectedRoute";
 import { useAuth } from "@/context/useAuth";
+import AuthLoadingScreen from "@/components/AuthLoadingScreen";
 
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminMasterDataPage from "@/pages/admin/MasterData";
@@ -13,7 +14,7 @@ import Login from "@/pages/Login";
 function App() {
   const { loading } = useAuth();
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <AuthLoadingScreen />;
 
   return (
     <Routes>

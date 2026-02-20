@@ -8,6 +8,7 @@ import {
     Wrench,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import supabase from "../../supabaseClient";
 
 const FILTERS = [
@@ -90,7 +91,8 @@ const formatDate = (value) => {
 };
 
 export default function AdminRequestsPage() {
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
+        useSidebarCollapsed();
     const [activeFilter, setActiveFilter] = useState("all");
     const [search, setSearch] = useState("");
     const [requests, setRequests] = useState([]);
@@ -155,7 +157,7 @@ export default function AdminRequestsPage() {
             <div className="flex min-h-screen">
                 <Sidebar
                     collapsed={sidebarCollapsed}
-                    onToggle={() => setSidebarCollapsed((prev) => !prev)}
+                    onToggle={toggleSidebar}
                 />
 
                 <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8">

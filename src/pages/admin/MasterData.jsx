@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Plus, UserPlus } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import supabase from "../../supabaseClient";
 
 const inputClass =
@@ -14,7 +15,8 @@ const SectionTitle = ({ children }) => (
 );
 
 export default function AdminMasterDataPage() {
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
+        useSidebarCollapsed();
     const [customers, setCustomers] = useState([]);
     const [projects, setProjects] = useState([]);
 
@@ -175,7 +177,7 @@ export default function AdminMasterDataPage() {
             <div className="flex min-h-screen">
                 <Sidebar
                     collapsed={sidebarCollapsed}
-                    onToggle={() => setSidebarCollapsed((prev) => !prev)}
+                    onToggle={toggleSidebar}
                 />
 
                 <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8">

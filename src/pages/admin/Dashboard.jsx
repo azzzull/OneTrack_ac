@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import Card from "../../components/card";
 import useRequestStats from "../../hooks/useRequestStats";
+import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import supabase from "../../supabaseClient";
 
 const statusLabelByKey = {
@@ -78,7 +79,8 @@ const formatDate = (value) => {
 };
 
 function AdminDashboard() {
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
+        useSidebarCollapsed();
     const [latestJobs, setLatestJobs] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
     const [loadingJobs, setLoadingJobs] = useState(true);
@@ -150,7 +152,7 @@ function AdminDashboard() {
             <div className="flex min-h-screen">
                 <Sidebar
                     collapsed={sidebarCollapsed}
-                    onToggle={() => setSidebarCollapsed((prev) => !prev)}
+                    onToggle={toggleSidebar}
                 />
 
                 <div className="flex-1 p-4 pb-24 md:p-8 md:pb-8">

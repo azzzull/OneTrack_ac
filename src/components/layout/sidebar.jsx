@@ -58,6 +58,10 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         await supabase.auth.signOut();
         navigate("/");
     };
+    const identityLabel =
+        user?.user_metadata?.full_name?.trim() ||
+        user?.email ||
+        "admin@onetrack.com";
 
     return (
         <aside
@@ -162,9 +166,9 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                         }`}
                     >
                         <CircleUserRound size={collapsed ? 18 : 20} />
-                        <span className="truncate">
-                            {user?.email ?? "admin@onetrack.com"}
-                        </span>
+                        {!collapsed && (
+                            <span className="truncate">{identityLabel}</span>
+                        )}
                     </div>
 
                     <button
