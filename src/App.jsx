@@ -3,6 +3,8 @@ import ProtectedRoute from "@/routes/ProtectedRoute";
 import { useAuth } from "@/context/useAuth";
 
 import AdminDashboard from "@/pages/admin/Dashboard";
+import AdminMasterDataPage from "@/pages/admin/MasterData";
+import AdminNewJobPage from "@/pages/admin/NewJob";
 import AdminRequestsPage from "@/pages/admin/Requests";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
 import CustomerDashboard from "@/pages/customer/Dashboard";
@@ -37,6 +39,22 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <AdminRequestsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/jobs/new"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <AdminNewJobPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/master-data"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <AdminMasterDataPage />
           </ProtectedRoute>
         }
       />
