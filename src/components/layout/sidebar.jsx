@@ -1,3 +1,4 @@
+import { createElement } from "react";
 import {
     Wrench,
     LayoutDashboard,
@@ -96,7 +97,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
 
                 {/* Menu */}
                 <ul className={`space-y-2 ${collapsed ? "px-1" : "px-2"}`}>
-                    {menus.map(({ label, path, icon: Icon, badge }) => (
+                    {menus.map(({ label, path, icon, badge }) => (
                         <li key={label}>
                             <NavLink
                                 to={path}
@@ -115,7 +116,9 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                 `
                                 }
                             >
-                                <Icon size={collapsed ? 18 : 20} />
+                                {createElement(icon, {
+                                    size: collapsed ? 18 : 20,
+                                })}
 
                                 <span className={collapsed ? "mt-1" : ""}>
                                     {label}
@@ -173,7 +176,7 @@ export function MobileBottomNav() {
     return (
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-2 py-2 md:hidden">
             <ul className="flex items-center justify-between gap-1">
-                {menus.map(({ label, path, icon: Icon, badge }) => (
+                {menus.map(({ label, path, icon, badge }) => (
                     <li key={label} className="flex-1">
                         <NavLink
                             to={path}
@@ -187,7 +190,7 @@ export function MobileBottomNav() {
                             `
                             }
                         >
-                            <Icon size={18} />
+                            {createElement(icon, { size: 18 })}
                             <span className="mt-1">{label}</span>
 
                             {badge && (
