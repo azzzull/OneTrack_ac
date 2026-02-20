@@ -14,18 +14,19 @@ import {
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
+import useRequestStats from "../../hooks/useRequestStats";
 
 const menuByRole = {
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
-        { label: "Requests", path: "/requests", icon: List, badge: 1 },
+        { label: "Requests", path: "/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Reports", path: "/reports", icon: PieChart },
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
-        { label: "My Tasks", path: "/tasks", icon: Wrench, badge: 1 },
+        { label: "My Tasks", path: "/tasks", icon: Wrench },
     ],
     customer: [
         { label: "Dashboard", path: "/customer", icon: LayoutDashboard },
@@ -38,7 +39,20 @@ const getMenus = (role) => menuByRole[role] ?? [];
 export default function Sidebar({ collapsed = false, onToggle }) {
     const { user, role } = useAuth();
     const navigate = useNavigate();
-    const menus = getMenus(role);
+    const stats = useRequestStats();
+    const menus = getMenus(role).map((menu) => {
+        const badgeByPath = {
+            "/requests": stats.pending,
+            "/tasks": stats.inProgress,
+            "/services": stats.active,
+        };
+
+        const count = badgeByPath[menu.path] ?? 0;
+        return {
+            ...menu,
+            badge: count > 0 ? count : null,
+        };
+    });
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -172,7 +186,20 @@ export default function Sidebar({ collapsed = false, onToggle }) {
 
 export function MobileBottomNav() {
     const { role } = useAuth();
-    const menus = getMenus(role);
+    const stats = useRequestStats();
+    const menus = getMenus(role).map((menu) => {
+        const badgeByPath = {
+            "/requests": stats.pending,
+            "/tasks": stats.inProgress,
+            "/services": stats.active,
+        };
+
+        const count = badgeByPath[menu.path] ?? 0;
+        return {
+            ...menu,
+            badge: count > 0 ? count : null,
+        };
+    });
 
     return (
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-2 py-2 md:hidden">
