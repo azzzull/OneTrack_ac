@@ -1,11 +1,18 @@
-import AppLayout from "../../components/layout/AppLayout";
+import { useState } from "react";
+import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 
 function CustomerDashboard() {
-  return (
-    <AppLayout>
-      <h1>Customer Dashboard</h1>
-    </AppLayout>
-  );
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    return (
+        <div>
+            <Sidebar
+                collapsed={sidebarCollapsed}
+                onToggle={() => setSidebarCollapsed((prev) => !prev)}
+            />
+            <h1>Customer Dashboard</h1>
+            <MobileBottomNav />
+        </div>
+    );
 }
 
 export default CustomerDashboard;
