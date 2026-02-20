@@ -20,11 +20,13 @@ export default function Card({
                         toneClass[tone] ?? toneClass.slate
                     }`}
                 >
-                    {Icon ? <Icon size={26} strokeWidth={2.2} /> : null}
+                    {Icon ? <Icon size={30} strokeWidth={1.8} /> : null}
                 </span>
 
                 <div className="leading-tight">
-                    <p className="text-lg font-normal text-slate-600">{title}</p>
+                    <p className="text-md font-normal text-slate-400">
+                        {title}
+                    </p>
                     <p className="mt-1 text-3xl font-semibold text-slate-900">
                         {value}
                     </p>
