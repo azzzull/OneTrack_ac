@@ -12,7 +12,7 @@ import {
     PanelLeftOpen,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
 
 const menuByRole = {
@@ -102,7 +102,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             <NavLink
                                 to={path}
                                 className={({ isActive }) =>
-                                    ` no-underline hover:no-underline w-full rounded-xl transition relative
+                                    ` !no-underline hover:!no-underline focus:!no-underline active:!no-underline visited:!no-underline w-full rounded-xl transition relative
                                     ${
                                         isActive
                                             ? "bg-sky-100 text-sky-500"
@@ -115,6 +115,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                     }
                                 `
                                 }
+                                style={{ textDecoration: "none" }}
                             >
                                 {createElement(icon, {
                                     size: collapsed ? 18 : 20,
@@ -181,7 +182,7 @@ export function MobileBottomNav() {
                         <NavLink
                             to={path}
                             className={({ isActive }) =>
-                                ` no-underline hover:no-underline flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-xs font-medium transition relative
+                                ` !no-underline hover:!no-underline focus:!no-underline active:!no-underline visited:!no-underline flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-xs font-medium transition relative
                                 ${
                                     isActive
                                         ? "bg-sky-100 text-sky-500"
@@ -189,6 +190,7 @@ export function MobileBottomNav() {
                                 }
                             `
                             }
+                            style={{ textDecoration: "none" }}
                         >
                             {createElement(icon, { size: 18 })}
                             <span className="mt-1">{label}</span>

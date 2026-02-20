@@ -1,19 +1,41 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import supabase from "../supabaseClient";
+import { AuthContext } from "./AuthContextValue";
 
-const AuthContext = createContext();
+const fetchUserRole = async (userId) => {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+
+  if (error) throw error;
+  return data?.role ?? null;
+};
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const syncUserRole = async (userId) => {
+    try {
+      const nextRole = await fetchUserRole(userId);
+      setRole(nextRole);
+    } catch (error) {
+      console.error("Error fetching role:", error);
+      setRole(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     // cek user saat refresh
     supabase.auth.getUser().then(({ data }) => {
       if (data?.user) {
         setUser(data.user);
-        fetchRole(data.user.id);
+        syncUserRole(data.user.id);
       } else {
         setLoading(false);
       }
@@ -24,7 +46,7 @@ export function AuthProvider({ children }) {
       (_event, session) => {
         if (session?.user) {
           setUser(session.user);
-          fetchRole(session.user.id);
+          syncUserRole(session.user.id);
         } else {
           setUser(null);
           setRole(null);
@@ -35,27 +57,6 @@ export function AuthProvider({ children }) {
 
     return () => listener.subscription.unsubscribe();
   }, []);
-
-  const fetchRole = async (userId) => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", userId)
-        .single();
-
-      if (error) {
-        console.error("Error fetching role:", error);
-        setRole(null);
-      } else {
-        setRole(data?.role);
-      }
-    } catch (error) {
-      console.error("Error fetching role:", error);
-      setRole(null);
-    }
-    setLoading(false);
-  };
 
   const login = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({
@@ -72,5 +73,3 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
-
-export const useAuth = () => useContext(AuthContext);

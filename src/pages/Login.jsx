@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 import loginimage from "../assets/img/loginimage.jpg";
 import { Wrench, Loader2 } from "lucide-react";
 
