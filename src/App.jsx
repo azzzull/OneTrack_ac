@@ -5,6 +5,7 @@ import AuthLoadingScreen from "@/components/AuthLoadingScreen";
 
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminMasterDataPage from "@/pages/admin/MasterData";
+import AdminMasterDataModulePage from "@/pages/admin/MasterDataModule";
 import AdminNewJobPage from "@/pages/admin/NewJob";
 import AdminRequestsPage from "@/pages/admin/Requests";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
@@ -56,6 +57,14 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <AdminMasterDataPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/master-data/:moduleKey"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <AdminMasterDataModulePage />
           </ProtectedRoute>
         }
       />

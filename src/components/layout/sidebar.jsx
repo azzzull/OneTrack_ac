@@ -81,16 +81,16 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             collapsed ? "flex-col gap-2" : "gap-3 p-4"
                         }`}
                     >
-                        <span className="rounded-2xl bg-sky-500 p-3 text-white">
-                            <Wrench size={20} />
-                        </span>
-                        <h1
-                            className={`font-bold text-sky-500 ${
-                                collapsed ? "text-xs" : "text-2xl"
-                            }`}
-                        >
-                            OneTrack
-                        </h1>
+                        <img
+                            src="/saplogo.svg"
+                            alt="SAP Logo"
+                            className={collapsed ? "h-10 w-10 object-contain" : "h-12 w-12 object-contain"}
+                        />
+                        {!collapsed && (
+                            <h1 className="text-2xl font-bold text-sky-500">
+                                OneTrack
+                            </h1>
+                        )}
                     </div>
 
                     {!collapsed && (

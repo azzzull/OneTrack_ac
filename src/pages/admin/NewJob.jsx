@@ -2,15 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, CheckCircle2, Send, ArrowLeft, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import CustomSelect from "../../components/ui/CustomSelect";
 import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 
 const initialForm = {
     customerId: "",
-    projectId: "",
     acBrand: "",
-    acType: "Split Wall",
+    acType: "",
     acCapacityPk: "",
     roomLocation: "",
     serialNumber: "",
@@ -18,9 +18,6 @@ const initialForm = {
     replacedParts: "",
     reconditionedParts: "",
 };
-
-const acTypeOptions = ["Split Wall", "Cassette", "Standing", "Ducting"];
-const acCapacityOptions = ["0.5 PK", "0.75 PK", "1 PK", "1.5 PK", "2 PK", "3 PK"];
 
 const SectionTitle = ({ children }) => (
     <h2 className="mb-4 inline-flex items-center gap-2 text-base font-semibold text-sky-500 md:text-lg">
@@ -56,7 +53,9 @@ export default function AdminNewJobPage() {
         useSidebarCollapsed();
     const [form, setForm] = useState(initialForm);
     const [customers, setCustomers] = useState([]);
-    const [projects, setProjects] = useState([]);
+    const [acBrands, setAcBrands] = useState([]);
+    const [acTypes, setAcTypes] = useState([]);
+    const [acPks, setAcPks] = useState([]);
     const [beforePhoto, setBeforePhoto] = useState(null);
     const [progressPhoto, setProgressPhoto] = useState(null);
     const [afterPhoto, setAfterPhoto] = useState(null);
@@ -78,26 +77,40 @@ export default function AdminNewJobPage() {
 
     const loadMasterData = useCallback(async () => {
         try {
-            const [customersRes, projectsRes] = await Promise.all([
+            const [customersRes, brandsRes, typesRes, pksRes] = await Promise.all([
                 supabase
                     .from("master_customers")
                     .select("*")
+                    .order("project_name", { ascending: true }),
+                supabase
+                    .from("master_ac_brands")
+                    .select("*")
                     .order("name", { ascending: true }),
                 supabase
-                    .from("master_projects")
+                    .from("master_ac_types")
                     .select("*")
-                    .order("project_name", { ascending: true }),
+                    .order("name", { ascending: true }),
+                supabase
+                    .from("master_ac_pks")
+                    .select("*")
+                    .order("label", { ascending: true }),
             ]);
 
             if (customersRes.error) throw customersRes.error;
-            if (projectsRes.error) throw projectsRes.error;
+            if (brandsRes.error) throw brandsRes.error;
+            if (typesRes.error) throw typesRes.error;
+            if (pksRes.error) throw pksRes.error;
 
             setCustomers(customersRes.data ?? []);
-            setProjects(projectsRes.data ?? []);
+            setAcBrands(brandsRes.data ?? []);
+            setAcTypes(typesRes.data ?? []);
+            setAcPks(pksRes.data ?? []);
         } catch (error) {
             console.error("Error loading master data for new job:", error);
             setCustomers([]);
-            setProjects([]);
+            setAcBrands([]);
+            setAcTypes([]);
+            setAcPks([]);
         }
     }, []);
 
@@ -112,19 +125,6 @@ export default function AdminNewJobPage() {
     const selectedCustomer = useMemo(
         () => customers.find((item) => item.id === form.customerId) ?? null,
         [customers, form.customerId],
-    );
-
-    const projectOptions = useMemo(
-        () =>
-            projects.filter((item) =>
-                form.customerId ? item.customer_id === form.customerId : false,
-            ),
-        [projects, form.customerId],
-    );
-
-    const selectedProject = useMemo(
-        () => projectOptions.find((item) => item.id === form.projectId) ?? null,
-        [projectOptions, form.projectId],
     );
 
     const uploadPhoto = async (file, folderName) => {
@@ -243,6 +243,15 @@ export default function AdminNewJobPage() {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
+        if (
+            !form.customerId ||
+            !form.acBrand ||
+            !form.acType ||
+            !form.acCapacityPk
+        ) {
+            alert("Lengkapi Customer, Merk AC, Tipe AC, dan Kapasitas AC terlebih dahulu.");
+            return;
+        }
         setSubmitting(true);
 
         try {
@@ -255,14 +264,18 @@ export default function AdminNewJobPage() {
                 ]);
 
             const payload = {
-                title: selectedProject?.project_name ?? "",
-                status: "pending",
-                location: selectedProject?.location ?? "",
-                customer_name: selectedCustomer?.name ?? "",
-                customer_phone: selectedProject?.phone ?? "",
-                address: selectedProject?.address ?? "",
+                title: selectedCustomer?.project_name ?? "",
+                status: afterUrl
+                    ? "completed"
+                    : progressUrl
+                      ? "in_progress"
+                      : "pending",
+                location: selectedCustomer?.location ?? "",
+                customer_name:
+                    selectedCustomer?.pic_name ?? selectedCustomer?.name ?? "",
+                customer_phone: selectedCustomer?.phone ?? "",
+                address: selectedCustomer?.address ?? "",
                 customer_id: form.customerId,
-                project_id: form.projectId,
                 ac_brand: form.acBrand,
                 ac_type: form.acType,
                 ac_capacity_pk: form.acCapacityPk,
@@ -330,55 +343,46 @@ export default function AdminNewJobPage() {
                                     <span className="text-sm font-medium text-slate-700">
                                         Customer Proyek
                                     </span>
-                                    <select
+                                    <CustomSelect
                                         value={form.customerId}
-                                        onChange={(e) =>
+                                        onChange={(nextValue) =>
                                             setForm((prev) => ({
                                                 ...prev,
-                                                customerId: e.target.value,
-                                                projectId: "",
+                                                customerId: nextValue,
                                             }))
                                         }
-                                        className={inputClass}
-                                        required
-                                    >
-                                        <option value="">Pilih customer</option>
-                                        {customers.map((item) => (
-                                            <option key={item.id} value={item.id}>
-                                                {item.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        options={[
+                                            {
+                                                value: "",
+                                                label: "Pilih customer",
+                                            },
+                                            ...customers.map((item) => ({
+                                                value: item.id,
+                                                label: `${item.pic_name ?? item.name ?? "-"} - ${item.project_name ?? "-"}`,
+                                            })),
+                                        ]}
+                                        placeholder="Pilih customer"
+                                    />
                                 </label>
                                 <label>
                                     <span className="text-sm font-medium text-slate-700">
                                         Nama Proyek
                                     </span>
-                                    <select
-                                        value={form.projectId}
-                                        onChange={(e) =>
-                                            setField("projectId", e.target.value)
-                                        }
+                                    <input
+                                        value={selectedCustomer?.project_name ?? ""}
+                                        readOnly
+                                        placeholder="Auto dari master customer"
                                         className={inputClass}
-                                        required
-                                        disabled={!form.customerId}
-                                    >
-                                        <option value="">Pilih proyek</option>
-                                        {projectOptions.map((item) => (
-                                            <option key={item.id} value={item.id}>
-                                                {item.project_name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    />
                                 </label>
                                 <label>
                                     <span className="text-sm font-medium text-slate-700">
                                         Lokasi Proyek
                                     </span>
                                     <input
-                                        value={selectedProject?.location ?? ""}
+                                        value={selectedCustomer?.location ?? ""}
                                         readOnly
-                                        placeholder="Auto dari master proyek"
+                                        placeholder="Auto dari master customer"
                                         className={inputClass}
                                     />
                                 </label>
@@ -387,9 +391,9 @@ export default function AdminNewJobPage() {
                                         Nomor Telepon
                                     </span>
                                     <input
-                                        value={selectedProject?.phone ?? ""}
+                                        value={selectedCustomer?.phone ?? ""}
                                         readOnly
-                                        placeholder="Auto dari master proyek"
+                                        placeholder="Auto dari master customer"
                                         className={inputClass}
                                     />
                                 </label>
@@ -398,9 +402,9 @@ export default function AdminNewJobPage() {
                                         Alamat Lengkap
                                     </span>
                                     <textarea
-                                        value={selectedProject?.address ?? ""}
+                                        value={selectedCustomer?.address ?? ""}
                                         readOnly
-                                        placeholder="Auto dari master proyek"
+                                        placeholder="Auto dari master customer"
                                         className={`${inputClass} min-h-24`}
                                     />
                                 </label>
@@ -414,53 +418,58 @@ export default function AdminNewJobPage() {
                                     <span className="text-sm font-medium text-slate-700">
                                         Merk AC
                                     </span>
-                                    <input
+                                    <CustomSelect
                                         value={form.acBrand}
-                                        onChange={(e) =>
-                                            setField("acBrand", e.target.value)
+                                        onChange={(nextValue) =>
+                                            setField("acBrand", nextValue)
                                         }
-                                        placeholder="Pilih Merk"
-                                        className={inputClass}
-                                        required
+                                        options={[
+                                            { value: "", label: "Pilih Merk" },
+                                            ...acBrands.map((item) => ({
+                                                value: item.name,
+                                                label: item.name,
+                                            })),
+                                        ]}
+                                        placeholder="Pilih merk"
                                     />
                                 </label>
                                 <label>
                                     <span className="text-sm font-medium text-slate-700">
                                         Tipe AC
                                     </span>
-                                    <select
+                                    <CustomSelect
                                         value={form.acType}
-                                        onChange={(e) =>
-                                            setField("acType", e.target.value)
+                                        onChange={(nextValue) =>
+                                            setField("acType", nextValue)
                                         }
-                                        className={inputClass}
-                                    >
-                                        {acTypeOptions.map((item) => (
-                                            <option key={item} value={item}>
-                                                {item}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        options={[
+                                            { value: "", label: "Pilih Tipe" },
+                                            ...acTypes.map((item) => ({
+                                                value: item.name,
+                                                label: item.name,
+                                            })),
+                                        ]}
+                                        placeholder="Pilih tipe"
+                                    />
                                 </label>
                                 <label>
                                     <span className="text-sm font-medium text-slate-700">
                                         Kapasitas AC (PK)
                                     </span>
-                                    <select
+                                    <CustomSelect
                                         value={form.acCapacityPk}
-                                        onChange={(e) =>
-                                            setField("acCapacityPk", e.target.value)
+                                        onChange={(nextValue) =>
+                                            setField("acCapacityPk", nextValue)
                                         }
-                                        className={inputClass}
-                                        required
-                                    >
-                                        <option value="">Pilih PK</option>
-                                        {acCapacityOptions.map((item) => (
-                                            <option key={item} value={item}>
-                                                {item}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        options={[
+                                            { value: "", label: "Pilih PK" },
+                                            ...acPks.map((item) => ({
+                                                value: item.label,
+                                                label: item.label,
+                                            })),
+                                        ]}
+                                        placeholder="Pilih PK"
+                                    />
                                 </label>
                                 <label className="md:col-span-1">
                                     <span className="text-sm font-medium text-slate-700">

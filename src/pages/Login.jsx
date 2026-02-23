@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import loginimage from "../assets/img/loginimage.jpg";
-import { Wrench, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -43,9 +43,11 @@ function Login() {
           className="flex flex-col items-center justify-center text-center p-8 gap-2 bg-white rounded-2xl lg:p-20 lg:rounded-tr-none lg:rounded-br-none
         "
         >
-          <div className="p-3 bg-sky-400 rounded-2xl text-white">
-            <Wrench size={32} />
-          </div>
+          <img
+            src="/saplogo.svg"
+            alt="SAP Logo"
+            className="h-14 w-14 object-contain"
+          />
           <div>
             <h1 className="mb-1 text-3xl font-bold text-sky-400 md:text-4xl">
               OneTrack Service
