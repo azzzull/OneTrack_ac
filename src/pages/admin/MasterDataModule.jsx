@@ -366,7 +366,7 @@ export default function AdminMasterDataModulePage() {
                     onToggle={toggleSidebar}
                 />
 
-                <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8">
+                <main className="min-w-0 flex-1 overflow-x-hidden p-4 pb-24 md:p-8 md:pb-8">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div className="flex items-center gap-2">
                             <Link
@@ -414,7 +414,7 @@ export default function AdminMasterDataModulePage() {
                         </div>
                     </div>
 
-                    <section className="mt-6 overflow-hidden rounded-2xl bg-white shadow-sm">
+                    <section className="mt-6 w-full overflow-hidden rounded-2xl bg-white shadow-sm">
                         {moduleKey === "users" && (
                             <div className="border-b border-slate-200 px-4 py-3">
                                 <input
@@ -430,7 +430,7 @@ export default function AdminMasterDataModulePage() {
                                 Memuat data...
                             </p>
                         ) : (
-                            <div className="overflow-x-auto">
+                            <div className="w-full overflow-x-auto">
                                 <table className="w-full min-w-[640px] text-left text-sm">
                                     <thead>
                                         <tr className="border-b border-slate-200 text-slate-500">

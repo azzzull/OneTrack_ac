@@ -7,6 +7,7 @@ import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminMasterDataPage from "@/pages/admin/MasterData";
 import AdminMasterDataModulePage from "@/pages/admin/MasterDataModule";
 import AdminNewJobPage from "@/pages/admin/NewJob";
+import AdminReportsPage from "@/pages/admin/Reports";
 import AdminRequestsPage from "@/pages/admin/Requests";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
 import CustomerDashboard from "@/pages/customer/Dashboard";
@@ -65,6 +66,14 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <AdminMasterDataModulePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <AdminReportsPage />
           </ProtectedRoute>
         }
       />
