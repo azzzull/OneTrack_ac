@@ -11,7 +11,16 @@ import supabase from "../../supabaseClient";
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
 
-const resolveErrorMessage = (error) => {
+const resolveErrorMessage = async (error) => {
+    if (error?.context && typeof error.context.json === "function") {
+        try {
+            const payload = await error.context.json();
+            if (payload?.error) return String(payload.error);
+        } catch {
+            // no-op
+        }
+    }
+
     const message = String(error?.message ?? "");
     if (
         message.includes("FunctionsFetchError") ||
@@ -378,7 +387,25 @@ export default function AdminMasterDataModulePage() {
                     "admin-delete-user",
                     { user_id: itemId },
                 );
-                if (error) throw error;
+                if (error) {
+                    const detail = await resolveErrorMessage(error);
+                    if (!detail.toLowerCase().includes("user not found")) {
+                        throw error;
+                    }
+
+                    const { error: deleteProfileError } = await supabase
+                        .from("profiles")
+                        .delete()
+                        .eq("id", itemId);
+                    if (deleteProfileError) throw deleteProfileError;
+                }
+
+                // Keep customer master data in sync when linked login is deleted.
+                const { error: deleteCustomerError } = await supabase
+                    .from("master_customers")
+                    .delete()
+                    .eq("user_id", itemId);
+                if (deleteCustomerError) throw deleteCustomerError;
             } else if (moduleKey === "customers") {
                 const { count, error: countError } = await supabase
                     .from("requests")
@@ -432,7 +459,7 @@ export default function AdminMasterDataModulePage() {
             await loadItems();
         } catch (error) {
             console.error("Delete data failed:", error);
-            await showAlert("Gagal menghapus data.", {
+            await showAlert(await resolveErrorMessage(error), {
                 title: "Hapus Gagal",
             });
         }
@@ -481,7 +508,7 @@ export default function AdminMasterDataModulePage() {
             await loadItems();
         } catch (error) {
             console.error("Add data failed:", error);
-            await showAlert(resolveErrorMessage(error), {
+            await showAlert(await resolveErrorMessage(error), {
                 title: "Simpan Gagal",
             });
         }
