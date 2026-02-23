@@ -160,14 +160,14 @@ export default function AdminRequestsPage() {
                     onToggle={toggleSidebar}
                 />
 
-                <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8">
+                <main className="min-w-0 flex-1 p-3 pb-24 md:p-8 md:pb-8">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <h1 className="text-3xl font-semibold text-slate-900">
+                        <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
                             Daftar Pekerjaan
                         </h1>
 
-                        <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-3 text-slate-500 md:max-w-sm">
-                            <Search size={18} />
+                        <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:max-w-sm md:px-4 md:py-3">
+                            <Search size={16} />
                             <input
                                 type="text"
                                 value={search}
@@ -175,18 +175,18 @@ export default function AdminRequestsPage() {
                                     setSearch(event.target.value)
                                 }
                                 placeholder="Cari nama atau alamat..."
-                                className="w-full bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400"
+                                className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 md:text-base"
                             />
                         </label>
                     </div>
 
-                    <div className="mt-6 inline-flex rounded-full border border-slate-200 bg-white p-1">
+                    <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:mt-6 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
                         {FILTERS.map((filter) => (
                             <button
                                 key={filter.key}
                                 type="button"
                                 onClick={() => setActiveFilter(filter.key)}
-                                className={`rounded-full px-6 py-2 cursor-pointer text-md transition ${
+                                className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-6 md:text-sm ${
                                     activeFilter === filter.key
                                         ? "bg-sky-500 font-semibold text-white"
                                         : "font-medium text-slate-600 hover:bg-slate-100"
@@ -217,15 +217,15 @@ export default function AdminRequestsPage() {
                                     className="overflow-hidden rounded-2xl bg-white shadow-sm"
                                 >
                                     <div className="grid grid-cols-1 md:grid-cols-[1fr_190px]">
-                                        <div className="p-5">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <h2 className="text-3xl font-semibold text-slate-900">
+                                        <div className="p-4 md:p-5">
+                                            <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
+                                                <div className="min-w-0">
+                                                    <h2 className="break-words text-xl font-semibold text-slate-900 md:text-3xl">
                                                         {item.title}
                                                     </h2>
-                                                    <p className="mt-2 inline-flex items-center gap-2 text-xl text-slate-500">
+                                                    <p className="mt-2 flex items-start gap-2 break-words text-sm text-slate-500 md:text-xl">
                                                         <MapPin size={16} />
-                                                        {item.address}
+                                                        <span>{item.address}</span>
                                                     </p>
                                                 </div>
 
@@ -243,24 +243,28 @@ export default function AdminRequestsPage() {
                                                 </span>
                                             </div>
 
-                                            <div className="mt-4 flex flex-wrap items-center gap-6 text-base text-slate-500">
+                                            <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
                                                 <p className="inline-flex items-center gap-2">
                                                     <UserRound size={14} />
-                                                    {item.phone}
+                                                    <span className="break-all">
+                                                        {item.phone}
+                                                    </span>
                                                 </p>
                                                 <p className="inline-flex items-center gap-2">
                                                     <Wrench size={14} />
-                                                    {item.assignee}
+                                                    <span className="break-words">
+                                                        {item.assignee}
+                                                    </span>
                                                 </p>
                                             </div>
                                         </div>
 
-                                        <aside className="border-l border-slate-200 bg-slate-50 p-5">
-                                            <p className="inline-flex items-center gap-2 text-base text-slate-600">
+                                        <aside className="border-t border-slate-200 bg-slate-50 p-4 md:border-l md:border-t-0 md:p-5">
+                                            <p className="inline-flex items-center gap-2 text-sm text-slate-600 md:text-base">
                                                 <CalendarDays size={15} />
                                                 {formatDate(item.date)}
                                             </p>
-                                            <p className="mt-3 inline-flex items-center gap-2 text-base text-slate-600">
+                                            <p className="mt-3 inline-flex items-center gap-2 break-words text-sm text-slate-600 md:text-base">
                                                 <ListFilter size={15} />
                                                 {item.requester}
                                             </p>

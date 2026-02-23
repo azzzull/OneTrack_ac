@@ -40,14 +40,14 @@ function Login() {
     >
       <div className="flex shadow-2xl rounded-2xl overflow-hidden">
         <form
-          className="flex flex-col items-center justify-center text-center p-20 gap-2 bg-white rounded-2xl lg:rounded-tr-none lg:rounded-br-none
+          className="flex flex-col items-center justify-center text-center p-8 gap-2 bg-white rounded-2xl lg:p-20 lg:rounded-tr-none lg:rounded-br-none
         "
         >
           <div className="p-3 bg-sky-400 rounded-2xl text-white">
             <Wrench size={32} />
           </div>
           <div>
-            <h1 className="text-4xl font-bold text-sky-400 mb-1">
+            <h1 className="mb-1 text-3xl font-bold text-sky-400 md:text-4xl">
               OneTrack Service
             </h1>
             <p className="text-gray-400">Manajemen Service AC Profesional</p>

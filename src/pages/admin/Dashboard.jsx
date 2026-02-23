@@ -156,7 +156,7 @@ function AdminDashboard() {
                 />
 
                 <div className="flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <h2 className="text-3xl font-semibold text-slate-800">
+                    <h2 className="text-2xl font-semibold text-slate-800 md:text-3xl">
                         Service Hub
                     </h2>
                     <p className="mt-1 text-slate-600">
@@ -177,7 +177,7 @@ function AdminDashboard() {
 
                     <section className="mt-9">
                         <div className="flex items-center justify-between">
-                            <h3 className="text-3xl font-semibold text-slate-900">
+                            <h3 className="text-2xl font-semibold text-slate-900 md:text-3xl">
                                 Pekerjaan Terbaru
                             </h3>
                             <Link
@@ -197,7 +197,7 @@ function AdminDashboard() {
                             </div>
                         ) : latestJobs.length === 0 ? (
                             <div className="mt-4 rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50 p-8">
-                                <p className="text-lg text-sky-700">
+                                <p className="text-base text-sky-700 md:text-lg">
                                     Belum ada pekerjaan yang di lakukan
                                 </p>
                                 <Link
@@ -222,11 +222,11 @@ function AdminDashboard() {
                                                     <span className="inline-flex rounded-full bg-slate-100 p-3 text-slate-400">
                                                         <Wrench size={20} />
                                                     </span>
-                                                    <div>
-                                                        <p className="text-xl font-medium text-slate-900">
+                                                    <div className="min-w-0">
+                                                        <p className="text-base font-medium text-slate-900 md:text-xl">
                                                             {job.title}
                                                         </p>
-                                                        <p className="mt-1 text-base text-slate-500">
+                                                        <p className="mt-1 text-sm text-slate-500 md:text-base">
                                                             {job.location}
                                                         </p>
                                                     </div>
@@ -266,7 +266,7 @@ function AdminDashboard() {
                     <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <h4 className="text-2xl font-semibold text-slate-900">
+                                <h4 className="text-xl font-semibold text-slate-900 md:text-2xl">
                                     {selectedJob.title}
                                 </h4>
                                 <p className="mt-1 text-base text-slate-500">

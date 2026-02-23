@@ -13,7 +13,7 @@ export default function Card({
     };
 
     return (
-        <article className={`rounded-2xl bg-white p-6 shadow-sm ${className}`}>
+        <article className={`rounded-2xl bg-white p-5 shadow-sm md:p-6 ${className}`}>
             <div className="flex items-center gap-4">
                 <span
                     className={`inline-flex rounded-2xl p-3 ${
@@ -27,7 +27,7 @@ export default function Card({
                     <p className="text-sm font-normal text-slate-400">
                         {title}
                     </p>
-                    <p className="mt-1 text-2xl font-semibold text-slate-900">
+                    <p className="mt-1 text-xl font-semibold text-slate-900 md:text-2xl">
                         {value}
                     </p>
                 </div>

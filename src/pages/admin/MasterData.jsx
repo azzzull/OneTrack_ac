@@ -8,7 +8,7 @@ const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
 
 const SectionTitle = ({ children }) => (
-    <h2 className="mb-4 inline-flex items-center gap-2 text-lg font-semibold text-sky-500">
+    <h2 className="mb-4 inline-flex items-center gap-2 text-base font-semibold text-sky-500 md:text-lg">
         <CheckCircle2 size={16} />
         {children}
     </h2>
@@ -181,7 +181,7 @@ export default function AdminMasterDataPage() {
                 />
 
                 <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <h1 className="text-3xl font-semibold text-slate-900">
+                    <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
                         Master Data
                     </h1>
                     <p className="mt-1 text-slate-600">

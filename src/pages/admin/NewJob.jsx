@@ -23,7 +23,7 @@ const acTypeOptions = ["Split Wall", "Cassette", "Standing", "Ducting"];
 const acCapacityOptions = ["0.5 PK", "0.75 PK", "1 PK", "1.5 PK", "2 PK", "3 PK"];
 
 const SectionTitle = ({ children }) => (
-    <h2 className="mb-4 inline-flex items-center gap-2 text-lg font-semibold text-sky-500">
+    <h2 className="mb-4 inline-flex items-center gap-2 text-base font-semibold text-sky-500 md:text-lg">
         <CheckCircle2 size={16} />
         {children}
     </h2>
@@ -314,7 +314,7 @@ export default function AdminNewJobPage() {
                         >
                             <ArrowLeft size={18} />
                         </Link>
-                        <h1 className="text-3xl font-semibold text-slate-900">
+                        <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
                             Pekerjaan Baru
                         </h1>
                     </div>
@@ -585,7 +585,7 @@ export default function AdminNewJobPage() {
                         <button
                             type="submit"
                             disabled={submitting}
-                            className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-sky-500 px-6 py-3 text-lg font-semibold text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-70"
+                            className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-sky-500 px-6 py-3 text-base font-semibold text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-70 md:text-lg"
                         >
                             <span>
                                 {submitting
