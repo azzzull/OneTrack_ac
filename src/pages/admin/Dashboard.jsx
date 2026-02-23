@@ -143,7 +143,7 @@ function AdminDashboard() {
 
         return () => {
             clearTimeout(timerId);
-            supabase.removeChannel(channel);
+            channel.unsubscribe();
         };
     }, [loadLatestJobs]);
 

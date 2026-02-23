@@ -5,10 +5,33 @@ import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
+import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
 
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
+
+const resolveErrorMessage = (error) => {
+    const message = String(error?.message ?? "");
+    if (
+        message.includes("FunctionsFetchError") ||
+        message.includes("Failed to send a request")
+    ) {
+        return "Gagal memanggil Edge Function. Pastikan function `admin-create-user` sudah di-deploy di Supabase.";
+    }
+    return message || "Gagal menyimpan data.";
+};
+
+const getProfileDisplayName = (profile) => {
+    const composed = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+    return (
+        composed ||
+        String(profile?.name ?? "").trim() ||
+        String(profile?.full_name ?? "").trim() ||
+        String(profile?.email ?? "").trim() ||
+        "-"
+    );
+};
 
 const moduleConfig = {
     users: { title: "Daftar User", table: "profiles", readOnly: true },
@@ -23,6 +46,7 @@ export default function AdminMasterDataModulePage() {
     const { moduleKey } = useParams();
     const cfg = moduleConfig[moduleKey];
     const { user: currentUser } = useAuth();
+    const { alert: showAlert, confirm } = useDialog();
 
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -48,9 +72,41 @@ export default function AdminMasterDataModulePage() {
         projectName: "",
         location: "",
         phone: "",
+        email: "",
+        password: "",
         address: "",
         label: "",
     });
+
+    const splitName = (fullName) => {
+        const normalized = String(fullName ?? "").trim();
+        if (!normalized) return { firstName: "", lastName: "" };
+        const [firstName, ...rest] = normalized.split(/\s+/);
+        return { firstName, lastName: rest.join(" ") };
+    };
+
+    const invokeAdminFunction = useCallback(async (name, body) => {
+        const {
+            data: { session },
+            error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!session?.access_token) {
+            throw new Error("Sesi login tidak valid. Silakan login ulang.");
+        }
+        const projectAnonKey = import.meta.env.VITE_SUPABASE_KEY;
+        if (!projectAnonKey) {
+            throw new Error("VITE_SUPABASE_KEY tidak ditemukan di environment.");
+        }
+
+        return supabase.functions.invoke(name, {
+            body,
+            headers: {
+                Authorization: `Bearer ${session.access_token}`,
+                apikey: projectAnonKey,
+            },
+        });
+    }, []);
 
     const loadRoles = useCallback(async () => {
         const { data, error } = await supabase
@@ -111,10 +167,7 @@ export default function AdminMasterDataModulePage() {
             const keyword = userSearch.trim().toLowerCase();
             if (keyword) {
                 data = data.filter((item) => {
-                    const fullName =
-                        `${item.first_name ?? ""} ${item.last_name ?? ""}`.trim() ||
-                        item.full_name ||
-                        "";
+                    const fullName = getProfileDisplayName(item);
                     const haystack =
                         `${fullName} ${item.email ?? ""} ${item.phone ?? ""} ${item.role ?? ""}`.toLowerCase();
                     return haystack.includes(keyword);
@@ -125,8 +178,7 @@ export default function AdminMasterDataModulePage() {
     }, [items, moduleKey, roleFilter, userSearch]);
 
     const addUser = async () => {
-        const { error } = await supabase.functions.invoke("admin-create-user", {
-            body: {
+        const { error } = await invokeAdminFunction("admin-create-user", {
                 email: userForm.email,
                 password: userForm.password,
                 role: userForm.role,
@@ -135,7 +187,6 @@ export default function AdminMasterDataModulePage() {
                 full_name:
                     `${userForm.firstName} ${userForm.lastName}`.trim() || null,
                 phone: userForm.phone,
-            },
         });
         if (error) throw error;
         setUserForm({
@@ -176,13 +227,11 @@ export default function AdminMasterDataModulePage() {
             return;
         }
 
-        const { error: adminPasswordError } = await supabase.functions.invoke(
+        const { error: adminPasswordError } = await invokeAdminFunction(
             "admin-update-user-password",
             {
-                body: {
-                    user_id: editUserId,
-                    password: nextPassword,
-                },
+                user_id: editUserId,
+                password: nextPassword,
             },
         );
         if (adminPasswordError) throw adminPasswordError;
@@ -195,12 +244,46 @@ export default function AdminMasterDataModulePage() {
                 .insert({ name: simpleForm.name });
             if (error) throw error;
         } else if (moduleKey === "customers") {
+            let linkedUserId = null;
+            const { firstName, lastName } = splitName(simpleForm.name);
+
+            if (!editSimpleId) {
+                if (!simpleForm.email || !simpleForm.password) {
+                    throw new Error("Email dan password customer wajib diisi.");
+                }
+
+                const { error: createUserError } = await invokeAdminFunction(
+                    "admin-create-user",
+                    {
+                        email: simpleForm.email,
+                        password: simpleForm.password,
+                        role: "customer",
+                        first_name: firstName,
+                        last_name: lastName,
+                        full_name: simpleForm.name,
+                        phone: simpleForm.phone,
+                    },
+                );
+                if (createUserError) throw createUserError;
+
+                const { data: createdProfile, error: profileLookupError } =
+                    await supabase
+                        .from("profiles")
+                        .select("id")
+                        .eq("email", simpleForm.email)
+                        .maybeSingle();
+                if (profileLookupError) throw profileLookupError;
+                linkedUserId = createdProfile?.id ?? null;
+            }
+
             const { error } = await supabase.from("master_customers").insert({
                 name: simpleForm.name,
                 pic_name: simpleForm.name,
                 project_name: simpleForm.projectName,
                 location: simpleForm.location,
                 phone: simpleForm.phone,
+                email: simpleForm.email || null,
+                user_id: linkedUserId,
                 address: simpleForm.address,
             });
             if (error) throw error;
@@ -226,6 +309,8 @@ export default function AdminMasterDataModulePage() {
             projectName: "",
             location: "",
             phone: "",
+            email: "",
+            password: "",
             address: "",
             label: "",
         });
@@ -249,6 +334,7 @@ export default function AdminMasterDataModulePage() {
                     project_name: simpleForm.projectName,
                     location: simpleForm.location,
                     phone: simpleForm.phone,
+                    email: simpleForm.email || null,
                     address: simpleForm.address,
                 })
                 .eq("id", editSimpleId);
@@ -275,33 +361,80 @@ export default function AdminMasterDataModulePage() {
     };
 
     const deleteItem = async (itemId) => {
-        const confirmText =
-            moduleKey === "users"
-                ? "Hapus user ini dari sistem login (auth) dan profile?"
-                : "Yakin ingin menghapus data ini?";
-        const confirmed = window.confirm(confirmText);
-        if (!confirmed) return;
-
         try {
             if (moduleKey === "users") {
-                const { error } = await supabase.functions.invoke(
-                    "admin-delete-user",
+                const confirmed = await confirm(
+                    "Hapus user ini dari sistem login (auth) dan profile?",
                     {
-                        body: { user_id: itemId },
+                        title: "Konfirmasi Hapus User",
+                        confirmText: "Hapus User",
+                        cancelText: "Batal",
+                        danger: true,
                     },
                 );
+                if (!confirmed) return;
+
+                const { error } = await invokeAdminFunction(
+                    "admin-delete-user",
+                    { user_id: itemId },
+                );
                 if (error) throw error;
+            } else if (moduleKey === "customers") {
+                const { count, error: countError } = await supabase
+                    .from("requests")
+                    .select("id", { head: true, count: "exact" })
+                    .eq("customer_id", itemId);
+                if (countError) throw countError;
+
+                const totalJobs = count ?? 0;
+                const confirmed = await confirm(
+                    totalJobs > 0
+                        ? `Customer ini punya ${totalJobs} pekerjaan. Jika dihapus, semua record pekerjaan customer ini juga akan terhapus permanen. Lanjutkan?`
+                        : "Yakin ingin menghapus customer ini?",
+                    {
+                        title: "Konfirmasi Hapus Customer",
+                        confirmText: "Hapus Data",
+                        cancelText: "Batal",
+                        danger: true,
+                    },
+                );
+                if (!confirmed) return;
+
+                if (totalJobs > 0) {
+                    const { error: deleteRequestsError } = await supabase
+                        .from("requests")
+                        .delete()
+                        .eq("customer_id", itemId);
+                    if (deleteRequestsError) throw deleteRequestsError;
+                }
+
+                const { error: deleteCustomerError } = await supabase
+                    .from("master_customers")
+                    .delete()
+                    .eq("id", itemId);
+                if (deleteCustomerError) throw deleteCustomerError;
             } else {
+                const confirmed = await confirm("Yakin ingin menghapus data ini?", {
+                    title: "Konfirmasi Hapus",
+                    confirmText: "Hapus",
+                    cancelText: "Batal",
+                    danger: true,
+                });
+                if (!confirmed) return;
+
                 const { error } = await supabase
                     .from(cfg.table)
                     .delete()
                     .eq("id", itemId);
                 if (error) throw error;
             }
+
             await loadItems();
         } catch (error) {
             console.error("Delete data failed:", error);
-            alert("Gagal menghapus data.");
+            await showAlert("Gagal menghapus data.", {
+                title: "Hapus Gagal",
+            });
         }
     };
 
@@ -319,6 +452,8 @@ export default function AdminMasterDataModulePage() {
             projectName: "",
             location: "",
             phone: "",
+            email: "",
+            password: "",
             address: "",
             label: "",
         });
@@ -346,7 +481,9 @@ export default function AdminMasterDataModulePage() {
             await loadItems();
         } catch (error) {
             console.error("Add data failed:", error);
-            alert("Gagal menyimpan data.");
+            await showAlert(resolveErrorMessage(error), {
+                title: "Simpan Gagal",
+            });
         }
     };
 
@@ -478,6 +615,9 @@ export default function AdminMasterDataModulePage() {
                                                         Telepon
                                                     </th>
                                                     <th className="px-3 py-3">
+                                                        Email
+                                                    </th>
+                                                    <th className="px-3 py-3">
                                                         Alamat
                                                     </th>
                                                     <th className="px-3 py-3">
@@ -517,11 +657,7 @@ export default function AdminMasterDataModulePage() {
                                                 {moduleKey === "users" && (
                                                     <>
                                                         <td className="px-3 py-3 font-medium text-slate-800">
-                                                            {(item.first_name &&
-                                                                item.last_name &&
-                                                                `${item.first_name} ${item.last_name}`) ||
-                                                                item.full_name ||
-                                                                "-"}
+                                                            {getProfileDisplayName(item)}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
                                                             {item.email ?? "-"}
@@ -537,6 +673,9 @@ export default function AdminMasterDataModulePage() {
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => {
+                                                                        const { firstName, lastName } = splitName(
+                                                                            getProfileDisplayName(item),
+                                                                        );
                                                                         setEditSimpleId(
                                                                             null,
                                                                         );
@@ -547,10 +686,10 @@ export default function AdminMasterDataModulePage() {
                                                                             {
                                                                                 firstName:
                                                                                     item.first_name ??
-                                                                                    "",
+                                                                                    firstName,
                                                                                 lastName:
                                                                                     item.last_name ??
-                                                                                    "",
+                                                                                    lastName,
                                                                                 email:
                                                                                     item.email ??
                                                                                     "",
@@ -670,6 +809,9 @@ export default function AdminMasterDataModulePage() {
                                                             {item.phone ?? "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
+                                                            {item.email ?? "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
                                                             {item.address ?? "-"}
                                                         </td>
                                                         <td className="px-3 py-3">
@@ -697,6 +839,11 @@ export default function AdminMasterDataModulePage() {
                                                                                     "",
                                                                                 phone:
                                                                                     item.phone ??
+                                                                                    "",
+                                                                                email:
+                                                                                    item.email ??
+                                                                                    "",
+                                                                                password:
                                                                                     "",
                                                                                 address:
                                                                                     item.address ??
@@ -1095,6 +1242,23 @@ export default function AdminMasterDataModulePage() {
                                             required
                                         />
                                     </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Email Login
+                                        </span>
+                                        <input
+                                            type="email"
+                                            value={simpleForm.email}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    email: e.target.value,
+                                                }))
+                                            }
+                                            className={inputClass}
+                                            required
+                                        />
+                                    </label>
                                     <label className="md:col-span-2">
                                         <span className="text-sm font-medium text-slate-700">
                                             Alamat
@@ -1111,6 +1275,26 @@ export default function AdminMasterDataModulePage() {
                                             required
                                         />
                                     </label>
+                                    {!editSimpleId && (
+                                        <label className="md:col-span-2">
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Password Awal
+                                            </span>
+                                            <input
+                                                type="password"
+                                                value={simpleForm.password}
+                                                onChange={(e) =>
+                                                    setSimpleForm((prev) => ({
+                                                        ...prev,
+                                                        password: e.target.value,
+                                                    }))
+                                                }
+                                                className={inputClass}
+                                                placeholder="Password awal untuk customer login"
+                                                required
+                                            />
+                                        </label>
+                                    )}
                                 </>
                             )}
 

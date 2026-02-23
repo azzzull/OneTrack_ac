@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
+import { useDialog } from "../context/useDialog";
 import loginimage from "../assets/img/loginimage.jpg";
 import { Loader2 } from "lucide-react";
 
@@ -10,6 +11,7 @@ function Login() {
   const [loading, setLoading] = useState(false);
 
   const { login, user, role } = useAuth();
+  const { alert: showAlert } = useDialog();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,7 +29,7 @@ function Login() {
     try {
       await login(email, password);
     } catch (error) {
-      alert(error.message);
+      await showAlert(error.message, { title: "Login Gagal" });
     }
 
     setLoading(false);

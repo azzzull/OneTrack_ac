@@ -59,7 +59,7 @@ export default function useRequestStats() {
 
         return () => {
             clearTimeout(timerId);
-            supabase.removeChannel(channel);
+            channel.unsubscribe();
         };
     }, [loadStats]);
 

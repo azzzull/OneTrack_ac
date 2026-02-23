@@ -6,6 +6,8 @@ create table if not exists public.master_customers (
     project_name text not null,
     location text not null,
     phone text not null,
+    email text,
+    user_id uuid references public.profiles(id) on delete set null,
     address text not null,
     created_at timestamptz not null default now()
 );
@@ -15,7 +17,9 @@ alter table public.master_customers
 add column if not exists name text,
 add column if not exists pic_name text,
 add column if not exists project_name text,
-add column if not exists location text;
+add column if not exists location text,
+add column if not exists email text,
+add column if not exists user_id uuid references public.profiles(id) on delete set null;
 
 update public.master_customers
 set pic_name = coalesce(pic_name, name)

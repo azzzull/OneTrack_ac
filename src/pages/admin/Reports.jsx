@@ -58,7 +58,7 @@ export default function AdminReportsPage() {
 
         return () => {
             clearTimeout(timerId);
-            supabase.removeChannel(channel);
+            channel.unsubscribe();
         };
     }, [loadRequests]);
 

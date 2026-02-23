@@ -5,6 +5,7 @@ import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
 import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
+import { useDialog } from "../../context/useDialog";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 
 const initialForm = {
@@ -69,6 +70,7 @@ export default function AdminNewJobPage() {
     const videoRef = useRef(null);
 
     const { user } = useAuth();
+    const { alert: showAlert } = useDialog();
     const navigate = useNavigate();
 
     const setField = (key, value) => {
@@ -249,7 +251,10 @@ export default function AdminNewJobPage() {
             !form.acType ||
             !form.acCapacityPk
         ) {
-            alert("Lengkapi Customer, Merk AC, Tipe AC, dan Kapasitas AC terlebih dahulu.");
+            await showAlert(
+                "Lengkapi Customer, Merk AC, Tipe AC, dan Kapasitas AC terlebih dahulu.",
+                { title: "Data Belum Lengkap" },
+            );
             return;
         }
         setSubmitting(true);
@@ -297,7 +302,10 @@ export default function AdminNewJobPage() {
             navigate("/requests");
         } catch (error) {
             console.error("Error submitting new job:", error);
-            alert("Gagal menyimpan data pekerjaan. Cek struktur tabel Supabase.");
+            await showAlert(
+                "Gagal menyimpan data pekerjaan. Cek struktur tabel Supabase.",
+                { title: "Simpan Gagal" },
+            );
         } finally {
             setSubmitting(false);
         }

@@ -1,10 +1,12 @@
 # Supabase Edge Functions (Admin User Management)
 
 Function yang dipakai front-end:
+- `admin-create-user`
 - `admin-update-user-password`
 - `admin-delete-user`
 
 Lokasi source:
+- `supabase/functions/admin-create-user/index.ts`
 - `supabase/functions/admin-update-user-password/index.ts`
 - `supabase/functions/admin-delete-user/index.ts`
 
@@ -15,6 +17,7 @@ Jalankan dari root project:
 ```bash
 supabase login
 supabase link --project-ref <PROJECT_REF>
+supabase functions deploy admin-create-user
 supabase functions deploy admin-update-user-password
 supabase functions deploy admin-delete-user
 ```

@@ -20,6 +20,7 @@ import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
+import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
 
 const FILTERS = [
@@ -120,6 +121,7 @@ const formatDate = (value) => {
 
 export default function AdminRequestsPage() {
     const { user } = useAuth();
+    const { alert: showAlert } = useDialog();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const [activeFilter, setActiveFilter] = useState("all");
@@ -175,7 +177,7 @@ export default function AdminRequestsPage() {
 
         return () => {
             clearTimeout(timerId);
-            supabase.removeChannel(channel);
+            channel.unsubscribe();
         };
     }, [loadRequests]);
 
@@ -295,8 +297,9 @@ export default function AdminRequestsPage() {
         if (editingStatus === selectedRequest.status) return;
 
         if (editingStatus === "completed" && !selectedRequest.afterPhotoUrl) {
-            alert(
+            await showAlert(
                 "Status Completed membutuhkan foto after. Upload foto after dulu dari halaman pengerjaan.",
+                { title: "Aksi Ditolak" },
             );
             return;
         }
@@ -315,7 +318,9 @@ export default function AdminRequestsPage() {
             await loadRequests();
         } catch (error) {
             console.error("Error updating request status:", error);
-            alert("Gagal mengubah status pekerjaan.");
+            await showAlert("Gagal mengubah status pekerjaan.", {
+                title: "Update Gagal",
+            });
         } finally {
             setSavingStatus(false);
         }
@@ -339,7 +344,9 @@ export default function AdminRequestsPage() {
     const savePhotos = async () => {
         if (!selectedRequest) return;
         if (!beforePhotoFile && !progressPhotoFile && !afterPhotoFile) {
-            alert("Pilih minimal 1 foto untuk disimpan.");
+            await showAlert("Pilih minimal 1 foto untuk disimpan.", {
+                title: "Data Belum Lengkap",
+            });
             return;
         }
 
@@ -381,7 +388,9 @@ export default function AdminRequestsPage() {
             setAfterPhotoFile(null);
         } catch (error) {
             console.error("Error saving photos:", error);
-            alert("Gagal menyimpan foto.");
+            await showAlert("Gagal menyimpan foto.", {
+                title: "Simpan Gagal",
+            });
         } finally {
             setSavingPhotos(false);
         }
