@@ -32,7 +32,8 @@ const resolveErrorMessage = async (error) => {
 };
 
 const getProfileDisplayName = (profile) => {
-    const composed = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+    const composed =
+        `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
     return (
         composed ||
         String(profile?.name ?? "").trim() ||
@@ -105,7 +106,9 @@ export default function AdminMasterDataModulePage() {
         }
         const projectAnonKey = import.meta.env.VITE_SUPABASE_KEY;
         if (!projectAnonKey) {
-            throw new Error("VITE_SUPABASE_KEY tidak ditemukan di environment.");
+            throw new Error(
+                "VITE_SUPABASE_KEY tidak ditemukan di environment.",
+            );
         }
 
         return supabase.functions.invoke(name, {
@@ -188,14 +191,14 @@ export default function AdminMasterDataModulePage() {
 
     const addUser = async () => {
         const { error } = await invokeAdminFunction("admin-create-user", {
-                email: userForm.email,
-                password: userForm.password,
-                role: userForm.role,
-                first_name: userForm.firstName,
-                last_name: userForm.lastName,
-                full_name:
-                    `${userForm.firstName} ${userForm.lastName}`.trim() || null,
-                phone: userForm.phone,
+            email: userForm.email,
+            password: userForm.password,
+            role: userForm.role,
+            first_name: userForm.firstName,
+            last_name: userForm.lastName,
+            full_name:
+                `${userForm.firstName} ${userForm.lastName}`.trim() || null,
+            phone: userForm.phone,
         });
         if (error) throw error;
         setUserForm({
@@ -369,7 +372,7 @@ export default function AdminMasterDataModulePage() {
         }
     };
 
-    const deleteItem = async (itemId) => {
+    const deleteItem = async (itemId, linkedEmail = "") => {
         try {
             if (moduleKey === "users") {
                 const confirmed = await confirm(
@@ -382,6 +385,44 @@ export default function AdminMasterDataModulePage() {
                     },
                 );
                 if (!confirmed) return;
+
+                // Delete linked customer + requests first, before profile deletion sets user_id to null.
+                let linkedCustomerIds = [];
+                const normalizedEmail = String(linkedEmail ?? "").trim();
+                const customerQuery = normalizedEmail
+                    ? supabase
+                          .from("master_customers")
+                          .select("id")
+                          .or(
+                              `user_id.eq.${itemId},email.eq.${normalizedEmail}`,
+                          )
+                    : supabase
+                          .from("master_customers")
+                          .select("id")
+                          .eq("user_id", itemId);
+
+                const { data: linkedCustomers, error: linkedCustomersError } =
+                    await customerQuery;
+                if (linkedCustomersError) throw linkedCustomersError;
+                linkedCustomerIds = (linkedCustomers ?? []).map(
+                    (row) => row.id,
+                );
+
+                if (linkedCustomerIds.length > 0) {
+                    const { error: deleteLinkedRequestsError } = await supabase
+                        .from("requests")
+                        .delete()
+                        .in("customer_id", linkedCustomerIds);
+                    if (deleteLinkedRequestsError)
+                        throw deleteLinkedRequestsError;
+
+                    const { error: deleteLinkedCustomersError } = await supabase
+                        .from("master_customers")
+                        .delete()
+                        .in("id", linkedCustomerIds);
+                    if (deleteLinkedCustomersError)
+                        throw deleteLinkedCustomersError;
+                }
 
                 const { error } = await invokeAdminFunction(
                     "admin-delete-user",
@@ -399,13 +440,6 @@ export default function AdminMasterDataModulePage() {
                         .eq("id", itemId);
                     if (deleteProfileError) throw deleteProfileError;
                 }
-
-                // Keep customer master data in sync when linked login is deleted.
-                const { error: deleteCustomerError } = await supabase
-                    .from("master_customers")
-                    .delete()
-                    .eq("user_id", itemId);
-                if (deleteCustomerError) throw deleteCustomerError;
             } else if (moduleKey === "customers") {
                 const { count, error: countError } = await supabase
                     .from("requests")
@@ -441,12 +475,15 @@ export default function AdminMasterDataModulePage() {
                     .eq("id", itemId);
                 if (deleteCustomerError) throw deleteCustomerError;
             } else {
-                const confirmed = await confirm("Yakin ingin menghapus data ini?", {
-                    title: "Konfirmasi Hapus",
-                    confirmText: "Hapus",
-                    cancelText: "Batal",
-                    danger: true,
-                });
+                const confirmed = await confirm(
+                    "Yakin ingin menghapus data ini?",
+                    {
+                        title: "Konfirmasi Hapus",
+                        confirmText: "Hapus",
+                        cancelText: "Batal",
+                        danger: true,
+                    },
+                );
                 if (!confirmed) return;
 
                 const { error } = await supabase
@@ -549,7 +586,9 @@ export default function AdminMasterDataModulePage() {
                             {moduleKey === "users" && (
                                 <CustomSelect
                                     value={roleFilter}
-                                    onChange={(nextValue) => setRoleFilter(nextValue)}
+                                    onChange={(nextValue) =>
+                                        setRoleFilter(nextValue)
+                                    }
                                     options={[
                                         { value: "all", label: "Semua Role" },
                                         ...roleOptions.map((role) => ({
@@ -557,7 +596,7 @@ export default function AdminMasterDataModulePage() {
                                             label: role,
                                         })),
                                     ]}
-                                    className="mt-0 min-w-[170px] bg-white"
+                                    className="mt-0 min-w-42.5 bg-white"
                                 />
                             )}
                             <button
@@ -583,7 +622,9 @@ export default function AdminMasterDataModulePage() {
                             <div className="border-b border-slate-200 px-4 py-3">
                                 <input
                                     value={userSearch}
-                                    onChange={(e) => setUserSearch(e.target.value)}
+                                    onChange={(e) =>
+                                        setUserSearch(e.target.value)
+                                    }
                                     placeholder="Cari nama, email, phone..."
                                     className="w-full max-w-sm rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300 focus:bg-white"
                                 />
@@ -595,7 +636,7 @@ export default function AdminMasterDataModulePage() {
                             </p>
                         ) : (
                             <div className="w-full overflow-x-auto">
-                                <table className="w-full min-w-[640px] text-left text-sm">
+                                <table className="w-full min-w-160 text-left text-sm">
                                     <thead>
                                         <tr className="border-b border-slate-200 text-slate-500">
                                             {moduleKey === "users" && (
@@ -684,7 +725,9 @@ export default function AdminMasterDataModulePage() {
                                                 {moduleKey === "users" && (
                                                     <>
                                                         <td className="px-3 py-3 font-medium text-slate-800">
-                                                            {getProfileDisplayName(item)}
+                                                            {getProfileDisplayName(
+                                                                item,
+                                                            )}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
                                                             {item.email ?? "-"}
@@ -700,9 +743,15 @@ export default function AdminMasterDataModulePage() {
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => {
-                                                                        const { firstName, lastName } = splitName(
-                                                                            getProfileDisplayName(item),
-                                                                        );
+                                                                        const {
+                                                                            firstName,
+                                                                            lastName,
+                                                                        } =
+                                                                            splitName(
+                                                                                getProfileDisplayName(
+                                                                                    item,
+                                                                                ),
+                                                                            );
                                                                         setEditSimpleId(
                                                                             null,
                                                                         );
@@ -738,7 +787,9 @@ export default function AdminMasterDataModulePage() {
                                                                     title="Edit"
                                                                 >
                                                                     <Pencil
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                                 <button
@@ -746,13 +797,17 @@ export default function AdminMasterDataModulePage() {
                                                                     onClick={() =>
                                                                         deleteItem(
                                                                             item.id,
+                                                                            item.email ??
+                                                                                "",
                                                                         )
                                                                     }
                                                                     className="inline-flex cursor-pointer rounded-md p-1 text-rose-500 hover:bg-rose-50"
                                                                     title="Hapus"
                                                                 >
                                                                     <Trash2
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                             </div>
@@ -784,12 +839,10 @@ export default function AdminMasterDataModulePage() {
                                                                                     "",
                                                                                 location:
                                                                                     "",
-                                                                                phone:
-                                                                                    "",
+                                                                                phone: "",
                                                                                 address:
                                                                                     "",
-                                                                                label:
-                                                                                    "",
+                                                                                label: "",
                                                                             },
                                                                         );
                                                                         setOpenModal(
@@ -800,7 +853,9 @@ export default function AdminMasterDataModulePage() {
                                                                     title="Edit"
                                                                 >
                                                                     <Pencil
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                                 <button
@@ -814,7 +869,9 @@ export default function AdminMasterDataModulePage() {
                                                                     title="Hapus"
                                                                 >
                                                                     <Trash2
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                             </div>
@@ -824,13 +881,17 @@ export default function AdminMasterDataModulePage() {
                                                 {moduleKey === "customers" && (
                                                     <>
                                                         <td className="px-3 py-3 font-medium text-slate-800">
-                                                            {item.pic_name ?? item.name ?? "-"}
+                                                            {item.pic_name ??
+                                                                item.name ??
+                                                                "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
-                                                            {item.project_name ?? "-"}
+                                                            {item.project_name ??
+                                                                "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
-                                                            {item.location ?? "-"}
+                                                            {item.location ??
+                                                                "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
                                                             {item.phone ?? "-"}
@@ -839,7 +900,8 @@ export default function AdminMasterDataModulePage() {
                                                             {item.email ?? "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
-                                                            {item.address ?? "-"}
+                                                            {item.address ??
+                                                                "-"}
                                                         </td>
                                                         <td className="px-3 py-3">
                                                             <div className="flex items-center gap-1">
@@ -875,8 +937,7 @@ export default function AdminMasterDataModulePage() {
                                                                                 address:
                                                                                     item.address ??
                                                                                     "",
-                                                                                label:
-                                                                                    "",
+                                                                                label: "",
                                                                             },
                                                                         );
                                                                         setOpenModal(
@@ -887,7 +948,9 @@ export default function AdminMasterDataModulePage() {
                                                                     title="Edit"
                                                                 >
                                                                     <Pencil
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                                 <button
@@ -901,7 +964,9 @@ export default function AdminMasterDataModulePage() {
                                                                     title="Hapus"
                                                                 >
                                                                     <Trash2
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                             </div>
@@ -935,12 +1000,10 @@ export default function AdminMasterDataModulePage() {
                                                                                     "",
                                                                                 location:
                                                                                     "",
-                                                                                phone:
-                                                                                    "",
+                                                                                phone: "",
                                                                                 address:
                                                                                     "",
-                                                                                label:
-                                                                                    "",
+                                                                                label: "",
                                                                             },
                                                                         );
                                                                         setOpenModal(
@@ -951,7 +1014,9 @@ export default function AdminMasterDataModulePage() {
                                                                     title="Edit"
                                                                 >
                                                                     <Pencil
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                                 <button
@@ -965,7 +1030,9 @@ export default function AdminMasterDataModulePage() {
                                                                     title="Hapus"
                                                                 >
                                                                     <Trash2
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                             </div>
@@ -990,14 +1057,12 @@ export default function AdminMasterDataModulePage() {
                                                                         );
                                                                         setSimpleForm(
                                                                             {
-                                                                                name:
-                                                                                    "",
+                                                                                name: "",
                                                                                 projectName:
                                                                                     "",
                                                                                 location:
                                                                                     "",
-                                                                                phone:
-                                                                                    "",
+                                                                                phone: "",
                                                                                 address:
                                                                                     "",
                                                                                 label:
@@ -1013,7 +1078,9 @@ export default function AdminMasterDataModulePage() {
                                                                     title="Edit"
                                                                 >
                                                                     <Pencil
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                                 <button
@@ -1027,7 +1094,9 @@ export default function AdminMasterDataModulePage() {
                                                                     title="Hapus"
                                                                 >
                                                                     <Trash2
-                                                                        size={14}
+                                                                        size={
+                                                                            14
+                                                                        }
                                                                     />
                                                                 </button>
                                                             </div>
@@ -1118,10 +1187,12 @@ export default function AdminMasterDataModulePage() {
                                                     role: nextValue,
                                                 }))
                                             }
-                                            options={roleOptions.map((role) => ({
-                                                value: role,
-                                                label: role,
-                                            }))}
+                                            options={roleOptions.map(
+                                                (role) => ({
+                                                    value: role,
+                                                    label: role,
+                                                }),
+                                            )}
                                         />
                                     </label>
                                     <label>
@@ -1313,7 +1384,8 @@ export default function AdminMasterDataModulePage() {
                                                 onChange={(e) =>
                                                     setSimpleForm((prev) => ({
                                                         ...prev,
-                                                        password: e.target.value,
+                                                        password:
+                                                            e.target.value,
                                                     }))
                                                 }
                                                 className={inputClass}

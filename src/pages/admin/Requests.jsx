@@ -58,7 +58,18 @@ const pickFirst = (obj, keys, fallback = "") => {
     return fallback;
 };
 
-const normalizeRequest = (row) => {
+const getProfileDisplayName = (profile) => {
+    const composed = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+    return (
+        composed ||
+        String(profile?.name ?? "").trim() ||
+        String(profile?.full_name ?? "").trim() ||
+        String(profile?.email ?? "").trim() ||
+        "-"
+    );
+};
+
+const normalizeRequest = (row, creatorName = "") => {
     const rawStatus = String(
         pickFirst(row, ["status"], "pending"),
     ).toLowerCase();
@@ -81,11 +92,18 @@ const normalizeRequest = (row) => {
             ["phone", "phone_number", "customer_phone", "contact_phone"],
             "-",
         ),
+        createdBy: pickFirst(row, ["created_by"], ""),
         assignee: pickFirst(
             row,
             ["technician_name", "assignee", "crew_name", "team_name"],
-            "-",
+            creatorName || "-",
         ),
+        technicianName: pickFirst(
+            row,
+            ["technician_name", "assignee", "crew_name", "team_name"],
+            creatorName || "-",
+        ),
+        createdByName: creatorName || "-",
         requester: pickFirst(
             row,
             ["customer_name", "requester", "customer"],
@@ -150,7 +168,39 @@ export default function AdminRequestsPage() {
                 .order("created_at", { ascending: false });
 
             if (error) throw error;
-            setRequests((data ?? []).map((row) => normalizeRequest(row)));
+            const requestRows = data ?? [];
+
+            const creatorIds = [
+                ...new Set(
+                    requestRows
+                        .map((row) => row.created_by)
+                        .filter((id) => Boolean(id)),
+                ),
+            ];
+
+            let creatorMap = {};
+            if (creatorIds.length > 0) {
+                const { data: profiles, error: profilesError } = await supabase
+                    .from("profiles")
+                    .select("id, first_name, last_name, name, full_name, email")
+                    .in("id", creatorIds);
+                if (profilesError) throw profilesError;
+
+                creatorMap = (profiles ?? []).reduce((acc, profile) => {
+                    acc[profile.id] = getProfileDisplayName(profile);
+                    return acc;
+                }, {});
+            }
+
+            setRequests(
+                requestRows.map((row) =>
+                    normalizeRequest(
+                        row,
+                        creatorMap[row.created_by] ??
+                            (row.created_by ? "User tidak ditemukan" : "-"),
+                    ),
+                ),
+            );
         } catch (error) {
             console.error("Error loading requests:", error);
             setRequests([]);
@@ -188,7 +238,7 @@ export default function AdminRequestsPage() {
             const matchFilter =
                 activeFilter === "all" ? true : item.status === activeFilter;
             const matchSearch = keyword
-                ? `${item.title} ${item.address}`
+                ? `${item.title} ${item.address} ${item.assignee} ${item.requester}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
@@ -481,10 +531,10 @@ export default function AdminRequestsPage() {
                                         <div className="p-4 md:p-5">
                                             <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
                                                 <div className="min-w-0">
-                                                    <h2 className="break-words text-lg font-semibold text-slate-900  md:text-xl">
+                                                    <h2 className="wrap-break-word text-lg font-semibold text-slate-900  md:text-xl">
                                                         {item.title}
                                                     </h2>
-                                                    <p className="mt-2 flex items-start gap-2 break-words text-sm text-slate-500 md:text-base">
+                                                    <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-slate-500 md:text-base">
                                                         <MapPin size={16} />
                                                         <span>
                                                             {item.address}
@@ -515,7 +565,7 @@ export default function AdminRequestsPage() {
                                                 </p>
                                                 <p className="inline-flex items-center gap-2">
                                                     <Wrench size={14} />
-                                                    <span className="break-words">
+                                                    <span className="wrap-break-word">
                                                         {item.assignee}
                                                     </span>
                                                 </p>
@@ -527,7 +577,7 @@ export default function AdminRequestsPage() {
                                                 <CalendarDays size={15} />
                                                 {formatDate(item.date)}
                                             </p>
-                                            <p className="mt-3 inline-flex items-center gap-2 break-words text-sm text-slate-600">
+                                            <p className="mt-3 inline-flex items-center gap-2 wrap-break-word text-sm text-slate-600">
                                                 <ListFilter size={15} />
                                                 {item.requester}
                                             </p>
@@ -796,11 +846,14 @@ export default function AdminRequestsPage() {
                                 }
                                 className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {savingPhotos ? "Menyimpan Foto..." : "Simpan Foto"}
+                                {savingPhotos
+                                    ? "Menyimpan Foto..."
+                                    : "Simpan Foto"}
                             </button>
                             <p className="mt-2 text-xs text-slate-500">
-                                Upload Progress otomatis ubah status ke In Progress.
-                                Upload After otomatis ubah status ke Completed.
+                                Upload Progress otomatis ubah status ke In
+                                Progress. Upload After otomatis ubah status ke
+                                Completed.
                             </p>
                         </div>
                     </div>
@@ -808,7 +861,7 @@ export default function AdminRequestsPage() {
             )}
 
             {cameraOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 p-4">
+                <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/80 p-4">
                     <div className="w-full max-w-md rounded-2xl bg-white p-4">
                         <div className="mb-3 flex items-center justify-between">
                             <p className="text-sm font-semibold text-slate-800">
@@ -844,7 +897,7 @@ export default function AdminRequestsPage() {
             )}
 
             {cameraError && (
-                <div className="fixed bottom-20 right-4 z-[70] rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white shadow-lg">
+                <div className="fixed bottom-20 right-4 z-70 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white shadow-lg">
                     {cameraError}
                 </div>
             )}

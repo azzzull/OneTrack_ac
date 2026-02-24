@@ -19,6 +19,27 @@ const toDateKey = (value) => {
 
 const toCsvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
 
+const polarToCartesian = (cx, cy, radius, angleInDegrees) => {
+    const radians = ((angleInDegrees - 90) * Math.PI) / 180;
+    return {
+        x: cx + radius * Math.cos(radians),
+        y: cy + radius * Math.sin(radians),
+    };
+};
+
+const describePieSlice = (cx, cy, radius, startAngle, endAngle) => {
+    const start = polarToCartesian(cx, cy, radius, endAngle);
+    const end = polarToCartesian(cx, cy, radius, startAngle);
+    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+    return [
+        `M ${cx} ${cy}`,
+        `L ${start.x} ${start.y}`,
+        `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
+        "Z",
+    ].join(" ");
+};
+
 export default function AdminReportsPage() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -173,7 +194,6 @@ export default function AdminReportsPage() {
 
     const radius = 74;
     const center = 90;
-    const circumference = 2 * Math.PI * radius;
 
     return (
         <div className="min-h-screen bg-sky-50">
@@ -226,30 +246,26 @@ export default function AdminReportsPage() {
                                         cx={center}
                                         cy={center}
                                         r={radius}
-                                        fill="none"
-                                        stroke="#e2e8f0"
-                                        strokeWidth="20"
+                                        fill="#e2e8f0"
                                     />
                                     {donutSegments.map((segment) => {
                                         if (!segment.value) return null;
-                                        const segmentLength =
-                                            segment.ratio * circumference;
-                                        const dashArray = `${segmentLength} ${circumference - segmentLength}`;
-                                        const dashOffset =
-                                            -segment.offset * circumference;
+                                        const startAngle =
+                                            segment.offset * 360;
+                                        const endAngle =
+                                            (segment.offset + segment.ratio) *
+                                            360;
                                         return (
-                                            <circle
+                                            <path
                                                 key={segment.key}
-                                                cx={center}
-                                                cy={center}
-                                                r={radius}
-                                                fill="none"
-                                                stroke={segment.color}
-                                                strokeWidth="20"
-                                                strokeDasharray={dashArray}
-                                                strokeDashoffset={dashOffset}
-                                                strokeLinecap="round"
-                                                transform={`rotate(-90 ${center} ${center})`}
+                                                d={describePieSlice(
+                                                    center,
+                                                    center,
+                                                    radius,
+                                                    startAngle,
+                                                    endAngle,
+                                                )}
+                                                fill={segment.color}
                                                 onMouseEnter={() =>
                                                     setHoveredStatus(
                                                         segment.key,

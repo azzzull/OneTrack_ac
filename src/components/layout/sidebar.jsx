@@ -120,7 +120,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             <NavLink
                                 to={path}
                                 className={({ isActive }) =>
-                                    ` !no-underline hover:!no-underline focus:!no-underline active:!no-underline visited:!no-underline w-full rounded-xl transition relative
+                                    ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
                                     ${
                                         isActive
                                             ? "bg-sky-100 text-sky-500"
@@ -213,7 +213,7 @@ export function MobileBottomNav() {
                         <NavLink
                             to={path}
                             className={({ isActive }) =>
-                                ` !no-underline hover:!no-underline focus:!no-underline active:!no-underline visited:!no-underline flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-xs font-medium transition relative
+                                ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-xs font-medium transition relative
                                 ${
                                     isActive
                                         ? "bg-sky-100 text-sky-500"
