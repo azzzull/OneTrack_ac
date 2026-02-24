@@ -7,6 +7,7 @@ import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
+import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
 
 const initialForm = {
     customerId: "",
@@ -73,7 +74,6 @@ export default function AdminNewJobPage() {
     const [beforePhoto, setBeforePhoto] = useState(null);
     const [progressPhoto, setProgressPhoto] = useState(null);
     const [afterPhoto, setAfterPhoto] = useState(null);
-    const [serialScanPhoto, setSerialScanPhoto] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
@@ -228,21 +228,10 @@ export default function AdminNewJobPage() {
     }, []);
 
     const scanSerialFromImage = async (file) => {
-        if (!file) return;
-        if (!("BarcodeDetector" in window)) return;
-
-        try {
-            const bitmap = await createImageBitmap(file);
-            const detector = new window.BarcodeDetector({
-                formats: ["code_128", "code_39", "ean_13", "ean_8", "qr_code"],
-            });
-            const codes = await detector.detect(bitmap);
-            if (codes.length > 0) {
-                setField("serialNumber", codes[0].rawValue ?? "");
-            }
-        } catch (error) {
-            console.error("Barcode scan failed:", error);
-        }
+        const value = await scanBarcodeFromFile(file);
+        if (!value) return false;
+        setField("serialNumber", value);
+        return true;
     };
 
     const captureFromCamera = async () => {
@@ -268,13 +257,20 @@ export default function AdminNewJobPage() {
             type: "image/jpeg",
         });
 
+        if (cameraTarget === "serial-scan") {
+            const found = await scanSerialFromImage(file);
+            closeCamera();
+            if (!found) {
+                await showAlert(
+                    "Barcode belum terbaca, arahkan kamera lebih dekat lalu scan ulang.",
+                    { title: "Scan Gagal" },
+                );
+            }
+            return;
+        }
         if (cameraTarget === "before") setBeforePhoto(file);
         if (cameraTarget === "progress") setProgressPhoto(file);
         if (cameraTarget === "after") setAfterPhoto(file);
-        if (cameraTarget === "serial-scan") {
-            setSerialScanPhoto(file);
-            await scanSerialFromImage(file);
-        }
 
         closeCamera();
     };
@@ -304,13 +300,11 @@ export default function AdminNewJobPage() {
         setSubmitting(true);
 
         try {
-            const [beforeUrl, progressUrl, afterUrl, serialScanPhotoUrl] =
-                await Promise.all([
-                    uploadPhoto(beforePhoto, "before"),
-                    uploadPhoto(progressPhoto, "progress"),
-                    uploadPhoto(afterPhoto, "after"),
-                    uploadPhoto(serialScanPhoto, "serial-scan"),
-                ]);
+            const [beforeUrl, progressUrl, afterUrl] = await Promise.all([
+                uploadPhoto(beforePhoto, "before"),
+                uploadPhoto(progressPhoto, "progress"),
+                uploadPhoto(afterPhoto, "after"),
+            ]);
 
             const payload = {
                 title: selectedProject?.project_name ?? "",
@@ -331,7 +325,6 @@ export default function AdminNewJobPage() {
                 ac_capacity_pk: form.acCapacityPk,
                 room_location: form.roomLocation,
                 serial_number: form.serialNumber,
-                serial_scan_photo_url: serialScanPhotoUrl,
                 trouble_description: form.troubleDescription,
                 replaced_parts: form.replacedParts,
                 reconditioned_parts: form.reconditionedParts,
@@ -586,13 +579,8 @@ export default function AdminNewJobPage() {
                                         <div className="mt-1 flex gap-2">
                                             <input
                                                 value={form.serialNumber}
-                                                onChange={(e) =>
-                                                    setField(
-                                                        "serialNumber",
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                placeholder="Scan atau input manual"
+                                                readOnly
+                                                placeholder="Scan barcode serial dari kamera"
                                                 className={inputClass}
                                             />
                                             <button
@@ -707,7 +695,9 @@ export default function AdminNewJobPage() {
                     <div className="w-full max-w-md rounded-2xl bg-white p-4">
                         <div className="mb-3 flex items-center justify-between">
                             <p className="text-sm font-semibold text-slate-800">
-                                Ambil Foto
+                                {cameraTarget === "serial-scan"
+                                    ? "Scan Barcode Serial"
+                                    : "Ambil Foto"}
                             </p>
                             <button
                                 type="button"
@@ -732,7 +722,9 @@ export default function AdminNewJobPage() {
                             className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600"
                         >
                             <Camera size={16} />
-                            Ambil Foto
+                            {cameraTarget === "serial-scan"
+                                ? "Scan Sekarang"
+                                : "Ambil Foto"}
                         </button>
                     </div>
                 </div>

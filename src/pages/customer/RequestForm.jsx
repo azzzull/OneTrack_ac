@@ -38,7 +38,9 @@ export default function CustomerRequestFormPage() {
     }, [projects]);
 
     const selectedProject = useMemo(
-        () => availableProjects.find((item) => item.id === form.projectId) ?? null,
+        () =>
+            availableProjects.find((item) => item.id === form.projectId) ??
+            null,
         [availableProjects, form.projectId],
     );
 
@@ -142,7 +144,9 @@ export default function CustomerRequestFormPage() {
 
     useEffect(() => {
         if (availableProjects.length === 0) return;
-        const isValid = availableProjects.some((item) => item.id === form.projectId);
+        const isValid = availableProjects.some(
+            (item) => item.id === form.projectId,
+        );
         if (!isValid) {
             const firstProject = availableProjects[0];
             setForm((prev) => ({
@@ -181,7 +185,9 @@ export default function CustomerRequestFormPage() {
                 title: selectedProject?.project_name ?? "",
                 status: "pending",
                 location:
-                    selectedProject?.location ?? selectedCustomer?.location ?? "",
+                    selectedProject?.location ??
+                    selectedCustomer?.location ??
+                    "",
                 customer_name:
                     selectedCustomer.name ?? user?.email ?? "Customer",
                 customer_phone:
@@ -210,20 +216,14 @@ export default function CustomerRequestFormPage() {
                 troubleDescription: "",
             }));
 
-            await showAlert(
-                "Request pekerjaan berhasil dikirim dengan status Pending.",
-                {
-                    title: "Request Terkirim",
-                },
-            );
+            await showAlert("Request pekerjaan berhasil dikirim.", {
+                title: "Request Terkirim",
+            });
         } catch (error) {
             console.error("Error creating customer request:", error);
-            await showAlert(
-                "Gagal mengirim request. Cek policy customer pada tabel requests.",
-                {
-                    title: "Request Gagal",
-                },
-            );
+            await showAlert("Gagal mengirim request. Silahkan hubungi Admin.", {
+                title: "Request Gagal",
+            });
         } finally {
             setSubmitting(false);
         }
@@ -266,7 +266,8 @@ export default function CustomerRequestFormPage() {
                                                 const picked =
                                                     availableProjects.find(
                                                         (item) =>
-                                                            item.id === nextValue,
+                                                            item.id ===
+                                                            nextValue,
                                                     );
                                                 return {
                                                     ...prev,
@@ -278,11 +279,16 @@ export default function CustomerRequestFormPage() {
                                             })
                                         }
                                         options={[
-                                            { value: "", label: "Pilih proyek" },
-                                            ...availableProjects.map((item) => ({
-                                                value: item.id,
-                                                label: `${item.project_name} - ${item.location}`,
-                                            })),
+                                            {
+                                                value: "",
+                                                label: "Pilih proyek",
+                                            },
+                                            ...availableProjects.map(
+                                                (item) => ({
+                                                    value: item.id,
+                                                    label: `${item.project_name} - ${item.location}`,
+                                                }),
+                                            ),
                                         ]}
                                         placeholder="Pilih proyek customer"
                                     />
@@ -381,7 +387,8 @@ export default function CustomerRequestFormPage() {
                                         onChange={(e) =>
                                             setForm((prev) => ({
                                                 ...prev,
-                                                troubleDescription: e.target.value,
+                                                troubleDescription:
+                                                    e.target.value,
                                             }))
                                         }
                                         className={`${inputClass} min-h-24`}
@@ -395,7 +402,9 @@ export default function CustomerRequestFormPage() {
                                     className="md:col-span-2 inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     <List size={16} />
-                                    {submitting ? "Mengirim..." : "Kirim Request"}
+                                    {submitting
+                                        ? "Mengirim..."
+                                        : "Kirim Request"}
                                 </button>
                             </form>
                         )}

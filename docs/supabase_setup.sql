@@ -147,6 +147,8 @@ create table if not exists public.requests (
     progress_photo_url text,
     after_photo_url text,
     created_by uuid references auth.users(id),
+    technician_name text,
+    technician_id uuid references public.profiles(id),
     customer_id uuid references public.master_customers(id),
     project_id uuid references public.master_projects(id),
     created_at timestamptz not null default now(),
@@ -162,13 +164,18 @@ create index if not exists requests_created_at_idx
 -- Extend existing requests (safe for existing databases)
 alter table public.requests
 add column if not exists customer_id uuid references public.master_customers(id),
-add column if not exists project_id uuid references public.master_projects(id);
+add column if not exists project_id uuid references public.master_projects(id),
+add column if not exists technician_name text,
+add column if not exists technician_id uuid references public.profiles(id);
 
 create index if not exists requests_customer_id_idx
     on public.requests(customer_id);
 
 create index if not exists requests_project_id_idx
     on public.requests(project_id);
+
+create index if not exists requests_technician_id_idx
+    on public.requests(technician_id);
 
 -- Profiles extension for user master data (first name, last name, phone, email)
 alter table public.profiles
@@ -858,10 +865,7 @@ on public.requests for select
 to authenticated
 using (
     public.is_technician()
-    and (
-        status = 'pending'
-        or created_by = auth.uid()
-    )
+    and status in ('pending', 'in_progress', 'completed')
 );
 
 create policy "technician can update requests"
@@ -870,16 +874,14 @@ to authenticated
 using (
     public.is_technician()
     and (
-        status = 'pending'
-        or created_by = auth.uid()
+        (status = 'pending' and (technician_id is null or technician_id = auth.uid()))
+        or technician_id = auth.uid()
     )
 )
 with check (
     public.is_technician()
-    and (
-        created_by = auth.uid()
-        or (created_by is null and status = 'pending')
-    )
+    and status in ('pending', 'in_progress', 'completed')
+    and technician_id = auth.uid()
 );
 
 create policy "customer can read own requests"
@@ -898,4 +900,51 @@ with check (
     and customer_id = any(public.current_user_customer_ids())
     and created_by = auth.uid()
     and status = 'pending'
+);
+
+-- ============================================================
+-- Storage policy for request photos (bucket: job-photos)
+-- Technicians/admin/customers can upload to their own folder:
+-- <auth.uid()>/requests/<before|progress|after>/<file>
+-- ============================================================
+
+insert into storage.buckets (id, name, public)
+values ('job-photos', 'job-photos', true)
+on conflict (id) do nothing;
+
+drop policy if exists "job photos read public/authenticated" on storage.objects;
+create policy "job photos read public/authenticated"
+on storage.objects for select
+to public
+using (bucket_id = 'job-photos');
+
+drop policy if exists "job photos insert own folder" on storage.objects;
+create policy "job photos insert own folder"
+on storage.objects for insert
+to authenticated
+with check (
+    bucket_id = 'job-photos'
+    and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "job photos update own folder" on storage.objects;
+create policy "job photos update own folder"
+on storage.objects for update
+to authenticated
+using (
+    bucket_id = 'job-photos'
+    and (storage.foldername(name))[1] = auth.uid()::text
+)
+with check (
+    bucket_id = 'job-photos'
+    and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "job photos delete own folder" on storage.objects;
+create policy "job photos delete own folder"
+on storage.objects for delete
+to authenticated
+using (
+    bucket_id = 'job-photos'
+    and (storage.foldername(name))[1] = auth.uid()::text
 );

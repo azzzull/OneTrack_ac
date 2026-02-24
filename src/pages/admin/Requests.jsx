@@ -22,6 +22,7 @@ import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
+import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
 
 const FILTERS = [
     { key: "all", label: "All" },
@@ -93,6 +94,7 @@ const normalizeRequest = (row, creatorName = "") => {
             "-",
         ),
         createdBy: pickFirst(row, ["created_by"], ""),
+        technicianId: pickFirst(row, ["technician_id"], ""),
         assignee: pickFirst(
             row,
             ["technician_name", "assignee", "crew_name", "team_name"],
@@ -160,6 +162,13 @@ export default function AdminRequestsPage() {
     const [selectedRequestId, setSelectedRequestId] = useState(null);
     const [editingStatus, setEditingStatus] = useState("pending");
     const [savingStatus, setSavingStatus] = useState(false);
+    const [repairNotes, setRepairNotes] = useState({
+        troubleDescription: "",
+        replacedParts: "",
+        reconditionedParts: "",
+    });
+    const [serialNumberInput, setSerialNumberInput] = useState("");
+    const [savingRepairNotes, setSavingRepairNotes] = useState(false);
     const [beforePhotoFile, setBeforePhotoFile] = useState(null);
     const [progressPhotoFile, setProgressPhotoFile] = useState(null);
     const [afterPhotoFile, setAfterPhotoFile] = useState(null);
@@ -193,14 +202,21 @@ export default function AdminRequestsPage() {
             if (creatorIds.length > 0) {
                 const { data: profiles, error: profilesError } = await supabase
                     .from("profiles")
-                    .select("id, first_name, last_name, name, full_name, email")
+                    .select("id, first_name, last_name, name, email")
                     .in("id", creatorIds);
-                if (profilesError) throw profilesError;
-
-                creatorMap = (profiles ?? []).reduce((acc, profile) => {
-                    acc[profile.id] = getProfileDisplayName(profile);
-                    return acc;
-                }, {});
+                if (profilesError) {
+                    // Technician/customer may not have permission to read other profiles.
+                    // Keep requests visible and fallback to default creator labels.
+                    console.warn(
+                        "Profiles lookup skipped due to RLS:",
+                        profilesError.message,
+                    );
+                } else {
+                    creatorMap = (profiles ?? []).reduce((acc, profile) => {
+                        acc[profile.id] = getProfileDisplayName(profile);
+                        return acc;
+                    }, {});
+                }
             }
 
             setRequests(
@@ -246,16 +262,24 @@ export default function AdminRequestsPage() {
         const keyword = search.trim().toLowerCase();
 
         return requests.filter((item) => {
+            const matchTechnicianQueue =
+                role === "technician"
+                    ? item.status === "pending" && !item.technicianId
+                    : true;
             const matchFilter =
-                activeFilter === "all" ? true : item.status === activeFilter;
+                role === "technician"
+                    ? true
+                    : activeFilter === "all"
+                      ? true
+                      : item.status === activeFilter;
             const matchSearch = keyword
                 ? `${item.title} ${item.address} ${item.assignee} ${item.requester}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
-            return matchFilter && matchSearch;
+            return matchTechnicianQueue && matchFilter && matchSearch;
         });
-    }, [activeFilter, requests, search]);
+    }, [activeFilter, requests, role, search]);
 
     const selectedRequest = useMemo(
         () => requests.find((item) => item.id === selectedRequestId) ?? null,
@@ -265,11 +289,22 @@ export default function AdminRequestsPage() {
     useEffect(() => {
         if (!selectedRequest) return;
         setEditingStatus(selectedRequest.status);
+        setSerialNumberInput(
+            selectedRequest.serialNumber && selectedRequest.serialNumber !== "-"
+                ? selectedRequest.serialNumber
+                : "",
+        );
+        setRepairNotes({
+            troubleDescription: selectedRequest.troubleDescription ?? "",
+            replacedParts: selectedRequest.replacedParts ?? "",
+            reconditionedParts: selectedRequest.reconditionedParts ?? "",
+        });
     }, [selectedRequest]);
 
     const closeDetail = () => {
         setSelectedRequestId(null);
         setSavingStatus(false);
+        setSavingRepairNotes(false);
         setSavingPhotos(false);
         setBeforePhotoFile(null);
         setProgressPhotoFile(null);
@@ -323,6 +358,13 @@ export default function AdminRequestsPage() {
         }
     }, []);
 
+    const scanSerialFromImage = useCallback(async (file) => {
+        const value = await scanBarcodeFromFile(file);
+        if (!value) return false;
+        setSerialNumberInput(value);
+        return true;
+    }, []);
+
     const captureFromCamera = async () => {
         const video = videoRef.current;
         if (!video || !cameraTarget) return;
@@ -346,6 +388,17 @@ export default function AdminRequestsPage() {
             type: "image/jpeg",
         });
 
+        if (cameraTarget === "serial-scan") {
+            const found = await scanSerialFromImage(file);
+            closeCamera();
+            if (!found) {
+                await showAlert(
+                    "Barcode belum terbaca, arahkan kamera lebih dekat lalu scan ulang.",
+                    { title: "Scan Gagal" },
+                );
+            }
+            return;
+        }
         if (cameraTarget === "before") setBeforePhotoFile(file);
         if (cameraTarget === "progress") setProgressPhotoFile(file);
         if (cameraTarget === "after") setAfterPhotoFile(file);
@@ -372,7 +425,7 @@ export default function AdminRequestsPage() {
                 updated_at: new Date().toISOString(),
             };
             if (role === "technician") {
-                payload.created_by = selectedRequest.createdBy || user?.id || null;
+                payload.technician_id = user?.id ?? null;
                 payload.technician_name = getCurrentUserDisplayName(user);
             }
 
@@ -390,6 +443,58 @@ export default function AdminRequestsPage() {
             });
         } finally {
             setSavingStatus(false);
+        }
+    };
+
+    const saveRepairDetails = async () => {
+        if (!selectedRequest) return;
+        if (role !== "technician") return;
+
+        const nextTrouble = (repairNotes.troubleDescription ?? "").trim();
+        const nextReplaced = (repairNotes.replacedParts ?? "").trim();
+        const nextReconditioned = (repairNotes.reconditionedParts ?? "").trim();
+        const nextSerial = (serialNumberInput ?? "").trim();
+        const currentSerial =
+            selectedRequest.serialNumber && selectedRequest.serialNumber !== "-"
+                ? String(selectedRequest.serialNumber).trim()
+                : "";
+
+        if (
+            nextTrouble === (selectedRequest.troubleDescription ?? "") &&
+            nextReplaced === (selectedRequest.replacedParts ?? "") &&
+            nextReconditioned === (selectedRequest.reconditionedParts ?? "") &&
+            nextSerial === currentSerial
+        ) {
+            return;
+        }
+
+        try {
+            setSavingRepairNotes(true);
+            const payload = {
+                trouble_description: nextTrouble,
+                replaced_parts: nextReplaced,
+                reconditioned_parts: nextReconditioned,
+                serial_number: serialNumberInput.trim(),
+                updated_at: new Date().toISOString(),
+            };
+            if (role === "technician") {
+                payload.technician_id = user?.id ?? null;
+                payload.technician_name = getCurrentUserDisplayName(user);
+            }
+            const { error } = await supabase
+                .from("requests")
+                .update(payload)
+                .eq("id", selectedRequest.id);
+            if (error) throw error;
+
+            await loadRequests();
+        } catch (error) {
+            console.error("Error saving repair details:", error);
+            await showAlert("Gagal menyimpan detail perbaikan.", {
+                title: "Simpan Gagal",
+            });
+        } finally {
+            setSavingRepairNotes(false);
         }
     };
 
@@ -442,7 +547,7 @@ export default function AdminRequestsPage() {
             }
             payload.status = nextStatus;
             if (role === "technician") {
-                payload.created_by = selectedRequest.createdBy || user?.id || null;
+                payload.technician_id = user?.id ?? null;
                 payload.technician_name = getCurrentUserDisplayName(user);
             }
 
@@ -509,22 +614,24 @@ export default function AdminRequestsPage() {
                         </label>
                     </div>
 
-                    <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:mt-6 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
-                        {FILTERS.map((filter) => (
-                            <button
-                                key={filter.key}
-                                type="button"
-                                onClick={() => setActiveFilter(filter.key)}
-                                className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-6 md:text-sm ${
-                                    activeFilter === filter.key
-                                        ? "bg-sky-500 font-semibold text-white"
-                                        : "font-medium text-slate-600 hover:bg-slate-100"
-                                }`}
-                            >
-                                {filter.label}
-                            </button>
-                        ))}
-                    </div>
+                    {role !== "technician" && (
+                        <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:mt-6 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
+                            {FILTERS.map((filter) => (
+                                <button
+                                    key={filter.key}
+                                    type="button"
+                                    onClick={() => setActiveFilter(filter.key)}
+                                    className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-6 md:text-sm ${
+                                        activeFilter === filter.key
+                                            ? "bg-sky-500 font-semibold text-white"
+                                            : "font-medium text-slate-600 hover:bg-slate-100"
+                                    }`}
+                                >
+                                    {filter.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
 
                     <section className="mt-6 space-y-3">
                         {loading ? (
@@ -734,26 +841,120 @@ export default function AdminRequestsPage() {
                                     <CheckCircle2 size={14} />
                                     Detail Perbaikan
                                 </p>
-                                <div className="mt-3 space-y-2 text-sm text-slate-700">
-                                    <p>
-                                        <span className="font-medium">
-                                            Trouble:
-                                        </span>{" "}
-                                        {selectedRequest.troubleDescription}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Suku Cadang Diganti:
-                                        </span>{" "}
-                                        {selectedRequest.replacedParts}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Suku Cadang Direkondisi:
-                                        </span>{" "}
-                                        {selectedRequest.reconditionedParts}
-                                    </p>
-                                </div>
+                                {role === "technician" ? (
+                                    <div className="mt-3 space-y-3">
+                                        <label className="block">
+                                            <span className="text-xs font-medium text-slate-600">
+                                                Serial Number (scan barcode kamera)
+                                            </span>
+                                            <div className="mt-1 flex gap-2">
+                                                <input
+                                                    value={serialNumberInput}
+                                                    readOnly
+                                                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none"
+                                                    placeholder="Scan barcode serial dari kamera"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        openCamera("serial-scan")
+                                                    }
+                                                    className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                                                    title="Scan serial dengan kamera"
+                                                >
+                                                    <Camera size={14} />
+                                                    Scan
+                                                </button>
+                                            </div>
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-xs font-medium text-slate-600">
+                                                Detail Perbaikan / Trouble
+                                            </span>
+                                            <textarea
+                                                value={
+                                                    repairNotes.troubleDescription
+                                                }
+                                                onChange={(event) =>
+                                                    setRepairNotes((prev) => ({
+                                                        ...prev,
+                                                        troubleDescription:
+                                                            event.target.value,
+                                                    }))
+                                                }
+                                                rows={3}
+                                                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                            />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-xs font-medium text-slate-600">
+                                                Suku Cadang Diganti
+                                            </span>
+                                            <textarea
+                                                value={repairNotes.replacedParts}
+                                                onChange={(event) =>
+                                                    setRepairNotes((prev) => ({
+                                                        ...prev,
+                                                        replacedParts:
+                                                            event.target.value,
+                                                    }))
+                                                }
+                                                rows={2}
+                                                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                            />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-xs font-medium text-slate-600">
+                                                Suku Cadang Direkondisi
+                                            </span>
+                                            <textarea
+                                                value={
+                                                    repairNotes.reconditionedParts
+                                                }
+                                                onChange={(event) =>
+                                                    setRepairNotes((prev) => ({
+                                                        ...prev,
+                                                        reconditionedParts:
+                                                            event.target.value,
+                                                    }))
+                                                }
+                                                rows={2}
+                                                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                            />
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={saveRepairDetails}
+                                            disabled={savingRepairNotes}
+                                            className="inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {savingRepairNotes
+                                                ? "Menyimpan Detail..."
+                                                : "Simpan Detail Perbaikan"}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="mt-3 space-y-2 text-sm text-slate-700">
+                                        <p>
+                                            <span className="font-medium">
+                                                Trouble:
+                                            </span>{" "}
+                                            {selectedRequest.troubleDescription}
+                                        </p>
+                                        <p>
+                                            <span className="font-medium">
+                                                Suku Cadang Diganti:
+                                            </span>{" "}
+                                            {selectedRequest.replacedParts}
+                                        </p>
+                                        <p>
+                                            <span className="font-medium">
+                                                Suku Cadang Direkondisi:
+                                            </span>{" "}
+                                            {selectedRequest.reconditionedParts}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -886,7 +1087,9 @@ export default function AdminRequestsPage() {
                     <div className="w-full max-w-md rounded-2xl bg-white p-4">
                         <div className="mb-3 flex items-center justify-between">
                             <p className="text-sm font-semibold text-slate-800">
-                                Ambil Foto
+                                {cameraTarget === "serial-scan"
+                                    ? "Scan Barcode Serial"
+                                    : "Ambil Foto"}
                             </p>
                             <button
                                 type="button"
@@ -911,7 +1114,9 @@ export default function AdminRequestsPage() {
                             className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600"
                         >
                             <Camera size={16} />
-                            Ambil Foto
+                            {cameraTarget === "serial-scan"
+                                ? "Scan Sekarang"
+                                : "Ambil Foto"}
                         </button>
                     </div>
                 </div>

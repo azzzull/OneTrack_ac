@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, useEffect, useRef, useState } from "react";
 import {
     Wrench,
     LayoutDashboard,
@@ -10,6 +10,8 @@ import {
     LogOut,
     PanelLeftClose,
     PanelLeftOpen,
+    Menu,
+    X,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
@@ -19,7 +21,7 @@ import useRequestStats from "../../hooks/useRequestStats";
 const menuByRole = {
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
-        { label: "Requests", path: "/requests", icon: List },
+        { label: "Daftar Pekerjaan", path: "/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Reports", path: "/reports", icon: PieChart },
@@ -204,8 +206,13 @@ export default function Sidebar({ collapsed = false, onToggle }) {
 }
 
 export function MobileBottomNav() {
-    const { role } = useAuth();
+    const { role, profile, user } = useAuth();
+    const navigate = useNavigate();
     const stats = useRequestStats();
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [showTopNav, setShowTopNav] = useState(true);
+    const lastScrollRef = useRef(0);
+    const MOBILE_TOP_NAV_HEIGHT = 72;
     const menus = getMenus(role).map((menu) => {
         const badgeByPath = {
             "/requests": stats.pending,
@@ -220,37 +227,142 @@ export function MobileBottomNav() {
             badge: count > 0 ? count : null,
         };
     });
+    const canOpenProfile = role === "customer" || role === "technician";
+    const identityLabel =
+        `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() ||
+        profile?.email ||
+        user?.user_metadata?.full_name?.trim() ||
+        user?.email ||
+        "User";
+
+    useEffect(() => {
+        const onScroll = () => {
+            const current = window.scrollY || 0;
+            if (current <= 8) {
+                setShowTopNav(true);
+                lastScrollRef.current = current;
+                return;
+            }
+            if (current > lastScrollRef.current + 6) {
+                setShowTopNav(false);
+                setMenuOpen(false);
+            } else if (current < lastScrollRef.current - 6) {
+                setShowTopNav(true);
+            }
+            lastScrollRef.current = current;
+        };
+
+        window.addEventListener("scroll", onScroll, { passive: true });
+        return () => window.removeEventListener("scroll", onScroll);
+    }, []);
+
+    useEffect(() => {
+        const applyBodyOffset = () => {
+            if (window.innerWidth < 768) {
+                document.body.style.paddingTop = `${MOBILE_TOP_NAV_HEIGHT}px`;
+            } else {
+                document.body.style.paddingTop = "";
+            }
+        };
+
+        applyBodyOffset();
+        window.addEventListener("resize", applyBodyOffset);
+        return () => {
+            window.removeEventListener("resize", applyBodyOffset);
+            document.body.style.paddingTop = "";
+        };
+    }, []);
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        navigate("/");
+    };
 
     return (
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-2 py-2 md:hidden">
-            <ul className="flex items-center justify-between gap-1">
-                {menus.map(({ label, path, icon, badge }) => (
-                    <li key={label} className="flex-1">
-                        <NavLink
-                            to={path}
-                            className={({ isActive }) =>
-                                ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-xs font-medium transition relative
-                                ${
-                                    isActive
-                                        ? "bg-sky-100 text-sky-500"
-                                        : "text-slate-500 hover:bg-slate-100"
-                                }
-                            `
-                            }
-                            style={{ textDecoration: "none" }}
-                        >
-                            {createElement(icon, { size: 18 })}
-                            <span className="mt-1">{label}</span>
+        <>
+            <header
+                className={`fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur transition-transform duration-200 md:hidden ${
+                    showTopNav ? "translate-y-0" : "-translate-y-full"
+                }`}
+            >
+                <div className="flex min-h-[72px] items-center justify-between px-3 py-3">
+                    <div className="inline-flex items-center gap-2">
+                        <img
+                            src="/saplogo.svg"
+                            alt="SAP Logo"
+                            className="h-9 w-9 object-contain"
+                        />
+                        <span className="text-sm font-semibold text-sky-500">
+                            OneTrack
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setMenuOpen((prev) => !prev)}
+                        className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+                    >
+                        {menuOpen ? <X size={18} /> : <Menu size={18} />}
+                    </button>
+                </div>
 
-                            {badge && (
-                                <span className="absolute top-1 right-4 rounded-full bg-red-500 px-1.5 text-[10px] text-white">
-                                    {badge}
-                                </span>
-                            )}
-                        </NavLink>
-                    </li>
-                ))}
-            </ul>
-        </nav>
+                {menuOpen && (
+                    <div className="border-t border-slate-200 px-3 py-2">
+                        <p className="truncate text-xs text-slate-500">
+                            {identityLabel}
+                        </p>
+                        {canOpenProfile && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setMenuOpen(false);
+                                    navigate("/profile");
+                                }}
+                                className="mt-2 flex w-full items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                                Profile
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={handleLogout}
+                            className="mt-2 flex w-full items-center justify-center rounded-xl bg-red-500 px-3 py-2 text-sm font-medium text-white hover:bg-red-600"
+                        >
+                            Logout
+                        </button>
+                    </div>
+                )}
+            </header>
+
+            <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-2 py-2 md:hidden">
+                <ul className="flex items-center justify-between gap-1">
+                    {menus.map(({ label, path, icon, badge }) => (
+                        <li key={label} className="flex-1">
+                            <NavLink
+                                to={path}
+                                className={({ isActive }) =>
+                                    ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-xs font-medium transition relative
+                                    ${
+                                        isActive
+                                            ? "bg-sky-100 text-sky-500"
+                                            : "text-slate-500 hover:bg-slate-100"
+                                    }
+                                `
+                                }
+                                style={{ textDecoration: "none" }}
+                            >
+                                {createElement(icon, { size: 18 })}
+                                <span className="mt-1">{label}</span>
+
+                                {badge && (
+                                    <span className="absolute top-1 right-4 rounded-full bg-red-500 px-1.5 text-[10px] text-white">
+                                        {badge}
+                                    </span>
+                                )}
+                            </NavLink>
+                        </li>
+                    ))}
+                </ul>
+            </nav>
+        </>
     );
 }

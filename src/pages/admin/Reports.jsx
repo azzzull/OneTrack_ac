@@ -10,11 +10,27 @@ const STATUS_META = {
     completed: { label: "Completed", color: "#0369a1" },
 };
 
+const normalizeStatusKey = (value) => {
+    const raw = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+    if (raw === "inprogress") return "in_progress";
+    if (raw === "in_progress") return "in_progress";
+    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "pending" || raw === "") return "pending";
+    return "pending";
+};
+
 const toDateKey = (value) => {
     if (!value) return "";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "";
-    return d.toISOString().slice(0, 10);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
 };
 
 const toCsvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -39,6 +55,14 @@ const describePieSlice = (cx, cy, radius, startAngle, endAngle) => {
         "Z",
     ].join(" ");
 };
+
+const describeFullCircle = (cx, cy, radius) =>
+    [
+        `M ${cx} ${cy - radius}`,
+        `A ${radius} ${radius} 0 1 1 ${cx} ${cy + radius}`,
+        `A ${radius} ${radius} 0 1 1 ${cx} ${cy - radius}`,
+        "Z",
+    ].join(" ");
 
 export default function AdminReportsPage() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
@@ -91,7 +115,7 @@ export default function AdminReportsPage() {
         };
 
         for (const row of requests) {
-            const key = String(row.status ?? "pending").toLowerCase();
+            const key = normalizeStatusKey(row.status);
             if (counts[key] !== undefined) counts[key] += 1;
         }
         return counts;
@@ -128,15 +152,16 @@ export default function AdminReportsPage() {
             const d = new Date();
             d.setHours(0, 0, 0, 0);
             d.setDate(d.getDate() - i);
-            byDate[d.toISOString().slice(0, 10)] = {
-                key: d.toISOString().slice(0, 10),
+            const key = toDateKey(d);
+            byDate[key] = {
+                key,
                 label: d.toLocaleDateString("id-ID", { weekday: "short" }),
                 count: 0,
             };
         }
 
         for (const row of requests) {
-            const key = toDateKey(row.created_at);
+            const key = toDateKey(row.updated_at ?? row.created_at);
             if (byDate[key]) byDate[key].count += 1;
         }
 
@@ -250,8 +275,28 @@ export default function AdminReportsPage() {
                                     />
                                     {donutSegments.map((segment) => {
                                         if (!segment.value) return null;
-                                        const startAngle =
-                                            segment.offset * 360;
+                                        if (segment.ratio >= 0.999) {
+                                            return (
+                                                <path
+                                                    key={segment.key}
+                                                    d={describeFullCircle(
+                                                        center,
+                                                        center,
+                                                        radius,
+                                                    )}
+                                                    fill={segment.color}
+                                                    onMouseEnter={() =>
+                                                        setHoveredStatus(
+                                                            segment.key,
+                                                        )
+                                                    }
+                                                    onMouseLeave={() =>
+                                                        setHoveredStatus(null)
+                                                    }
+                                                />
+                                            );
+                                        }
+                                        const startAngle = segment.offset * 360;
                                         const endAngle =
                                             (segment.offset + segment.ratio) *
                                             360;
@@ -348,7 +393,11 @@ export default function AdminReportsPage() {
                                                         : ""}
                                                 </div>
                                                 <div
-                                                    className="w-full max-w-10 rounded-t-lg bg-sky-400 transition group-hover:bg-sky-500"
+                                                    className={`w-full max-w-10 rounded-t-lg transition ${
+                                                        item.count
+                                                            ? "bg-sky-400 group-hover:bg-sky-500"
+                                                            : "bg-slate-200 group-hover:bg-slate-300"
+                                                    }`}
                                                     style={{
                                                         height: `${barHeight}px`,
                                                     }}
@@ -360,7 +409,7 @@ export default function AdminReportsPage() {
                                         );
                                     })}
                                 </div>
-                                <p className="mt-2 text-sm text-slate-600">
+                                <p className="mt-5 text-sm text-slate-400">
                                     {hoveredDay
                                         ? `${hoveredDay.label}: ${hoveredDay.count} pekerjaan`
                                         : "Arahkan kursor ke batang untuk melihat detail."}

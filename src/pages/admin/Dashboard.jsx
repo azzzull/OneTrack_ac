@@ -42,6 +42,19 @@ const normalizeJob = (row) => {
     ).toLowerCase();
     const status = statusLabelByKey[statusRaw] ? statusRaw : "pending";
 
+    const trouble = pickFirst(
+        row,
+        ["trouble_description", "description", "notes", "issue_detail", "problem"],
+        "",
+    );
+    const replacedParts = pickFirst(row, ["replaced_parts"], "");
+    const reconditionedParts = pickFirst(row, ["reconditioned_parts"], "");
+    const noteSections = [
+        trouble ? `Problem: ${trouble}` : "",
+        replacedParts ? `Part Diganti: ${replacedParts}` : "",
+        reconditionedParts ? `Part Rekondisi: ${reconditionedParts}` : "",
+    ].filter(Boolean);
+
     return {
         id: pickFirst(row, ["id"], crypto.randomUUID()),
         title: pickFirst(
@@ -55,11 +68,7 @@ const normalizeJob = (row) => {
             "-",
         ),
         status,
-        description: pickFirst(
-            row,
-            ["description", "notes", "issue_detail", "problem"],
-            "-",
-        ),
+        description: noteSections.length > 0 ? noteSections.join(" | ") : "-",
         customer: pickFirst(row, ["customer_name", "customer"], "-"),
         technician: pickFirst(row, ["technician_name", "technician"], "-"),
         date: pickFirst(row, ["updated_at", "created_at"], null),
@@ -177,7 +186,7 @@ function AdminDashboard() {
 
                     <section className="mt-9">
                         <div className="flex items-center justify-between">
-                            <h3 className="text-2xl font-semibold text-slate-900 md:text-3xl">
+                            <h3 className="text-2xl font-semibold text-slate-900 md:text-2xl">
                                 Pekerjaan Terbaru
                             </h3>
                             <Link
@@ -223,7 +232,7 @@ function AdminDashboard() {
                                                         <Wrench size={20} />
                                                     </span>
                                                     <div className="min-w-0">
-                                                        <p className="text-base font-medium text-slate-900 md:text-xl">
+                                                        <p className="text-base font-medium text-slate-900 md:text-lg">
                                                             {job.title}
                                                         </p>
                                                         <p className="mt-1 text-sm text-slate-500 md:text-base">
