@@ -16,6 +16,16 @@ const resolveErrorMessage = async (error) => {
         try {
             const payload = await error.context.json();
             if (payload?.error) return String(payload.error);
+            if (payload?.message) return String(payload.message);
+        } catch {
+            // no-op
+        }
+    }
+
+    if (error?.context && typeof error.context.text === "function") {
+        try {
+            const text = await error.context.text();
+            if (text && text.trim()) return text.trim();
         } catch {
             // no-op
         }
@@ -47,6 +57,7 @@ const moduleConfig = {
     users: { title: "Daftar User", table: "profiles", readOnly: true },
     roles: { title: "Role", table: "master_roles" },
     customers: { title: "Customer", table: "master_customers" },
+    projects: { title: "Project", table: "master_projects" },
     ac_brands: { title: "Merk AC", table: "master_ac_brands" },
     ac_types: { title: "Tipe AC", table: "master_ac_types" },
     ac_pks: { title: "Jumlah PK", table: "master_ac_pks" },
@@ -62,7 +73,9 @@ export default function AdminMasterDataModulePage() {
         useSidebarCollapsed();
     const [items, setItems] = useState([]);
     const [roles, setRoles] = useState([]);
+    const [customers, setCustomers] = useState([]);
     const [roleFilter, setRoleFilter] = useState("all");
+    const [projectCustomerFilter, setProjectCustomerFilter] = useState("all");
     const [userSearch, setUserSearch] = useState("");
     const [openModal, setOpenModal] = useState(false);
     const [editUserId, setEditUserId] = useState(null);
@@ -78,7 +91,9 @@ export default function AdminMasterDataModulePage() {
         phone: "",
     });
     const [simpleForm, setSimpleForm] = useState({
+        customerId: "",
         name: "",
+        picName: "",
         projectName: "",
         location: "",
         phone: "",
@@ -129,6 +144,15 @@ export default function AdminMasterDataModulePage() {
         setRoles(data ?? []);
     }, []);
 
+    const loadCustomers = useCallback(async () => {
+        const { data, error } = await supabase
+            .from("master_customers")
+            .select("id, name, phone, address")
+            .order("name", { ascending: true });
+        if (error) throw error;
+        setCustomers(data ?? []);
+    }, []);
+
     const loadItems = useCallback(async () => {
         if (!cfg) return;
         let query = supabase.from(cfg.table).select("*");
@@ -136,6 +160,8 @@ export default function AdminMasterDataModulePage() {
         if (moduleKey === "users") {
             query = query.order("created_at", { ascending: false });
         } else if (moduleKey === "customers") {
+            query = query.order("created_at", { ascending: false });
+        } else if (moduleKey === "projects") {
             query = query.order("created_at", { ascending: false });
         } else if (moduleKey === "ac_pks") {
             query = query.order("label", { ascending: true });
@@ -152,7 +178,7 @@ export default function AdminMasterDataModulePage() {
         const timerId = setTimeout(async () => {
             try {
                 setLoading(true);
-                await Promise.all([loadItems(), loadRoles()]);
+                await Promise.all([loadItems(), loadRoles(), loadCustomers()]);
             } catch (error) {
                 console.error("Load module failed:", error);
                 setItems([]);
@@ -161,7 +187,24 @@ export default function AdminMasterDataModulePage() {
             }
         }, 0);
         return () => clearTimeout(timerId);
-    }, [loadItems, loadRoles]);
+    }, [loadCustomers, loadItems, loadRoles]);
+
+    const customerOptions = useMemo(
+        () =>
+            customers.map((item) => ({
+                value: item.id,
+                label: item.name ?? "-",
+            })),
+        [customers],
+    );
+
+    const customerNameById = useMemo(() => {
+        const map = new Map();
+        customers.forEach((item) => {
+            map.set(item.id, item.name ?? "-");
+        });
+        return map;
+    }, [customers]);
 
     const roleOptions = useMemo(() => {
         const fromDb = roles.map((r) => r.name);
@@ -186,18 +229,28 @@ export default function AdminMasterDataModulePage() {
                 });
             }
         }
+
+        if (moduleKey === "projects" && projectCustomerFilter !== "all") {
+            data = data.filter(
+                (item) => item.customer_id === projectCustomerFilter,
+            );
+        }
         return data;
-    }, [items, moduleKey, roleFilter, userSearch]);
+    }, [items, moduleKey, projectCustomerFilter, roleFilter, userSearch]);
 
     const addUser = async () => {
+        const fullName = `${userForm.firstName} ${userForm.lastName}`.trim();
         const { error } = await invokeAdminFunction("admin-create-user", {
             email: userForm.email,
             password: userForm.password,
             role: userForm.role,
             first_name: userForm.firstName,
             last_name: userForm.lastName,
-            full_name:
-                `${userForm.firstName} ${userForm.lastName}`.trim() || null,
+            full_name: fullName || null,
+            firstName: userForm.firstName,
+            lastName: userForm.lastName,
+            fullName: fullName || null,
+            name: fullName || userForm.firstName || null,
             phone: userForm.phone,
         });
         if (error) throw error;
@@ -273,6 +326,10 @@ export default function AdminMasterDataModulePage() {
                         first_name: firstName,
                         last_name: lastName,
                         full_name: simpleForm.name,
+                        firstName,
+                        lastName,
+                        fullName: simpleForm.name,
+                        name: simpleForm.name,
                         phone: simpleForm.phone,
                     },
                 );
@@ -288,17 +345,95 @@ export default function AdminMasterDataModulePage() {
                 linkedUserId = createdProfile?.id ?? null;
             }
 
-            const { error } = await supabase.from("master_customers").insert({
-                name: simpleForm.name,
-                pic_name: simpleForm.name,
+            const { data: createdCustomer, error } = await supabase
+                .from("master_customers")
+                .insert({
+                    name: simpleForm.name,
+                    location: simpleForm.location,
+                    phone: simpleForm.phone,
+                    email: simpleForm.email || null,
+                    user_id: linkedUserId,
+                    address: simpleForm.address,
+                })
+                .select("id")
+                .single();
+            if (error) throw error;
+            if (!createdCustomer?.id) {
+                throw new Error("Gagal menemukan customer yang baru dibuat.");
+            }
+
+            const baseProjectPayload = {
+                customer_id: createdCustomer.id,
                 project_name: simpleForm.projectName,
                 location: simpleForm.location,
                 phone: simpleForm.phone,
-                email: simpleForm.email || null,
-                user_id: linkedUserId,
                 address: simpleForm.address,
-            });
-            if (error) throw error;
+                pic_name: simpleForm.name,
+            };
+
+            const { error: createProjectWithPicError } = await supabase
+                .from("master_projects")
+                .insert(baseProjectPayload);
+            if (createProjectWithPicError) {
+                if (createProjectWithPicError.code !== "42703") {
+                    throw createProjectWithPicError;
+                }
+
+                const { error: createProjectFallbackError } = await supabase
+                    .from("master_projects")
+                    .insert({
+                        customer_id: createdCustomer.id,
+                        project_name: simpleForm.projectName,
+                        location: simpleForm.location,
+                        phone: simpleForm.phone,
+                        address: simpleForm.address,
+                    });
+                if (createProjectFallbackError) throw createProjectFallbackError;
+            }
+        } else if (moduleKey === "projects") {
+            if (!simpleForm.customerId) {
+                throw new Error("Customer wajib dipilih.");
+            }
+            const selectedCustomer = customers.find(
+                (item) => item.id === simpleForm.customerId,
+            );
+            const basePayload = {
+                customer_id: simpleForm.customerId,
+                project_name: simpleForm.projectName,
+                location: simpleForm.location,
+                phone:
+                    String(simpleForm.phone ?? "").trim() ||
+                    String(selectedCustomer?.phone ?? "").trim() ||
+                    "-",
+                address:
+                    String(simpleForm.address ?? "").trim() ||
+                    String(selectedCustomer?.address ?? "").trim() ||
+                    "",
+                pic_name:
+                    String(simpleForm.picName ?? "").trim() ||
+                    String(selectedCustomer?.name ?? "").trim() ||
+                    null,
+            };
+
+            const { error: insertWithPicError } = await supabase
+                .from("master_projects")
+                .insert(basePayload);
+            if (!insertWithPicError) {
+                // no-op
+            } else if (insertWithPicError.code === "42703") {
+                const { error: fallbackInsertError } = await supabase
+                    .from("master_projects")
+                    .insert({
+                        customer_id: basePayload.customer_id,
+                        project_name: basePayload.project_name,
+                        location: basePayload.location,
+                        phone: basePayload.phone,
+                        address: basePayload.address,
+                    });
+                if (fallbackInsertError) throw fallbackInsertError;
+            } else {
+                throw insertWithPicError;
+            }
         } else if (moduleKey === "ac_brands") {
             const { error } = await supabase
                 .from("master_ac_brands")
@@ -317,7 +452,9 @@ export default function AdminMasterDataModulePage() {
         }
 
         setSimpleForm({
+            customerId: "",
             name: "",
+            picName: "",
             projectName: "",
             location: "",
             phone: "",
@@ -342,8 +479,6 @@ export default function AdminMasterDataModulePage() {
                 .from("master_customers")
                 .update({
                     name: simpleForm.name,
-                    pic_name: simpleForm.name,
-                    project_name: simpleForm.projectName,
                     location: simpleForm.location,
                     phone: simpleForm.phone,
                     email: simpleForm.email || null,
@@ -351,6 +486,54 @@ export default function AdminMasterDataModulePage() {
                 })
                 .eq("id", editSimpleId);
             if (error) throw error;
+        } else if (moduleKey === "projects") {
+            if (!simpleForm.customerId) {
+                throw new Error("Customer wajib dipilih.");
+            }
+            const selectedCustomer = customers.find(
+                (item) => item.id === simpleForm.customerId,
+            );
+            const selectedItem = items.find((item) => item.id === editSimpleId);
+            const basePayload = {
+                customer_id: simpleForm.customerId,
+                project_name: simpleForm.projectName,
+                location: simpleForm.location,
+                phone:
+                    String(simpleForm.phone ?? "").trim() ||
+                    String(selectedItem?.phone ?? "").trim() ||
+                    String(selectedCustomer?.phone ?? "").trim() ||
+                    "-",
+                address:
+                    String(simpleForm.address ?? "").trim() ||
+                    String(selectedCustomer?.address ?? "").trim() ||
+                    "",
+                pic_name:
+                    String(simpleForm.picName ?? "").trim() ||
+                    String(selectedCustomer?.name ?? "").trim() ||
+                    null,
+            };
+
+            const { error: updateWithPicError } = await supabase
+                .from("master_projects")
+                .update(basePayload)
+                .eq("id", editSimpleId);
+            if (!updateWithPicError) {
+                // no-op
+            } else if (updateWithPicError.code === "42703") {
+                const { error: fallbackUpdateError } = await supabase
+                    .from("master_projects")
+                    .update({
+                        customer_id: basePayload.customer_id,
+                        project_name: basePayload.project_name,
+                        location: basePayload.location,
+                        phone: basePayload.phone,
+                        address: basePayload.address,
+                    })
+                    .eq("id", editSimpleId);
+                if (fallbackUpdateError) throw fallbackUpdateError;
+            } else {
+                throw updateWithPicError;
+            }
         } else if (moduleKey === "ac_brands") {
             const { error } = await supabase
                 .from("master_ac_brands")
@@ -512,7 +695,9 @@ export default function AdminMasterDataModulePage() {
             phone: "",
         });
         setSimpleForm({
+            customerId: "",
             name: "",
+            picName: "",
             projectName: "",
             location: "",
             phone: "",
@@ -599,6 +784,22 @@ export default function AdminMasterDataModulePage() {
                                     className="mt-0 min-w-42.5 bg-white"
                                 />
                             )}
+                            {moduleKey === "projects" && (
+                                <CustomSelect
+                                    value={projectCustomerFilter}
+                                    onChange={(nextValue) =>
+                                        setProjectCustomerFilter(nextValue)
+                                    }
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: "Semua Customer",
+                                        },
+                                        ...customerOptions,
+                                    ]}
+                                    className="mt-0 min-w-52 bg-white"
+                                />
+                            )}
                             <button
                                 type="button"
                                 onClick={() => {
@@ -612,6 +813,8 @@ export default function AdminMasterDataModulePage() {
                                 <Plus size={14} />
                                 {moduleKey === "users"
                                     ? "Tambah User"
+                                    : moduleKey === "projects"
+                                      ? "Tambah Project"
                                     : "Tambah Data"}
                             </button>
                         </div>
@@ -671,10 +874,7 @@ export default function AdminMasterDataModulePage() {
                                             {moduleKey === "customers" && (
                                                 <>
                                                     <th className="px-3 py-3">
-                                                        PIC / Customer
-                                                    </th>
-                                                    <th className="px-3 py-3">
-                                                        Nama Proyek
+                                                        Nama Customer
                                                     </th>
                                                     <th className="px-3 py-3">
                                                         Lokasi Proyek
@@ -687,6 +887,31 @@ export default function AdminMasterDataModulePage() {
                                                     </th>
                                                     <th className="px-3 py-3">
                                                         Alamat
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Aksi
+                                                    </th>
+                                                </>
+                                            )}
+                                            {moduleKey === "projects" && (
+                                                <>
+                                                    <th className="px-3 py-3">
+                                                        Nama Customer
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Nama Proyek
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Lokasi
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        No. Telp
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Alamat
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        PIC Proyek
                                                     </th>
                                                     <th className="px-3 py-3">
                                                         Aksi
@@ -832,14 +1057,21 @@ export default function AdminMasterDataModulePage() {
                                                                         );
                                                                         setSimpleForm(
                                                                             {
+                                                                                customerId:
+                                                                                    "",
                                                                                 name:
                                                                                     item.name ??
+                                                                                    "",
+                                                                                picName:
                                                                                     "",
                                                                                 projectName:
                                                                                     "",
                                                                                 location:
                                                                                     "",
                                                                                 phone: "",
+                                                                                email: "",
+                                                                                password:
+                                                                                    "",
                                                                                 address:
                                                                                     "",
                                                                                 label: "",
@@ -881,13 +1113,7 @@ export default function AdminMasterDataModulePage() {
                                                 {moduleKey === "customers" && (
                                                     <>
                                                         <td className="px-3 py-3 font-medium text-slate-800">
-                                                            {item.pic_name ??
-                                                                item.name ??
-                                                                "-"}
-                                                        </td>
-                                                        <td className="px-3 py-3 text-slate-600">
-                                                            {item.project_name ??
-                                                                "-"}
+                                                            {item.name ?? "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
                                                             {item.location ??
@@ -916,12 +1142,14 @@ export default function AdminMasterDataModulePage() {
                                                                         );
                                                                         setSimpleForm(
                                                                             {
+                                                                                customerId:
+                                                                                    "",
                                                                                 name:
-                                                                                    item.pic_name ??
                                                                                     item.name ??
                                                                                     "",
+                                                                                picName:
+                                                                                    "",
                                                                                 projectName:
-                                                                                    item.project_name ??
                                                                                     "",
                                                                                 location:
                                                                                     item.location ??
@@ -932,6 +1160,109 @@ export default function AdminMasterDataModulePage() {
                                                                                 email:
                                                                                     item.email ??
                                                                                     "",
+                                                                                password:
+                                                                                    "",
+                                                                                address:
+                                                                                    item.address ??
+                                                                                    "",
+                                                                                label: "",
+                                                                            },
+                                                                        );
+                                                                        setOpenModal(
+                                                                            true,
+                                                                        );
+                                                                    }}
+                                                                    className="inline-flex cursor-pointer rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                                                                    title="Edit"
+                                                                >
+                                                                    <Pencil
+                                                                        size={
+                                                                            14
+                                                                        }
+                                                                    />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        deleteItem(
+                                                                            item.id,
+                                                                        )
+                                                                    }
+                                                                    className="inline-flex cursor-pointer rounded-md p-1 text-rose-500 hover:bg-rose-50"
+                                                                    title="Hapus"
+                                                                >
+                                                                    <Trash2
+                                                                        size={
+                                                                            14
+                                                                        }
+                                                                    />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </>
+                                                )}
+                                                {moduleKey === "projects" && (
+                                                    <>
+                                                        <td className="px-3 py-3 font-medium text-slate-800">
+                                                            {customerNameById.get(
+                                                                item.customer_id,
+                                                            ) ?? "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
+                                                            {item.project_name ??
+                                                                "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
+                                                            {item.location ??
+                                                                "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
+                                                            {item.phone ?? "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
+                                                            {item.address ??
+                                                                "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
+                                                            {String(
+                                                                item.pic_name ??
+                                                                    "",
+                                                            ).trim() ||
+                                                                customerNameById.get(
+                                                                    item.customer_id,
+                                                                ) ||
+                                                                "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setEditUserId(
+                                                                            null,
+                                                                        );
+                                                                        setEditSimpleId(
+                                                                            item.id,
+                                                                        );
+                                                                        setSimpleForm(
+                                                                            {
+                                                                                customerId:
+                                                                                    item.customer_id ??
+                                                                                    "",
+                                                                                name: "",
+                                                                                picName:
+                                                                                    item.pic_name ??
+                                                                                    "",
+                                                                                projectName:
+                                                                                    item.project_name ??
+                                                                                    "",
+                                                                                location:
+                                                                                    item.location ??
+                                                                                    "",
+                                                                                phone:
+                                                                                    item.phone ??
+                                                                                    "",
+                                                                                email: "",
                                                                                 password:
                                                                                     "",
                                                                                 address:
@@ -993,14 +1324,21 @@ export default function AdminMasterDataModulePage() {
                                                                         );
                                                                         setSimpleForm(
                                                                             {
+                                                                                customerId:
+                                                                                    "",
                                                                                 name:
                                                                                     item.name ??
+                                                                                    "",
+                                                                                picName:
                                                                                     "",
                                                                                 projectName:
                                                                                     "",
                                                                                 location:
                                                                                     "",
                                                                                 phone: "",
+                                                                                email: "",
+                                                                                password:
+                                                                                    "",
                                                                                 address:
                                                                                     "",
                                                                                 label: "",
@@ -1057,12 +1395,19 @@ export default function AdminMasterDataModulePage() {
                                                                         );
                                                                         setSimpleForm(
                                                                             {
+                                                                                customerId:
+                                                                                    "",
                                                                                 name: "",
+                                                                                picName:
+                                                                                    "",
                                                                                 projectName:
                                                                                     "",
                                                                                 location:
                                                                                     "",
                                                                                 phone: "",
+                                                                                email: "",
+                                                                                password:
+                                                                                    "",
                                                                                 address:
                                                                                     "",
                                                                                 label:
@@ -1278,7 +1623,7 @@ export default function AdminMasterDataModulePage() {
                                 <>
                                     <label>
                                         <span className="text-sm font-medium text-slate-700">
-                                            Nama PIC / Customer
+                                            Nama Customer
                                         </span>
                                         <input
                                             value={simpleForm.name}
@@ -1294,19 +1639,28 @@ export default function AdminMasterDataModulePage() {
                                     </label>
                                     <label>
                                         <span className="text-sm font-medium text-slate-700">
-                                            Nama Proyek
+                                            Nama Proyek Awal
                                         </span>
-                                        <input
-                                            value={simpleForm.projectName}
-                                            onChange={(e) =>
-                                                setSimpleForm((prev) => ({
-                                                    ...prev,
-                                                    projectName: e.target.value,
-                                                }))
-                                            }
-                                            className={inputClass}
-                                            required
-                                        />
+                                        {editSimpleId ? (
+                                            <input
+                                                value="Atur di menu Project"
+                                                readOnly
+                                                className={inputClass}
+                                            />
+                                        ) : (
+                                            <input
+                                                value={simpleForm.projectName}
+                                                onChange={(e) =>
+                                                    setSimpleForm((prev) => ({
+                                                        ...prev,
+                                                        projectName:
+                                                            e.target.value,
+                                                    }))
+                                                }
+                                                className={inputClass}
+                                                required
+                                            />
+                                        )}
                                     </label>
                                     <label>
                                         <span className="text-sm font-medium text-slate-700">
@@ -1394,6 +1748,107 @@ export default function AdminMasterDataModulePage() {
                                             />
                                         </label>
                                     )}
+                                </>
+                            )}
+
+                            {moduleKey === "projects" && (
+                                <>
+                                    <label className="md:col-span-2">
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Customer
+                                        </span>
+                                        <CustomSelect
+                                            value={simpleForm.customerId}
+                                            onChange={(nextValue) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    customerId: nextValue,
+                                                }))
+                                            }
+                                            options={customerOptions}
+                                            placeholder="Pilih customer"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Nama Proyek
+                                        </span>
+                                        <input
+                                            value={simpleForm.projectName}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    projectName: e.target.value,
+                                                }))
+                                            }
+                                            className={inputClass}
+                                            required
+                                        />
+                                    </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Lokasi
+                                        </span>
+                                        <input
+                                            value={simpleForm.location}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    location: e.target.value,
+                                                }))
+                                            }
+                                            className={inputClass}
+                                            required
+                                        />
+                                    </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Nama PIC Proyek (opsional)
+                                        </span>
+                                        <input
+                                            value={simpleForm.picName}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    picName: e.target.value,
+                                                }))
+                                            }
+                                            className={inputClass}
+                                            placeholder="Kosongkan jika pakai nama customer"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            No. Telp PIC (opsional)
+                                        </span>
+                                        <input
+                                            value={simpleForm.phone}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    phone: e.target.value,
+                                                }))
+                                            }
+                                            className={inputClass}
+                                            placeholder="Kosongkan jika sama dengan customer"
+                                        />
+                                    </label>
+                                    <label className="md:col-span-2">
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Alamat
+                                        </span>
+                                        <textarea
+                                            value={simpleForm.address}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    address: e.target.value,
+                                                }))
+                                            }
+                                            className={`${inputClass} min-h-24`}
+                                            required
+                                        />
+                                    </label>
                                 </>
                             )}
 

@@ -2,28 +2,31 @@ import { useEffect, useState } from "react";
 import supabase from "../supabaseClient";
 import { AuthContext } from "./AuthContextValue";
 
-const fetchUserRole = async (userId) => {
+const fetchUserProfile = async (userId) => {
   const { data, error } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, first_name, last_name, email, phone")
     .eq("id", userId)
     .single();
 
   if (error) throw error;
-  return data?.role ?? null;
+  return data ?? null;
 };
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const syncUserRole = async (userId) => {
+  const syncUserProfile = async (userId) => {
     try {
-      const nextRole = await fetchUserRole(userId);
-      setRole(nextRole);
+      const nextProfile = await fetchUserProfile(userId);
+      setProfile(nextProfile);
+      setRole(nextProfile?.role ?? null);
     } catch (error) {
-      console.error("Error fetching role:", error);
+      console.error("Error fetching profile:", error);
+      setProfile(null);
       setRole(null);
     } finally {
       setLoading(false);
@@ -35,7 +38,7 @@ export function AuthProvider({ children }) {
     supabase.auth.getUser().then(({ data }) => {
       if (data?.user) {
         setUser(data.user);
-        syncUserRole(data.user.id);
+        syncUserProfile(data.user.id);
       } else {
         setLoading(false);
       }
@@ -46,9 +49,10 @@ export function AuthProvider({ children }) {
       (_event, session) => {
         if (session?.user) {
           setUser(session.user);
-          syncUserRole(session.user.id);
+          syncUserProfile(session.user.id);
         } else {
           setUser(null);
+          setProfile(null);
           setRole(null);
           setLoading(false);
         }
@@ -68,7 +72,9 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, role, loading }}>
+    <AuthContext.Provider
+      value={{ user, profile, login, role, loading, refreshProfile: () => syncUserProfile(user?.id) }}
+    >
       {children}
     </AuthContext.Provider>
   );

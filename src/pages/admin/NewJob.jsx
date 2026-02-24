@@ -10,6 +10,7 @@ import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 
 const initialForm = {
     customerId: "",
+    projectId: "",
     acBrand: "",
     acType: "",
     acCapacityPk: "",
@@ -49,11 +50,23 @@ const FileCaptureCard = ({ label, fileName, onClick }) => (
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
 
+const getCurrentUserDisplayName = (user) => {
+    const composed =
+        `${user?.user_metadata?.first_name ?? ""} ${user?.user_metadata?.last_name ?? ""}`.trim();
+    return (
+        composed ||
+        String(user?.user_metadata?.full_name ?? "").trim() ||
+        String(user?.email ?? "").trim() ||
+        "Teknisi"
+    );
+};
+
 export default function AdminNewJobPage() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const [form, setForm] = useState(initialForm);
     const [customers, setCustomers] = useState([]);
+    const [projects, setProjects] = useState([]);
     const [acBrands, setAcBrands] = useState([]);
     const [acTypes, setAcTypes] = useState([]);
     const [acPks, setAcPks] = useState([]);
@@ -79,9 +92,13 @@ export default function AdminNewJobPage() {
 
     const loadMasterData = useCallback(async () => {
         try {
-            const [customersRes, brandsRes, typesRes, pksRes] = await Promise.all([
+            const [customersRes, projectsRes, brandsRes, typesRes, pksRes] = await Promise.all([
                 supabase
                     .from("master_customers")
+                    .select("*")
+                    .order("name", { ascending: true }),
+                supabase
+                    .from("master_projects")
                     .select("*")
                     .order("project_name", { ascending: true }),
                 supabase
@@ -99,17 +116,19 @@ export default function AdminNewJobPage() {
             ]);
 
             if (customersRes.error) throw customersRes.error;
+            if (projectsRes.error) throw projectsRes.error;
             if (brandsRes.error) throw brandsRes.error;
             if (typesRes.error) throw typesRes.error;
             if (pksRes.error) throw pksRes.error;
-
             setCustomers(customersRes.data ?? []);
+            setProjects(projectsRes.data ?? []);
             setAcBrands(brandsRes.data ?? []);
             setAcTypes(typesRes.data ?? []);
             setAcPks(pksRes.data ?? []);
         } catch (error) {
             console.error("Error loading master data for new job:", error);
             setCustomers([]);
+            setProjects([]);
             setAcBrands([]);
             setAcTypes([]);
             setAcPks([]);
@@ -128,6 +147,30 @@ export default function AdminNewJobPage() {
         () => customers.find((item) => item.id === form.customerId) ?? null,
         [customers, form.customerId],
     );
+    const availableProjects = useMemo(() => {
+        if (!form.customerId) return [];
+        return projects.filter((item) => item.customer_id === form.customerId);
+    }, [form.customerId, projects]);
+
+    const selectedProject = useMemo(
+        () => availableProjects.find((item) => item.id === form.projectId) ?? null,
+        [availableProjects, form.projectId],
+    );
+
+    useEffect(() => {
+        if (!form.customerId) {
+            setForm((prev) => ({ ...prev, projectId: "" }));
+            return;
+        }
+        if (availableProjects.length === 0) {
+            setForm((prev) => ({ ...prev, projectId: "" }));
+            return;
+        }
+        const isStillValid = availableProjects.some((item) => item.id === form.projectId);
+        if (!isStillValid) {
+            setForm((prev) => ({ ...prev, projectId: availableProjects[0].id }));
+        }
+    }, [availableProjects, form.customerId, form.projectId]);
 
     const uploadPhoto = async (file, folderName) => {
         if (!file) return null;
@@ -247,6 +290,7 @@ export default function AdminNewJobPage() {
         event.preventDefault();
         if (
             !form.customerId ||
+            !form.projectId ||
             !form.acBrand ||
             !form.acType ||
             !form.acCapacityPk
@@ -269,18 +313,19 @@ export default function AdminNewJobPage() {
                 ]);
 
             const payload = {
-                title: selectedCustomer?.project_name ?? "",
+                title: selectedProject?.project_name ?? "",
                 status: afterUrl
                     ? "completed"
                     : progressUrl
                       ? "in_progress"
                       : "pending",
-                location: selectedCustomer?.location ?? "",
+                location: selectedProject?.location ?? selectedCustomer?.location ?? "",
                 customer_name:
-                    selectedCustomer?.pic_name ?? selectedCustomer?.name ?? "",
-                customer_phone: selectedCustomer?.phone ?? "",
-                address: selectedCustomer?.address ?? "",
+                    selectedCustomer?.name ?? "",
+                customer_phone: selectedProject?.phone ?? selectedCustomer?.phone ?? "",
+                address: selectedProject?.address ?? selectedCustomer?.address ?? "",
                 customer_id: form.customerId,
+                project_id: form.projectId,
                 ac_brand: form.acBrand,
                 ac_type: form.acType,
                 ac_capacity_pk: form.acCapacityPk,
@@ -295,6 +340,9 @@ export default function AdminNewJobPage() {
                 after_photo_url: afterUrl,
                 created_by: user?.id ?? null,
             };
+            if (String(user?.user_metadata?.role ?? "").toLowerCase() === "technician") {
+                payload.technician_name = getCurrentUserDisplayName(user);
+            }
 
             const { error } = await supabase.from("requests").insert(payload);
             if (error) throw error;
@@ -357,6 +405,7 @@ export default function AdminNewJobPage() {
                                             setForm((prev) => ({
                                                 ...prev,
                                                 customerId: nextValue,
+                                                projectId: "",
                                             }))
                                         }
                                         options={[
@@ -366,7 +415,7 @@ export default function AdminNewJobPage() {
                                             },
                                             ...customers.map((item) => ({
                                                 value: item.id,
-                                                label: `${item.pic_name ?? item.name ?? "-"} - ${item.project_name ?? "-"}`,
+                                                label: item.name ?? "-",
                                             })),
                                         ]}
                                         placeholder="Pilih customer"
@@ -374,12 +423,36 @@ export default function AdminNewJobPage() {
                                 </label>
                                 <label>
                                     <span className="text-sm font-medium text-slate-700">
+                                        Proyek
+                                    </span>
+                                    <CustomSelect
+                                        value={form.projectId}
+                                        onChange={(nextValue) =>
+                                            setForm((prev) => ({
+                                                ...prev,
+                                                projectId: nextValue,
+                                            }))
+                                        }
+                                        options={[
+                                            { value: "", label: "Pilih proyek" },
+                                            ...availableProjects.map((item) => ({
+                                                value: item.id,
+                                                label: item.project_name ?? "-",
+                                            })),
+                                        ]}
+                                        placeholder="Pilih proyek"
+                                    />
+                                </label>
+                                <label>
+                                    <span className="text-sm font-medium text-slate-700">
                                         Nama Proyek
                                     </span>
                                     <input
-                                        value={selectedCustomer?.project_name ?? ""}
+                                        value={
+                                            selectedProject?.project_name ?? ""
+                                        }
                                         readOnly
-                                        placeholder="Auto dari master customer"
+                                        placeholder="Auto dari master project"
                                         className={inputClass}
                                     />
                                 </label>
@@ -388,7 +461,11 @@ export default function AdminNewJobPage() {
                                         Lokasi Proyek
                                     </span>
                                     <input
-                                        value={selectedCustomer?.location ?? ""}
+                                        value={
+                                            selectedProject?.location ??
+                                            selectedCustomer?.location ??
+                                            ""
+                                        }
                                         readOnly
                                         placeholder="Auto dari master customer"
                                         className={inputClass}
@@ -399,7 +476,11 @@ export default function AdminNewJobPage() {
                                         Nomor Telepon
                                     </span>
                                     <input
-                                        value={selectedCustomer?.phone ?? ""}
+                                        value={
+                                            selectedProject?.phone ??
+                                            selectedCustomer?.phone ??
+                                            ""
+                                        }
                                         readOnly
                                         placeholder="Auto dari master customer"
                                         className={inputClass}
@@ -410,7 +491,11 @@ export default function AdminNewJobPage() {
                                         Alamat Lengkap
                                     </span>
                                     <textarea
-                                        value={selectedCustomer?.address ?? ""}
+                                        value={
+                                            selectedProject?.address ??
+                                            selectedCustomer?.address ??
+                                            ""
+                                        }
                                         readOnly
                                         placeholder="Auto dari master customer"
                                         className={`${inputClass} min-h-24`}

@@ -2,8 +2,6 @@
 create table if not exists public.master_customers (
     id uuid primary key default gen_random_uuid(),
     name text,
-    pic_name text not null,
-    project_name text not null,
     location text not null,
     phone text not null,
     email text,
@@ -15,27 +13,19 @@ create table if not exists public.master_customers (
 -- Backward-compatible migration for existing schema/data
 alter table public.master_customers
 add column if not exists name text,
-add column if not exists pic_name text,
-add column if not exists project_name text,
 add column if not exists location text,
 add column if not exists email text,
 add column if not exists user_id uuid references public.profiles(id) on delete set null;
 
 update public.master_customers
-set pic_name = coalesce(pic_name, name)
-where pic_name is null;
-
-update public.master_customers
-set name = coalesce(name, pic_name)
+set name = coalesce(name, email, 'Customer')
 where name is null;
-
-update public.master_customers
-set project_name = coalesce(project_name, name)
-where project_name is null;
 
 update public.master_customers
 set location = coalesce(location, '')
 where location is null;
+
+-- Project should live in master_projects (one customer can have many projects)
 
 -- Optional legacy table: keep only if you still separate project records
 create table if not exists public.master_projects (
@@ -43,13 +33,59 @@ create table if not exists public.master_projects (
     customer_id uuid not null references public.master_customers(id) on delete cascade,
     project_name text not null,
     location text not null,
+    pic_name text,
     phone text not null,
     address text not null,
     created_at timestamptz not null default now()
 );
 
+alter table public.master_projects
+add column if not exists pic_name text;
+
 create index if not exists master_projects_customer_id_idx
     on public.master_projects(customer_id);
+
+-- Legacy migration: move old single project data from customer row into master_projects
+do $$
+begin
+    if exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'master_customers'
+          and column_name = 'project_name'
+    ) then
+        insert into public.master_projects (
+            customer_id,
+            project_name,
+            location,
+            phone,
+            address,
+            pic_name
+        )
+        select
+            c.id,
+            c.project_name,
+            c.location,
+            c.phone,
+            c.address,
+            c.name
+        from public.master_customers c
+        where coalesce(c.project_name, '') <> ''
+          and not exists (
+                select 1
+                from public.master_projects p
+                where p.customer_id = c.id
+                  and p.project_name = c.project_name
+          );
+    end if;
+end $$;
+
+alter table public.master_customers
+drop column if exists project_name;
+
+alter table public.master_customers
+drop column if exists pic_name;
 
 -- Additional master tables for Master Data page
 create table if not exists public.master_roles (
@@ -217,6 +253,100 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_auth_user_created();
+
+-- Keep customer master data synchronized when profile changes
+create or replace function public.sync_customer_from_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    next_display_name text;
+    prev_display_name text;
+begin
+    next_display_name := trim(
+        concat_ws(' ', coalesce(new.first_name, ''), coalesce(new.last_name, ''))
+    );
+    if next_display_name = '' then
+        next_display_name := coalesce(new.email, old.email, '');
+    end if;
+
+    prev_display_name := trim(
+        concat_ws(' ', coalesce(old.first_name, ''), coalesce(old.last_name, ''))
+    );
+    if prev_display_name = '' then
+        prev_display_name := coalesce(old.email, new.email, '');
+    end if;
+
+    update public.master_customers
+    set
+        user_id = coalesce(user_id, new.id),
+        name = next_display_name,
+        email = coalesce(new.email, email)
+    where user_id = new.id
+       or (
+            old.email is not null
+            and old.email <> ''
+            and lower(email) = lower(old.email)
+       )
+       or (
+            new.email is not null
+            and new.email <> ''
+            and lower(email) = lower(new.email)
+       );
+
+    -- Keep project PIC synchronized for rows that still use default customer name.
+    update public.master_projects mp
+    set pic_name = next_display_name
+    from public.master_customers c
+    where mp.customer_id = c.id
+      and (
+            c.user_id = new.id
+            or (
+                new.email is not null
+                and new.email <> ''
+                and c.email is not null
+                and lower(c.email) = lower(new.email)
+            )
+          )
+      and (
+            mp.pic_name is null
+            or mp.pic_name = ''
+            or mp.pic_name = prev_display_name
+          );
+
+    return new;
+end;
+$$;
+
+drop trigger if exists on_profile_synced_to_customer on public.profiles;
+create trigger on_profile_synced_to_customer
+after update of first_name, last_name, email on public.profiles
+for each row execute function public.sync_customer_from_profile();
+
+-- One-time backfill to align existing customer rows with current profile values
+update public.master_customers c
+set
+    user_id = coalesce(c.user_id, p.id),
+    name = trim(concat_ws(' ', coalesce(p.first_name, ''), coalesce(p.last_name, ''))),
+    email = coalesce(p.email, c.email)
+from public.profiles p
+where (
+        c.user_id = p.id
+        or (
+            c.email is not null
+            and p.email is not null
+            and lower(p.email) = lower(c.email)
+        )
+      )
+  and p.role = 'customer';
+
+update public.master_customers
+set
+    name = coalesce(nullif(name, ''), email, 'Customer')
+where coalesce(nullif(name, '')) is null
+   or name = '';
 
 -- Enforce role from master_roles table
 do $$
@@ -514,6 +644,8 @@ using (public.is_admin());
 -- Recreate all admin policies to use helper function (non-recursive)
 drop policy if exists "admin can read customers" on public.master_customers;
 drop policy if exists "admin can write customers" on public.master_customers;
+drop policy if exists "technician can read customers" on public.master_customers;
+drop policy if exists "customer can read own customers" on public.master_customers;
 create policy "admin can read customers"
 on public.master_customers for select
 to authenticated
@@ -523,9 +655,22 @@ on public.master_customers for all
 to authenticated
 using (public.is_admin())
 with check (public.is_admin());
+create policy "technician can read customers"
+on public.master_customers for select
+to authenticated
+using (public.is_technician());
+create policy "customer can read own customers"
+on public.master_customers for select
+to authenticated
+using (
+    public.is_customer()
+    and id = any(public.current_user_customer_ids())
+);
 
 drop policy if exists "admin can read projects" on public.master_projects;
 drop policy if exists "admin can write projects" on public.master_projects;
+drop policy if exists "technician can read projects" on public.master_projects;
+drop policy if exists "customer can read own projects" on public.master_projects;
 create policy "admin can read projects"
 on public.master_projects for select
 to authenticated
@@ -535,6 +680,17 @@ on public.master_projects for all
 to authenticated
 using (public.is_admin())
 with check (public.is_admin());
+create policy "technician can read projects"
+on public.master_projects for select
+to authenticated
+using (public.is_technician());
+create policy "customer can read own projects"
+on public.master_projects for select
+to authenticated
+using (
+    public.is_customer()
+    and customer_id = any(public.current_user_customer_ids())
+);
 
 drop policy if exists "admin can read roles" on public.master_roles;
 drop policy if exists "admin can write roles" on public.master_roles;
@@ -562,6 +718,8 @@ with check (public.is_admin());
 
 drop policy if exists "admin can read ac brands" on public.master_ac_brands;
 drop policy if exists "admin can write ac brands" on public.master_ac_brands;
+drop policy if exists "technician can read ac brands" on public.master_ac_brands;
+drop policy if exists "customer can read ac brands" on public.master_ac_brands;
 create policy "admin can read ac brands"
 on public.master_ac_brands for select
 to authenticated
@@ -571,9 +729,19 @@ on public.master_ac_brands for all
 to authenticated
 using (public.is_admin())
 with check (public.is_admin());
+create policy "technician can read ac brands"
+on public.master_ac_brands for select
+to authenticated
+using (public.is_technician());
+create policy "customer can read ac brands"
+on public.master_ac_brands for select
+to authenticated
+using (public.is_customer());
 
 drop policy if exists "admin can read ac types" on public.master_ac_types;
 drop policy if exists "admin can write ac types" on public.master_ac_types;
+drop policy if exists "technician can read ac types" on public.master_ac_types;
+drop policy if exists "customer can read ac types" on public.master_ac_types;
 create policy "admin can read ac types"
 on public.master_ac_types for select
 to authenticated
@@ -583,9 +751,19 @@ on public.master_ac_types for all
 to authenticated
 using (public.is_admin())
 with check (public.is_admin());
+create policy "technician can read ac types"
+on public.master_ac_types for select
+to authenticated
+using (public.is_technician());
+create policy "customer can read ac types"
+on public.master_ac_types for select
+to authenticated
+using (public.is_customer());
 
 drop policy if exists "admin can read ac pks" on public.master_ac_pks;
 drop policy if exists "admin can write ac pks" on public.master_ac_pks;
+drop policy if exists "technician can read ac pks" on public.master_ac_pks;
+drop policy if exists "customer can read ac pks" on public.master_ac_pks;
 create policy "admin can read ac pks"
 on public.master_ac_pks for select
 to authenticated
@@ -595,15 +773,129 @@ on public.master_ac_pks for all
 to authenticated
 using (public.is_admin())
 with check (public.is_admin());
+create policy "technician can read ac pks"
+on public.master_ac_pks for select
+to authenticated
+using (public.is_technician());
+create policy "customer can read ac pks"
+on public.master_ac_pks for select
+to authenticated
+using (public.is_customer());
 
 drop policy if exists "admin can read requests" on public.requests;
 drop policy if exists "admin can write requests" on public.requests;
+drop policy if exists "technician can read requests" on public.requests;
+drop policy if exists "technician can update requests" on public.requests;
+drop policy if exists "customer can read own requests" on public.requests;
+drop policy if exists "customer can insert own requests" on public.requests;
+
+create or replace function public.is_technician()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select exists (
+        select 1
+        from public.profiles
+        where id = auth.uid()
+          and role = 'technician'
+    );
+$$;
+
+revoke all on function public.is_technician() from public;
+grant execute on function public.is_technician() to authenticated;
+
+create or replace function public.is_customer()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select exists (
+        select 1
+        from public.profiles
+        where id = auth.uid()
+          and role = 'customer'
+    );
+$$;
+
+revoke all on function public.is_customer() from public;
+grant execute on function public.is_customer() to authenticated;
+
+create or replace function public.current_user_customer_ids()
+returns uuid[]
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select coalesce(array_agg(c.id), '{}'::uuid[])
+    from public.master_customers c
+    left join public.profiles p on p.id = auth.uid()
+    where c.user_id = auth.uid()
+       or (p.email is not null and c.email = p.email);
+$$;
+
+revoke all on function public.current_user_customer_ids() from public;
+grant execute on function public.current_user_customer_ids() to authenticated;
+
 create policy "admin can read requests"
 on public.requests for select
 to authenticated
 using (public.is_admin());
+
 create policy "admin can write requests"
 on public.requests for all
 to authenticated
 using (public.is_admin())
 with check (public.is_admin());
+
+create policy "technician can read requests"
+on public.requests for select
+to authenticated
+using (
+    public.is_technician()
+    and (
+        status = 'pending'
+        or created_by = auth.uid()
+    )
+);
+
+create policy "technician can update requests"
+on public.requests for update
+to authenticated
+using (
+    public.is_technician()
+    and (
+        status = 'pending'
+        or created_by = auth.uid()
+    )
+)
+with check (
+    public.is_technician()
+    and (
+        created_by = auth.uid()
+        or (created_by is null and status = 'pending')
+    )
+);
+
+create policy "customer can read own requests"
+on public.requests for select
+to authenticated
+using (
+    public.is_customer()
+    and customer_id = any(public.current_user_customer_ids())
+);
+
+create policy "customer can insert own requests"
+on public.requests for insert
+to authenticated
+with check (
+    public.is_customer()
+    and customer_id = any(public.current_user_customer_ids())
+    and created_by = auth.uid()
+    and status = 'pending'
+);

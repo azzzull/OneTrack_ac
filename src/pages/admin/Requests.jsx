@@ -137,8 +137,19 @@ const formatDate = (value) => {
     }).format(date);
 };
 
+const getCurrentUserDisplayName = (user) => {
+    const composed =
+        `${user?.user_metadata?.first_name ?? ""} ${user?.user_metadata?.last_name ?? ""}`.trim();
+    return (
+        composed ||
+        String(user?.user_metadata?.full_name ?? "").trim() ||
+        String(user?.email ?? "").trim() ||
+        "Teknisi"
+    );
+};
+
 export default function AdminRequestsPage() {
-    const { user } = useAuth();
+    const { user, role } = useAuth();
     const { alert: showAlert } = useDialog();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -356,12 +367,18 @@ export default function AdminRequestsPage() {
 
         try {
             setSavingStatus(true);
+            const payload = {
+                status: editingStatus,
+                updated_at: new Date().toISOString(),
+            };
+            if (role === "technician") {
+                payload.created_by = selectedRequest.createdBy || user?.id || null;
+                payload.technician_name = getCurrentUserDisplayName(user);
+            }
+
             const { error } = await supabase
                 .from("requests")
-                .update({
-                    status: editingStatus,
-                    updated_at: new Date().toISOString(),
-                })
+                .update(payload)
                 .eq("id", selectedRequest.id);
 
             if (error) throw error;
@@ -424,6 +441,10 @@ export default function AdminRequestsPage() {
                 nextStatus = "in_progress";
             }
             payload.status = nextStatus;
+            if (role === "technician") {
+                payload.created_by = selectedRequest.createdBy || user?.id || null;
+                payload.technician_name = getCurrentUserDisplayName(user);
+            }
 
             const { error } = await supabase
                 .from("requests")

@@ -26,25 +26,27 @@ const menuByRole = {
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
-        { label: "My Tasks", path: "/tasks", icon: Wrench },
+        { label: "Requests", path: "/technician/requests", icon: List },
+        { label: "New Job", path: "/jobs/new", icon: Plus },
     ],
     customer: [
-        { label: "Dashboard", path: "/customer", icon: LayoutDashboard },
         { label: "My Service", path: "/services", icon: List },
+        { label: "Request", path: "/customer/request", icon: Plus },
     ],
 };
 
 const getMenus = (role) => menuByRole[role] ?? [];
 
 export default function Sidebar({ collapsed = false, onToggle }) {
-    const { user, role } = useAuth();
+    const { user, role, profile } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
     const menus = getMenus(role).map((menu) => {
         const badgeByPath = {
             "/requests": stats.pending,
-            "/tasks": stats.inProgress,
+            "/technician/requests": stats.pending,
             "/services": stats.active,
+            "/customer/request": null,
         };
 
         const count = badgeByPath[menu.path] ?? 0;
@@ -59,9 +61,12 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         navigate("/");
     };
     const identityLabel =
+        `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() ||
+        profile?.email ||
         user?.user_metadata?.full_name?.trim() ||
         user?.email ||
         "admin@onetrack.com";
+    const canOpenProfile = role === "customer" || role === "technician";
 
     return (
         <aside
@@ -160,16 +165,26 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                         collapsed ? "space-y-3" : "space-y-5"
                     } pb-2`}
                 >
-                    <div
-                        className={`flex items-center gap-3 px-6 text-slate-500 ${
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (canOpenProfile) navigate("/profile");
+                        }}
+                        className={`flex w-full items-center gap-3 px-6 text-slate-500 ${
                             collapsed ? "flex-col text-[11px]" : "text-base"
+                        } ${
+                            canOpenProfile
+                                ? "cursor-pointer rounded-xl py-2 hover:bg-slate-100 hover:text-slate-700"
+                                : "cursor-default py-2"
                         }`}
                     >
                         <CircleUserRound size={collapsed ? 18 : 20} />
                         {!collapsed && (
-                            <span className="truncate">{identityLabel}</span>
+                            <span className="truncate text-left">
+                                {identityLabel}
+                            </span>
                         )}
-                    </div>
+                    </button>
 
                     <button
                         onClick={handleLogout}
@@ -194,8 +209,9 @@ export function MobileBottomNav() {
     const menus = getMenus(role).map((menu) => {
         const badgeByPath = {
             "/requests": stats.pending,
-            "/tasks": stats.inProgress,
+            "/technician/requests": stats.pending,
             "/services": stats.active,
+            "/customer/request": null,
         };
 
         const count = badgeByPath[menu.path] ?? 0;

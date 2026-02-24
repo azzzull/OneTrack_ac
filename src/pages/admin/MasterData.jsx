@@ -1,6 +1,7 @@
 import {
     AirVent,
     Bolt,
+    Building2,
     MemoryStick,
     Shield,
     Tag,
@@ -32,6 +33,13 @@ const moduleCards = [
         desc: "Kelola data customer dan informasi proyek.",
         icon: Users,
         tone: "bg-emerald-100 text-emerald-500",
+    },
+    {
+        key: "projects",
+        title: "Project",
+        desc: "Kelola daftar proyek per customer.",
+        icon: Building2,
+        tone: "bg-cyan-100 text-cyan-600",
     },
     {
         key: "ac_brands",
