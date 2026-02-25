@@ -91,13 +91,43 @@ drop column if exists pic_name;
 create table if not exists public.master_roles (
     id uuid primary key default gen_random_uuid(),
     name text not null unique,
-    created_at timestamptz not null default now()
+    created_at timestamptz not null default now(),
+    -- enforce lowercase names so FK checks are predictable
+    constraint master_roles_name_lowercase check (name = lower(name))
 );
 
--- Ensure default roles exist
+-- Ensure default roles exist (this script may be run repeatedly)
 insert into public.master_roles (name)
 values ('admin'), ('customer'), ('technician')
 on conflict (name) do nothing;
+
+-- Guard against accidental removal of the built‑in roles
+-- (deleting the admin row used by the auth trigger will break
+-- user creation, so make it hard to remove).
+do $$
+begin
+    if not exists (
+        select 1 from pg_trigger t
+        where t.tgname = 'prevent_default_role_delete'
+          and t.tgrelid = 'public.master_roles'::regclass
+    ) then
+        create or replace function public.prevent_default_role_delete()
+        returns trigger
+        language plpgsql
+        as $fn$
+        begin
+            if old.name in ('admin','customer','technician') then
+                raise exception 'cannot delete default role %', old.name;
+            end if;
+            return old;
+        end;
+        $fn$;
+
+        create trigger prevent_default_role_delete
+        before delete on public.master_roles
+        for each row execute function public.prevent_default_role_delete();
+    end if;
+end $$;
 
 -- Optional table (currently not used in UI)
 create table if not exists public.master_floors (
@@ -183,6 +213,7 @@ add column if not exists first_name text,
 add column if not exists last_name text,
 add column if not exists phone text,
 add column if not exists email text,
+add column if not exists name text,
 add column if not exists role text default 'customer',
 add column if not exists created_at timestamptz not null default now(),
 add column if not exists updated_at timestamptz not null default now();
@@ -212,10 +243,12 @@ begin
 end $$;
 
 -- Backfill profiles from auth.users (for existing auth accounts, including current admin)
-insert into public.profiles (id, email, first_name, last_name, phone, role, created_at)
+insert into public.profiles (id, email, name, first_name, last_name, phone, role, created_at)
 select
     u.id,
     u.email,
+    trim(coalesce(u.raw_user_meta_data->>'first_name', '') || ' ' || coalesce(u.raw_user_meta_data->>'last_name', '')) 
+        || case when trim(coalesce(u.raw_user_meta_data->>'first_name', '') || ' ' || coalesce(u.raw_user_meta_data->>'last_name', '')) = '' then u.email else '' end as name,
     coalesce(u.raw_user_meta_data->>'first_name', ''),
     coalesce(u.raw_user_meta_data->>'last_name', ''),
     coalesce(u.raw_user_meta_data->>'phone', ''),
@@ -233,25 +266,55 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+    v_role text;
+    v_first_name text;
+    v_last_name text;
+    v_name text;
 begin
-    insert into public.profiles (id, email, first_name, last_name, phone, role, created_at)
+    -- Extract role from metadata, default to 'customer'
+    v_role := coalesce(new.raw_user_meta_data->>'role', 'customer');
+    v_role := lower(v_role);
+
+    -- Validate role exists in master_roles; if not, use 'customer'
+    if not exists (
+        select 1 from public.master_roles where name = v_role
+    ) then
+        v_role := 'customer';
+    end if;
+
+    -- Extract names and compute full name
+    v_first_name := coalesce(new.raw_user_meta_data->>'first_name', '');
+    v_last_name := coalesce(new.raw_user_meta_data->>'last_name', '');
+    v_name := trim(v_first_name || ' ' || v_last_name);
+    if v_name = '' then
+        v_name := new.email;
+    end if;
+
+    insert into public.profiles (id, email, name, first_name, last_name, phone, role, created_at)
     values (
         new.id,
         new.email,
-        coalesce(new.raw_user_meta_data->>'first_name', ''),
-        coalesce(new.raw_user_meta_data->>'last_name', ''),
+        v_name,
+        v_first_name,
+        v_last_name,
         coalesce(new.raw_user_meta_data->>'phone', ''),
-        coalesce(new.raw_user_meta_data->>'role', 'customer'),
+        v_role,
         coalesce(new.created_at, now())
     )
     on conflict (id) do update
     set
         email = excluded.email,
+        name = excluded.name,
         first_name = coalesce(nullif(excluded.first_name, ''), public.profiles.first_name),
         last_name = coalesce(nullif(excluded.last_name, ''), public.profiles.last_name),
         phone = coalesce(nullif(excluded.phone, ''), public.profiles.phone),
-        role = coalesce(excluded.role, public.profiles.role);
+        role = excluded.role;
 
+    return new;
+exception when others then
+    -- Log error but don't fail user creation
+    raise warning 'handle_auth_user_created: % %', SQLSTATE, sqlerrm;
     return new;
 end;
 $$;

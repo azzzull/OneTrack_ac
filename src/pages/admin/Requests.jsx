@@ -60,7 +60,8 @@ const pickFirst = (obj, keys, fallback = "") => {
 };
 
 const getProfileDisplayName = (profile) => {
-    const composed = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+    const composed =
+        `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
     return (
         composed ||
         String(profile?.name ?? "").trim() ||
@@ -160,19 +161,16 @@ export default function AdminRequestsPage() {
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedRequestId, setSelectedRequestId] = useState(null);
-    const [editingStatus, setEditingStatus] = useState("pending");
-    const [savingStatus, setSavingStatus] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [repairNotes, setRepairNotes] = useState({
         troubleDescription: "",
         replacedParts: "",
         reconditionedParts: "",
     });
     const [serialNumberInput, setSerialNumberInput] = useState("");
-    const [savingRepairNotes, setSavingRepairNotes] = useState(false);
     const [beforePhotoFile, setBeforePhotoFile] = useState(null);
     const [progressPhotoFile, setProgressPhotoFile] = useState(null);
     const [afterPhotoFile, setAfterPhotoFile] = useState(null);
-    const [savingPhotos, setSavingPhotos] = useState(false);
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
     const [cameraError, setCameraError] = useState("");
@@ -288,7 +286,6 @@ export default function AdminRequestsPage() {
 
     useEffect(() => {
         if (!selectedRequest) return;
-        setEditingStatus(selectedRequest.status);
         setSerialNumberInput(
             selectedRequest.serialNumber && selectedRequest.serialNumber !== "-"
                 ? selectedRequest.serialNumber
@@ -303,9 +300,7 @@ export default function AdminRequestsPage() {
 
     const closeDetail = () => {
         setSelectedRequestId(null);
-        setSavingStatus(false);
-        setSavingRepairNotes(false);
-        setSavingPhotos(false);
+        setSaving(false);
         setBeforePhotoFile(null);
         setProgressPhotoFile(null);
         setAfterPhotoFile(null);
@@ -406,50 +401,10 @@ export default function AdminRequestsPage() {
         closeCamera();
     };
 
-    const updateStatus = async () => {
+    const saveChanges = async () => {
         if (!selectedRequest) return;
-        if (editingStatus === selectedRequest.status) return;
 
-        if (editingStatus === "completed" && !selectedRequest.afterPhotoUrl) {
-            await showAlert(
-                "Status Completed membutuhkan foto after. Upload foto after dulu dari halaman pengerjaan.",
-                { title: "Aksi Ditolak" },
-            );
-            return;
-        }
-
-        try {
-            setSavingStatus(true);
-            const payload = {
-                status: editingStatus,
-                updated_at: new Date().toISOString(),
-            };
-            if (role === "technician") {
-                payload.technician_id = user?.id ?? null;
-                payload.technician_name = getCurrentUserDisplayName(user);
-            }
-
-            const { error } = await supabase
-                .from("requests")
-                .update(payload)
-                .eq("id", selectedRequest.id);
-
-            if (error) throw error;
-            await loadRequests();
-        } catch (error) {
-            console.error("Error updating request status:", error);
-            await showAlert("Gagal mengubah status pekerjaan.", {
-                title: "Update Gagal",
-            });
-        } finally {
-            setSavingStatus(false);
-        }
-    };
-
-    const saveRepairDetails = async () => {
-        if (!selectedRequest) return;
-        if (role !== "technician") return;
-
+        // Check if there are any changes to save
         const nextTrouble = (repairNotes.troubleDescription ?? "").trim();
         const nextReplaced = (repairNotes.replacedParts ?? "").trim();
         const nextReconditioned = (repairNotes.reconditionedParts ?? "").trim();
@@ -459,42 +414,94 @@ export default function AdminRequestsPage() {
                 ? String(selectedRequest.serialNumber).trim()
                 : "";
 
-        if (
-            nextTrouble === (selectedRequest.troubleDescription ?? "") &&
-            nextReplaced === (selectedRequest.replacedParts ?? "") &&
-            nextReconditioned === (selectedRequest.reconditionedParts ?? "") &&
-            nextSerial === currentSerial
-        ) {
+        const hasRepairNoteChanges =
+            nextTrouble !== (selectedRequest.troubleDescription ?? "") ||
+            nextReplaced !== (selectedRequest.replacedParts ?? "") ||
+            nextReconditioned !== (selectedRequest.reconditionedParts ?? "") ||
+            nextSerial !== currentSerial;
+
+        const hasNewPhotos =
+            beforePhotoFile || progressPhotoFile || afterPhotoFile;
+
+        if (!hasRepairNoteChanges && !hasNewPhotos) {
+            await showAlert("Tidak ada perubahan yang disimpan.", {
+                title: "Informasi",
+            });
             return;
         }
 
         try {
-            setSavingRepairNotes(true);
+            setSaving(true);
+
+            let beforeUrl = null;
+            let progressUrl = null;
+            let afterUrl = null;
+
+            // Upload new photos if any
+            if (hasNewPhotos) {
+                [beforeUrl, progressUrl, afterUrl] = await Promise.all([
+                    uploadPhoto(beforePhotoFile, "before"),
+                    uploadPhoto(progressPhotoFile, "progress"),
+                    uploadPhoto(afterPhotoFile, "after"),
+                ]);
+            }
+
             const payload = {
                 trouble_description: nextTrouble,
                 replaced_parts: nextReplaced,
                 reconditioned_parts: nextReconditioned,
-                serial_number: serialNumberInput.trim(),
+                serial_number: nextSerial,
                 updated_at: new Date().toISOString(),
             };
+
+            // Add photo URLs if uploaded
+            if (beforeUrl) payload.before_photo_url = beforeUrl;
+            if (progressUrl) payload.progress_photo_url = progressUrl;
+            if (afterUrl) payload.after_photo_url = afterUrl;
+
+            // Add technician info if technician
             if (role === "technician") {
                 payload.technician_id = user?.id ?? null;
                 payload.technician_name = getCurrentUserDisplayName(user);
             }
+
+            // Determine status automatically based on photos
+            // Check current photos + newly uploaded ones
+            const hasBefore = beforeUrl || selectedRequest.beforePhotoUrl;
+            const hasProgress = progressUrl || selectedRequest.progressPhotoUrl;
+            const hasAfter = afterUrl || selectedRequest.afterPhotoUrl;
+
+            if (hasAfter) {
+                payload.status = "completed";
+            } else if (hasProgress && hasBefore) {
+                payload.status = "in_progress";
+            } else if (hasBefore) {
+                payload.status = "pending";
+            } else {
+                // Keep current status if no photos
+                payload.status = selectedRequest.status;
+            }
+
             const { error } = await supabase
                 .from("requests")
                 .update(payload)
                 .eq("id", selectedRequest.id);
+
             if (error) throw error;
 
             await loadRequests();
-        } catch (error) {
-            console.error("Error saving repair details:", error);
-            await showAlert("Gagal menyimpan detail perbaikan.", {
-                title: "Simpan Gagal",
+            setBeforePhotoFile(null);
+            setProgressPhotoFile(null);
+            setAfterPhotoFile(null);
+
+            await showAlert("Perubahan berhasil disimpan.", {
+                title: "Sukses",
             });
+        } catch (error) {
+            console.error("Error saving changes:", error);
+            await showAlert("Gagal menyimpan perubahan.", { title: "Error" });
         } finally {
-            setSavingRepairNotes(false);
+            setSaving(false);
         }
     };
 
@@ -511,65 +518,6 @@ export default function AdminRequestsPage() {
 
         const { data } = supabase.storage.from("job-photos").getPublicUrl(path);
         return data?.publicUrl ?? null;
-    };
-
-    const savePhotos = async () => {
-        if (!selectedRequest) return;
-        if (!beforePhotoFile && !progressPhotoFile && !afterPhotoFile) {
-            await showAlert("Pilih minimal 1 foto untuk disimpan.", {
-                title: "Data Belum Lengkap",
-            });
-            return;
-        }
-
-        try {
-            setSavingPhotos(true);
-
-            const [beforeUrl, progressUrl, afterUrl] = await Promise.all([
-                uploadPhoto(beforePhotoFile, "before"),
-                uploadPhoto(progressPhotoFile, "progress"),
-                uploadPhoto(afterPhotoFile, "after"),
-            ]);
-
-            const payload = {
-                updated_at: new Date().toISOString(),
-            };
-
-            if (beforeUrl) payload.before_photo_url = beforeUrl;
-            if (progressUrl) payload.progress_photo_url = progressUrl;
-            if (afterUrl) payload.after_photo_url = afterUrl;
-
-            let nextStatus = selectedRequest.status;
-            if (afterUrl) {
-                nextStatus = "completed";
-            } else if (progressUrl && selectedRequest.status === "pending") {
-                nextStatus = "in_progress";
-            }
-            payload.status = nextStatus;
-            if (role === "technician") {
-                payload.technician_id = user?.id ?? null;
-                payload.technician_name = getCurrentUserDisplayName(user);
-            }
-
-            const { error } = await supabase
-                .from("requests")
-                .update(payload)
-                .eq("id", selectedRequest.id);
-            if (error) throw error;
-
-            await loadRequests();
-            setEditingStatus(nextStatus);
-            setBeforePhotoFile(null);
-            setProgressPhotoFile(null);
-            setAfterPhotoFile(null);
-        } catch (error) {
-            console.error("Error saving photos:", error);
-            await showAlert("Gagal menyimpan foto.", {
-                title: "Simpan Gagal",
-            });
-        } finally {
-            setSavingPhotos(false);
-        }
     };
 
     useEffect(() => {
@@ -768,31 +716,10 @@ export default function AdminRequestsPage() {
                                     <ShieldCheck size={14} />
                                     Status
                                 </p>
-                                <div className="mt-3">
-                                    <CustomSelect
-                                        value={editingStatus}
-                                        onChange={setEditingStatus}
-                                        options={STATUS_OPTIONS}
-                                        className="mt-0 bg-white"
-                                    />
+                                <div className="mt-3 inline-flex rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 bg-slate-50">
+                                    {STATUS_LABELS[selectedRequest.status] ??
+                                        "PENDING"}
                                 </div>
-                                <button
-                                    type="button"
-                                    disabled={
-                                        savingStatus ||
-                                        editingStatus === selectedRequest.status
-                                    }
-                                    onClick={updateStatus}
-                                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {savingStatus
-                                        ? "Menyimpan..."
-                                        : "Simpan Status"}
-                                </button>
-                                <p className="mt-2 text-xs text-slate-500">
-                                    Jika status jadi Completed, foto after harus
-                                    tersedia.
-                                </p>
                             </div>
                         </div>
 
@@ -845,7 +772,8 @@ export default function AdminRequestsPage() {
                                     <div className="mt-3 space-y-3">
                                         <label className="block">
                                             <span className="text-xs font-medium text-slate-600">
-                                                Serial Number (scan barcode kamera)
+                                                Serial Number (scan barcode
+                                                kamera)
                                             </span>
                                             <div className="mt-1 flex gap-2">
                                                 <input
@@ -857,7 +785,9 @@ export default function AdminRequestsPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() =>
-                                                        openCamera("serial-scan")
+                                                        openCamera(
+                                                            "serial-scan",
+                                                        )
                                                     }
                                                     className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
                                                     title="Scan serial dengan kamera"
@@ -891,7 +821,9 @@ export default function AdminRequestsPage() {
                                                 Suku Cadang Diganti
                                             </span>
                                             <textarea
-                                                value={repairNotes.replacedParts}
+                                                value={
+                                                    repairNotes.replacedParts
+                                                }
                                                 onChange={(event) =>
                                                     setRepairNotes((prev) => ({
                                                         ...prev,
@@ -922,16 +854,6 @@ export default function AdminRequestsPage() {
                                                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
                                             />
                                         </label>
-                                        <button
-                                            type="button"
-                                            onClick={saveRepairDetails}
-                                            disabled={savingRepairNotes}
-                                            className="inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                            {savingRepairNotes
-                                                ? "Menyimpan Detail..."
-                                                : "Simpan Detail Perbaikan"}
-                                        </button>
                                     </div>
                                 ) : (
                                     <div className="mt-3 space-y-2 text-sm text-slate-700">
@@ -963,48 +885,47 @@ export default function AdminRequestsPage() {
                                 Dokumentasi
                             </p>
                             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                                <a
-                                    href={
-                                        selectedRequest.beforePhotoUrl ||
-                                        undefined
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700 hover:bg-slate-50"
-                                >
-                                    Before:{" "}
-                                    {selectedRequest.beforePhotoUrl
-                                        ? "Lihat Foto"
-                                        : "Belum ada"}
-                                </a>
-                                <a
-                                    href={
-                                        selectedRequest.progressPhotoUrl ||
-                                        undefined
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700 hover:bg-slate-50"
-                                >
-                                    Progress:{" "}
-                                    {selectedRequest.progressPhotoUrl
-                                        ? "Lihat Foto"
-                                        : "Belum ada"}
-                                </a>
-                                <a
-                                    href={
-                                        selectedRequest.afterPhotoUrl ||
-                                        undefined
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700 hover:bg-slate-50"
-                                >
-                                    After:{" "}
-                                    {selectedRequest.afterPhotoUrl
-                                        ? "Lihat Foto"
-                                        : "Belum ada"}
-                                </a>
+                                {[
+                                    {
+                                        label: "Before",
+                                        url: selectedRequest.beforePhotoUrl,
+                                    },
+                                    {
+                                        label: "Progress",
+                                        url: selectedRequest.progressPhotoUrl,
+                                    },
+                                    {
+                                        label: "After",
+                                        url: selectedRequest.afterPhotoUrl,
+                                    },
+                                ].map((item) => (
+                                    <div
+                                        key={item.label}
+                                        className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                                    >
+                                        {item.url ? (
+                                            <a
+                                                href={item.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="block"
+                                            >
+                                                <img
+                                                    src={item.url}
+                                                    alt={`Foto ${item.label}`}
+                                                    className="h-40 w-full object-cover"
+                                                />
+                                            </a>
+                                        ) : (
+                                            <div className="flex h-40 items-center justify-center text-sm text-slate-400">
+                                                Belum ada foto
+                                            </div>
+                                        )}
+                                        <p className="border-t border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">
+                                            {item.label}
+                                        </p>
+                                    </div>
+                                ))}
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -1059,24 +980,14 @@ export default function AdminRequestsPage() {
 
                             <button
                                 type="button"
-                                onClick={savePhotos}
-                                disabled={
-                                    savingPhotos ||
-                                    (!beforePhotoFile &&
-                                        !progressPhotoFile &&
-                                        !afterPhotoFile)
-                                }
-                                className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={saveChanges}
+                                disabled={saving}
+                                className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {savingPhotos
-                                    ? "Menyimpan Foto..."
-                                    : "Simpan Foto"}
+                                {saving
+                                    ? "Menyimpan Perubahan..."
+                                    : "Simpan Perubahan"}
                             </button>
-                            <p className="mt-2 text-xs text-slate-500">
-                                Upload Progress otomatis ubah status ke In
-                                Progress. Upload After otomatis ubah status ke
-                                Completed.
-                            </p>
                         </div>
                     </div>
                 </div>

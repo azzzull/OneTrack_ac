@@ -47,7 +47,9 @@ const FileCaptureCard = ({ label, fileName, onClick }) => (
             {label}
         </span>
         <p className="mt-2 text-xs text-slate-500">
-            {fileName ? `Tertangkap: ${fileName}` : "Klik untuk ambil foto dari kamera"}
+            {fileName
+                ? `Tertangkap: ${fileName}`
+                : "Klik untuk ambil foto dari kamera"}
         </p>
     </button>
 );
@@ -82,19 +84,16 @@ function TechnicianDashboard() {
     const [loading, setLoading] = useState(true);
     const [tasks, setTasks] = useState([]);
     const [selectedTaskId, setSelectedTaskId] = useState(null);
-    const [editingStatus, setEditingStatus] = useState("pending");
-    const [savingStatus, setSavingStatus] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [repairNotes, setRepairNotes] = useState({
         troubleDescription: "",
         replacedParts: "",
         reconditionedParts: "",
     });
-    const [savingRepairNotes, setSavingRepairNotes] = useState(false);
     const [beforePhotoFile, setBeforePhotoFile] = useState(null);
     const [progressPhotoFile, setProgressPhotoFile] = useState(null);
     const [afterPhotoFile, setAfterPhotoFile] = useState(null);
     const [serialNumber, setSerialNumber] = useState("");
-    const [savingPhotos, setSavingPhotos] = useState(false);
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
     const [cameraError, setCameraError] = useState("");
@@ -129,7 +128,6 @@ function TechnicianDashboard() {
 
     useEffect(() => {
         if (!selectedTask) return;
-        setEditingStatus(selectedTask.status ?? "pending");
         setRepairNotes({
             troubleDescription: selectedTask.trouble_description ?? "",
             replacedParts: selectedTask.replaced_parts ?? "",
@@ -195,7 +193,9 @@ function TechnicianDashboard() {
             setCameraError("");
         } catch (error) {
             console.error("Camera access failed:", error);
-            setCameraError("Akses kamera ditolak. Aktifkan izin kamera di browser.");
+            setCameraError(
+                "Akses kamera ditolak. Aktifkan izin kamera di browser.",
+            );
         }
     }, []);
 
@@ -232,9 +232,12 @@ function TechnicianDashboard() {
             const found = await scanSerialFromImage(file);
             closeCamera();
             if (!found) {
-                await showAlert("Barcode belum terbaca, arahkan kamera lebih dekat lalu scan ulang.", {
-                    title: "Scan Gagal",
-                });
+                await showAlert(
+                    "Barcode belum terbaca, arahkan kamera lebih dekat lalu scan ulang.",
+                    {
+                        title: "Scan Gagal",
+                    },
+                );
             }
             return;
         }
@@ -256,49 +259,51 @@ function TechnicianDashboard() {
     const closeDetail = () => {
         closeCamera();
         setSelectedTaskId(null);
-        setSavingStatus(false);
-        setSavingRepairNotes(false);
-        setSavingPhotos(false);
+        setSaving(false);
         setBeforePhotoFile(null);
         setProgressPhotoFile(null);
         setAfterPhotoFile(null);
     };
 
-    const updateStatus = async () => {
+    const saveChanges = async () => {
         if (!selectedTask) return;
-        if (editingStatus === selectedTask.status) return;
 
-        try {
-            setSavingStatus(true);
-            const { error } = await supabase
-                .from("requests")
-                .update({
-                    status: editingStatus,
-                    technician_id: user?.id ?? null,
-                    technician_name:
-                        user?.user_metadata?.full_name ??
-                        user?.email ??
-                        "Teknisi",
-                    updated_at: new Date().toISOString(),
-                })
-                .eq("id", selectedTask.id);
-            if (error) throw error;
-            await loadTasks();
-        } catch (error) {
-            console.error("Error updating task status:", error);
-            await showAlert("Gagal mengubah status pekerjaan.", {
-                title: "Update Gagal",
+        // Validasi: minimal ada satu perubahan atau satu foto baru
+        const hasRepairNoteChanges =
+            repairNotes.troubleDescription.trim() !==
+                (selectedTask.trouble_description ?? "") ||
+            repairNotes.replacedParts.trim() !==
+                (selectedTask.replaced_parts ?? "") ||
+            repairNotes.reconditionedParts.trim() !==
+                (selectedTask.reconditioned_parts ?? "") ||
+            serialNumber.trim() !== (selectedTask.serial_number ?? "");
+
+        const hasNewPhotos =
+            beforePhotoFile || progressPhotoFile || afterPhotoFile;
+
+        if (!hasRepairNoteChanges && !hasNewPhotos) {
+            await showAlert("Tidak ada perubahan yang disimpan.", {
+                title: "Informasi",
             });
-        } finally {
-            setSavingStatus(false);
+            return;
         }
-    };
-
-    const saveRepairDetails = async () => {
-        if (!selectedTask) return;
 
         try {
-            setSavingRepairNotes(true);
+            setSaving(true);
+
+            let beforeUrl = null;
+            let progressUrl = null;
+            let afterUrl = null;
+
+            // Upload new photos if any
+            if (hasNewPhotos) {
+                [beforeUrl, progressUrl, afterUrl] = await Promise.all([
+                    uploadPhoto(beforePhotoFile, "before"),
+                    uploadPhoto(progressPhotoFile, "progress"),
+                    uploadPhoto(afterPhotoFile, "after"),
+                ]);
+            }
+
             const payload = {
                 trouble_description: repairNotes.troubleDescription.trim(),
                 replaced_parts: repairNotes.replacedParts.trim(),
@@ -308,19 +313,46 @@ function TechnicianDashboard() {
                 serial_number: serialNumber.trim(),
                 updated_at: new Date().toISOString(),
             };
+
+            // Add photo URLs if uploaded
+            if (beforeUrl) payload.before_photo_url = beforeUrl;
+            if (progressUrl) payload.progress_photo_url = progressUrl;
+            if (afterUrl) payload.after_photo_url = afterUrl;
+
+            // Determine status automatically based on photos
+            // Check current photos + newly uploaded ones
+            const hasBefore = beforeUrl || selectedTask.before_photo_url;
+            const hasProgress = progressUrl || selectedTask.progress_photo_url;
+            const hasAfter = afterUrl || selectedTask.after_photo_url;
+
+            if (hasAfter) {
+                payload.status = "completed";
+            } else if (hasProgress && hasBefore) {
+                payload.status = "in_progress";
+            } else if (hasBefore) {
+                payload.status = "pending";
+            }
+
             const { error } = await supabase
                 .from("requests")
                 .update(payload)
                 .eq("id", selectedTask.id);
+
             if (error) throw error;
+
             await loadTasks();
-        } catch (error) {
-            console.error("Error saving repair details:", error);
-            await showAlert("Gagal menyimpan detail perbaikan.", {
-                title: "Simpan Gagal",
+            setBeforePhotoFile(null);
+            setProgressPhotoFile(null);
+            setAfterPhotoFile(null);
+
+            await showAlert("Perubahan berhasil disimpan.", {
+                title: "Sukses",
             });
+        } catch (error) {
+            console.error("Error saving changes:", error);
+            await showAlert("Gagal menyimpan perubahan.", { title: "Error" });
         } finally {
-            setSavingRepairNotes(false);
+            setSaving(false);
         }
     };
 
@@ -337,61 +369,13 @@ function TechnicianDashboard() {
         return data?.publicUrl ?? null;
     };
 
-    const savePhotos = async () => {
-        if (!selectedTask) return;
-        if (
-            !beforePhotoFile &&
-            !progressPhotoFile &&
-            !afterPhotoFile
-        ) {
-            await showAlert("Pilih minimal 1 foto.", {
-                title: "Data Belum Lengkap",
-            });
-            return;
-        }
-        try {
-            setSavingPhotos(true);
-            const [beforeUrl, progressUrl, afterUrl] = await Promise.all([
-                uploadPhoto(beforePhotoFile, "before"),
-                uploadPhoto(progressPhotoFile, "progress"),
-                uploadPhoto(afterPhotoFile, "after"),
-            ]);
-            const payload = {
-                technician_id: user?.id ?? null,
-                technician_name: getCurrentUserDisplayName(user),
-                serial_number: serialNumber.trim(),
-                updated_at: new Date().toISOString(),
-            };
-            if (beforeUrl) payload.before_photo_url = beforeUrl;
-            if (progressUrl) payload.progress_photo_url = progressUrl;
-            if (afterUrl) payload.after_photo_url = afterUrl;
-            if (afterUrl) payload.status = "completed";
-            else if (progressUrl && selectedTask.status === "pending") {
-                payload.status = "in_progress";
-            }
-
-            const { error } = await supabase
-                .from("requests")
-                .update(payload)
-                .eq("id", selectedTask.id);
-            if (error) throw error;
-
-            await loadTasks();
-            setBeforePhotoFile(null);
-            setProgressPhotoFile(null);
-            setAfterPhotoFile(null);
-        } catch (error) {
-            console.error("Error saving task photos:", error);
-            await showAlert("Gagal menyimpan foto.", { title: "Simpan Gagal" });
-        } finally {
-            setSavingPhotos(false);
-        }
-    };
-
     return (
         <div className="min-h-screen bg-sky-50">
             <div className="flex min-h-screen">
-                <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+                <Sidebar
+                    collapsed={sidebarCollapsed}
+                    onToggle={toggleSidebar}
+                />
 
                 <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
                     <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
@@ -408,7 +392,9 @@ function TechnicianDashboard() {
                         </h2>
 
                         {loading ? (
-                            <p className="mt-4 text-sm text-slate-500">Memuat pekerjaan...</p>
+                            <p className="mt-4 text-sm text-slate-500">
+                                Memuat pekerjaan...
+                            </p>
                         ) : tasks.length === 0 ? (
                             <p className="mt-4 rounded-xl border border-dashed border-sky-300 bg-sky-50 p-4 text-sm text-sky-700">
                                 Belum ada pekerjaan yang Anda kerjakan.
@@ -419,23 +405,31 @@ function TechnicianDashboard() {
                                     <article
                                         key={item.id}
                                         className="cursor-pointer rounded-xl border border-slate-200 p-4 transition hover:border-sky-300 hover:bg-sky-50/30"
-                                        onClick={() => setSelectedTaskId(item.id)}
+                                        onClick={() =>
+                                            setSelectedTaskId(item.id)
+                                        }
                                     >
                                         <div className="flex flex-wrap items-start justify-between gap-3">
                                             <div>
                                                 <p className="text-base font-semibold text-slate-900">
-                                                    {item.title ?? "Pekerjaan Tanpa Judul"}
+                                                    {item.title ??
+                                                        "Pekerjaan Tanpa Judul"}
                                                 </p>
                                                 <p className="mt-1 text-sm text-slate-600">
-                                                    {item.location ?? item.address ?? "-"}
+                                                    {item.location ??
+                                                        item.address ??
+                                                        "-"}
                                                 </p>
                                             </div>
                                             <span
                                                 className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                                    STATUS_STYLES[item.status] ?? STATUS_STYLES.pending
+                                                    STATUS_STYLES[
+                                                        item.status
+                                                    ] ?? STATUS_STYLES.pending
                                                 }`}
                                             >
-                                                {STATUS_LABELS[item.status] ?? "PENDING"}
+                                                {STATUS_LABELS[item.status] ??
+                                                    "PENDING"}
                                             </span>
                                         </div>
                                         <div className="mt-3 inline-flex items-center gap-1 text-xs text-slate-500">
@@ -479,7 +473,9 @@ function TechnicianDashboard() {
                                 </h3>
                                 <p className="mt-2 inline-flex items-start gap-2 text-sm text-slate-600">
                                     <MapPinned size={14} />
-                                    {selectedTask.location ?? selectedTask.address ?? "-"}
+                                    {selectedTask.location ??
+                                        selectedTask.address ??
+                                        "-"}
                                 </p>
                                 <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
                                     <Phone size={14} />
@@ -491,27 +487,15 @@ function TechnicianDashboard() {
                                 </p>
                             </div>
 
-                            <div className="rounded-2xl border border-slate-200 p-4">
+                            <div className="rounded-2xl border border-slate-200 p-4 flex flex-col items-start gap-2">
                                 <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     <ShieldCheck size={14} />
                                     Status
                                 </p>
-                                <div className="mt-3">
-                                    <CustomSelect
-                                        value={editingStatus}
-                                        onChange={setEditingStatus}
-                                        options={STATUS_OPTIONS}
-                                        className="mt-0 bg-white"
-                                    />
+                                <div className="mt-2 inline-flex rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 bg-slate-50">
+                                    {STATUS_LABELS[selectedTask.status] ??
+                                        "PENDING"}
                                 </div>
-                                <button
-                                    type="button"
-                                    disabled={savingStatus || editingStatus === selectedTask.status}
-                                    onClick={updateStatus}
-                                    className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {savingStatus ? "Menyimpan..." : "Simpan Status"}
-                                </button>
                             </div>
                         </div>
 
@@ -534,7 +518,9 @@ function TechnicianDashboard() {
                                         />
                                         <button
                                             type="button"
-                                            onClick={() => openCamera("serial-scan")}
+                                            onClick={() =>
+                                                openCamera("serial-scan")
+                                            }
                                             className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
                                         >
                                             <Camera size={14} />
@@ -551,7 +537,8 @@ function TechnicianDashboard() {
                                         onChange={(event) =>
                                             setRepairNotes((prev) => ({
                                                 ...prev,
-                                                troubleDescription: event.target.value,
+                                                troubleDescription:
+                                                    event.target.value,
                                             }))
                                         }
                                         rows={3}
@@ -567,7 +554,8 @@ function TechnicianDashboard() {
                                         onChange={(event) =>
                                             setRepairNotes((prev) => ({
                                                 ...prev,
-                                                replacedParts: event.target.value,
+                                                replacedParts:
+                                                    event.target.value,
                                             }))
                                         }
                                         rows={2}
@@ -583,29 +571,75 @@ function TechnicianDashboard() {
                                         onChange={(event) =>
                                             setRepairNotes((prev) => ({
                                                 ...prev,
-                                                reconditionedParts: event.target.value,
+                                                reconditionedParts:
+                                                    event.target.value,
                                             }))
                                         }
                                         rows={2}
                                         className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
                                     />
                                 </label>
-                                <button
-                                    type="button"
-                                    onClick={saveRepairDetails}
-                                    disabled={savingRepairNotes}
-                                    className="inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {savingRepairNotes
-                                        ? "Menyimpan Detail..."
-                                        : "Simpan Detail Perbaikan"}
-                                </button>
                             </div>
                         </div>
 
                         <div className="mt-4 rounded-2xl border border-slate-200 p-4">
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 Dokumentasi
+                            </p>
+                            {(selectedTask?.before_photo_url ||
+                                selectedTask?.progress_photo_url ||
+                                selectedTask?.after_photo_url) && (
+                                <div className="mt-3 mb-4">
+                                    <p className="text-xs text-slate-500 mb-2">
+                                        Foto yang sudah diambil:
+                                    </p>
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                        {[
+                                            {
+                                                label: "Before",
+                                                url: selectedTask?.before_photo_url,
+                                            },
+                                            {
+                                                label: "Progress",
+                                                url: selectedTask?.progress_photo_url,
+                                            },
+                                            {
+                                                label: "After",
+                                                url: selectedTask?.after_photo_url,
+                                            },
+                                        ].map((item) => (
+                                            <div
+                                                key={item.label}
+                                                className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                                            >
+                                                {item.url ? (
+                                                    <a
+                                                        href={item.url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="block"
+                                                    >
+                                                        <img
+                                                            src={item.url}
+                                                            alt={`Foto ${item.label}`}
+                                                            className="h-40 w-full object-cover"
+                                                        />
+                                                    </a>
+                                                ) : (
+                                                    <div className="flex h-40 items-center justify-center text-sm text-slate-400">
+                                                        Belum ada
+                                                    </div>
+                                                )}
+                                                <p className="border-t border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">
+                                                    {item.label}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            <p className="text-xs text-slate-500 mb-3">
+                                Ambil foto baru:
                             </p>
                             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
                                 <FileCaptureCard
@@ -626,16 +660,13 @@ function TechnicianDashboard() {
                             </div>
                             <button
                                 type="button"
-                                onClick={savePhotos}
-                                disabled={
-                                    savingPhotos ||
-                                    (!beforePhotoFile &&
-                                        !progressPhotoFile &&
-                                        !afterPhotoFile)
-                                }
-                                className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={saveChanges}
+                                disabled={saving}
+                                className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {savingPhotos ? "Menyimpan Foto..." : "Simpan Foto"}
+                                {saving
+                                    ? "Menyimpan Perubahan..."
+                                    : "Simpan Perubahan"}
                             </button>
                         </div>
                     </div>
@@ -662,7 +693,9 @@ function TechnicianDashboard() {
 
                         <div className="mt-3 overflow-hidden rounded-xl bg-black">
                             {cameraError ? (
-                                <p className="p-4 text-sm text-rose-600">{cameraError}</p>
+                                <p className="p-4 text-sm text-rose-600">
+                                    {cameraError}
+                                </p>
                             ) : (
                                 <video
                                     ref={videoRef}
