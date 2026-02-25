@@ -711,7 +711,7 @@ export default function AdminRequestsPage() {
                                 </p>
                             </div>
 
-                            <div className="rounded-2xl border border-slate-200 p-4">
+                            <div className="rounded-2xl border border-slate-200 p-4 flex flex-col items-start gap-2">
                                 <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     <ShieldCheck size={14} />
                                     Status

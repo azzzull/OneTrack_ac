@@ -9,6 +9,7 @@ import {
     ShieldCheck,
     Wrench,
     X,
+    UserRound,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
@@ -404,37 +405,82 @@ function TechnicianDashboard() {
                                 {tasks.map((item) => (
                                     <article
                                         key={item.id}
-                                        className="cursor-pointer rounded-xl border border-slate-200 p-4 transition hover:border-sky-300 hover:bg-sky-50/30"
+                                        className="cursor-pointer overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md hover:scale-[1.01]"
                                         onClick={() =>
                                             setSelectedTaskId(item.id)
                                         }
                                     >
-                                        <div className="flex flex-wrap items-start justify-between gap-3">
-                                            <div>
-                                                <p className="text-base font-semibold text-slate-900">
-                                                    {item.title ??
-                                                        "Pekerjaan Tanpa Judul"}
-                                                </p>
-                                                <p className="mt-1 text-sm text-slate-600">
-                                                    {item.location ??
-                                                        item.address ??
-                                                        "-"}
-                                                </p>
+                                        <div className="grid grid-cols-1 md:grid-cols-[1fr_190px]">
+                                            <div className="p-4 md:p-5">
+                                                <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
+                                                    <div className="min-w-0">
+                                                        <h2 className="wrap-break-word text-lg font-semibold text-slate-900 md:text-xl">
+                                                            {item.title ??
+                                                                "Pekerjaan Tanpa Judul"}
+                                                        </h2>
+                                                        <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-slate-500 md:text-base">
+                                                            <MapPinned
+                                                                size={16}
+                                                            />
+                                                            <span>
+                                                                {item.address ??
+                                                                    item.location ??
+                                                                    "-"}
+                                                            </span>
+                                                        </p>
+                                                    </div>
+
+                                                    <span
+                                                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                                            STATUS_STYLES[
+                                                                item.status
+                                                            ] ??
+                                                            STATUS_STYLES.pending
+                                                        }`}
+                                                    >
+                                                        {STATUS_LABELS[
+                                                            item.status
+                                                        ] ?? "PENDING"}
+                                                    </span>
+                                                </div>
+
+                                                <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
+                                                    <p className="inline-flex items-center gap-2">
+                                                        <Phone size={14} />
+                                                        <span className="break-all">
+                                                            {item.customer_phone ??
+                                                                "-"}
+                                                        </span>
+                                                    </p>
+                                                    <p className="inline-flex items-center gap-2">
+                                                        <Wrench size={14} />
+                                                        <span className="wrap-break-word">
+                                                            {item.technician_name ??
+                                                                getCurrentUserDisplayName(
+                                                                    user,
+                                                                )}
+                                                        </span>
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <span
-                                                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                                    STATUS_STYLES[
-                                                        item.status
-                                                    ] ?? STATUS_STYLES.pending
-                                                }`}
-                                            >
-                                                {STATUS_LABELS[item.status] ??
-                                                    "PENDING"}
-                                            </span>
-                                        </div>
-                                        <div className="mt-3 inline-flex items-center gap-1 text-xs text-slate-500">
-                                            <CalendarDays size={13} />
-                                            {formatDate(item.created_at)}
+
+                                            <aside className="border-t border-slate-200 bg-slate-50 p-4 md:border-l md:border-t-0 md:p-5">
+                                                <div className="flex flex-col gap-3 md:gap-4">
+                                                    <p className="inline-flex items-center gap-2 text-sm text-slate-600">
+                                                        <CalendarDays
+                                                            size={15}
+                                                        />
+                                                        {formatDate(
+                                                            item.created_at,
+                                                        )}
+                                                    </p>
+                                                    <p className="inline-flex items-center gap-2 wrap-break-word text-sm text-slate-600">
+                                                        <UserRound size={15} />
+                                                        {item.customer_name ??
+                                                            "-"}
+                                                    </p>
+                                                </div>
+                                            </aside>
                                         </div>
                                     </article>
                                 ))}
@@ -480,6 +526,10 @@ function TechnicianDashboard() {
                                 <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
                                     <Phone size={14} />
                                     {selectedTask.customer_phone ?? "-"}
+                                </p>
+                                <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
+                                    <UserRound size={14} />
+                                    {selectedTask.customer_name ?? "-"}
                                 </p>
                                 <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
                                     <CalendarDays size={14} />
