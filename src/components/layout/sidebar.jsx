@@ -43,6 +43,9 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     const { user, role, profile } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
+    const [newRequestToast, setNewRequestToast] = useState("");
+    const prevPendingRef = useRef(null);
+    const toastTimerRef = useRef(null);
     const menus = getMenus(role).map((menu) => {
         const badgeByPath = {
             "/requests": stats.pending,
@@ -70,64 +73,122 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         "admin@onetrack.com";
     const canOpenProfile = role === "customer" || role === "technician";
 
+    useEffect(() => {
+        return () => {
+            if (toastTimerRef.current) {
+                clearTimeout(toastTimerRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        const currentPending = Number(stats.pending ?? 0);
+
+        if (role !== "technician") {
+            prevPendingRef.current = currentPending;
+            return;
+        }
+
+        if (prevPendingRef.current === null) {
+            prevPendingRef.current = currentPending;
+            return;
+        }
+
+        const previousPending = prevPendingRef.current;
+        if (currentPending > previousPending) {
+            const addedCount = currentPending - previousPending;
+            const message =
+                addedCount > 1
+                    ? `ada ${addedCount} pekerjaan baru yang di request`
+                    : "ada pekerjaan baru yang di request";
+
+            setNewRequestToast(message);
+            if (toastTimerRef.current) {
+                clearTimeout(toastTimerRef.current);
+            }
+            toastTimerRef.current = setTimeout(() => {
+                setNewRequestToast("");
+            }, 4500);
+
+            if ("Notification" in window) {
+                if (Notification.permission === "granted") {
+                    new Notification("OneTrack", {
+                        body: message,
+                    });
+                } else if (Notification.permission === "default") {
+                    Notification.requestPermission().then((permission) => {
+                        if (permission === "granted") {
+                            new Notification("OneTrack", {
+                                body: message,
+                            });
+                        }
+                    });
+                }
+            }
+        }
+
+        prevPendingRef.current = currentPending;
+    }, [role, stats.pending]);
+
     return (
-        <aside
-            className={`hidden h-screen shrink-0 border-r shadow-lg border-gray-100 bg-white px-3 py-4 transition-all duration-200 md:sticky md:top-0 md:block ${
-                collapsed ? "w-28" : "w-75"
-            }`}
-        >
-            <nav className="flex h-full flex-col">
-                {/* Logo */}
-                <div
-                    className={`mb-7 flex items-center ${
-                        collapsed ? "justify-center" : "justify-between"
-                    }`}
-                >
+        <>
+            <aside
+                className={`hidden h-screen shrink-0 border-r shadow-lg border-gray-100 bg-white px-3 py-4 transition-all duration-200 md:sticky md:top-0 md:block ${
+                    collapsed ? "w-28" : "w-75"
+                }`}
+            >
+                <nav className="flex h-full flex-col">
+                    {/* Logo */}
                     <div
-                        className={`flex items-center ${
-                            collapsed ? "flex-col gap-2" : "gap-3 p-4"
+                        className={`mb-7 flex items-center ${
+                            collapsed ? "justify-center" : "justify-between"
                         }`}
                     >
-                        <img
-                            src="/saplogo.svg"
-                            alt="SAP Logo"
-                            className={collapsed ? "h-10 w-10 object-contain" : "h-12 w-12 object-contain"}
-                        />
+                        <div
+                            className={`flex items-center ${
+                                collapsed ? "flex-col gap-2" : "gap-3 p-4"
+                            }`}
+                        >
+                            <img
+                                src="/saplogo.svg"
+                                alt="SAP Logo"
+                                className={collapsed ? "h-10 w-10 object-contain" : "h-12 w-12 object-contain"}
+                            />
+                            {!collapsed && (
+                                <h1 className="text-2xl font-bold text-sky-500">
+                                    OneTrack
+                                </h1>
+                            )}
+                        </div>
+
                         {!collapsed && (
-                            <h1 className="text-2xl font-bold text-sky-500">
-                                OneTrack
-                            </h1>
+                            <button
+                                onClick={onToggle}
+                                className="rounded-lg p-2 text-slate-500 cursor-pointer hover:bg-slate-100"
+                            >
+                                <PanelLeftClose size={18} />
+                            </button>
                         )}
                     </div>
 
-                    {!collapsed && (
+                    {collapsed && (
                         <button
                             onClick={onToggle}
-                            className="rounded-lg p-2 text-slate-500 cursor-pointer hover:bg-slate-100"
+                            className="mb-4 flex flex-col items-center rounded-xl cursor-pointer px-1 py-2 text-xs text-slate-500 hover:bg-slate-100"
                         >
-                            <PanelLeftClose size={18} />
+                            <PanelLeftOpen size={18} />
+                            <span className="mt-1">Expand</span>
                         </button>
                     )}
-                </div>
 
-                {collapsed && (
-                    <button
-                        onClick={onToggle}
-                        className="mb-4 flex flex-col items-center rounded-xl cursor-pointer px-1 py-2 text-xs text-slate-500 hover:bg-slate-100"
-                    >
-                        <PanelLeftOpen size={18} />
-                        <span className="mt-1">Expand</span>
-                    </button>
-                )}
-
-                {/* Menu */}
-                <ul className={`space-y-2 ${collapsed ? "px-1" : "px-2"}`}>
-                    {menus.map(({ label, path, icon, badge }) => (
-                        <li key={label}>
-                            <NavLink
-                                to={path}
-                                className={({ isActive }) =>
-                                    ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
+                    {/* Menu */}
+                    <ul className={`space-y-2 ${collapsed ? "px-1" : "px-2"}`}>
+                        {menus.map(({ label, path, icon, badge }) => (
+                            <li key={label}>
+                                <NavLink
+                                    to={path}
+                                    className={({ isActive }) =>
+                                        ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
                                     ${
                                         isActive
                                             ? "bg-sky-100 text-sky-500"
@@ -139,69 +200,77 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                             : "flex items-center gap-4 px-5 py-3 text-md"
                                     }
                                 `
-                                }
-                                style={{ textDecoration: "none" }}
-                            >
-                                {createElement(icon, {
-                                    size: collapsed ? 18 : 20,
-                                })}
+                                    }
+                                    style={{ textDecoration: "none" }}
+                                >
+                                    {createElement(icon, {
+                                        size: collapsed ? 18 : 20,
+                                    })}
 
-                                <span className={collapsed ? "mt-1" : ""}>
-                                    {label}
-                                </span>
-
-                                {/* Notification Badge */}
-                                {badge && (
-                                    <span className="absolute top-2 right-3 rounded-full bg-red-500 px-1.5 text-[10px] text-white">
-                                        {badge}
+                                    <span className={collapsed ? "mt-1" : ""}>
+                                        {label}
                                     </span>
-                                )}
-                            </NavLink>
-                        </li>
-                    ))}
-                </ul>
 
-                {/* Footer */}
-                <div
-                    className={`mt-auto ${
-                        collapsed ? "space-y-3" : "space-y-5"
-                    } pb-2`}
-                >
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (canOpenProfile) navigate("/profile");
-                        }}
-                        className={`flex w-full items-center gap-3 px-6 text-slate-500 ${
-                            collapsed ? "flex-col text-[11px]" : "text-base"
-                        } ${
-                            canOpenProfile
-                                ? "cursor-pointer rounded-xl py-2 hover:bg-slate-100 hover:text-slate-700"
-                                : "cursor-default py-2"
-                        }`}
+                                    {/* Notification Badge */}
+                                    {badge && (
+                                        <span className="absolute top-2 right-3 rounded-full bg-red-500 px-1.5 text-[10px] text-white">
+                                            {badge}
+                                        </span>
+                                    )}
+                                </NavLink>
+                            </li>
+                        ))}
+                    </ul>
+
+                    {/* Footer */}
+                    <div
+                        className={`mt-auto ${
+                            collapsed ? "space-y-3" : "space-y-5"
+                        } pb-2`}
                     >
-                        <CircleUserRound size={collapsed ? 18 : 20} />
-                        {!collapsed && (
-                            <span className="truncate text-left">
-                                {identityLabel}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (canOpenProfile) navigate("/profile");
+                            }}
+                            className={`flex w-full items-center gap-3 px-6 text-slate-500 ${
+                                collapsed ? "flex-col text-[11px]" : "text-base"
+                            } ${
+                                canOpenProfile
+                                    ? "cursor-pointer rounded-xl py-2 hover:bg-slate-100 hover:text-slate-700"
+                                    : "cursor-default py-2"
+                            }`}
+                        >
+                            <CircleUserRound size={collapsed ? 18 : 20} />
+                            {!collapsed && (
+                                <span className="truncate text-left">
+                                    {identityLabel}
+                                </span>
+                            )}
+                        </button>
+
+                        <button
+                            onClick={handleLogout}
+                            className={`w-full rounded-xl text-slate-600 cursor-pointer hover:bg-red-100 hover:text-red-600 ${
+                                collapsed
+                                    ? "flex flex-col items-center px-2 py-2 text-[11px]"
+                                    : "flex items-center gap-3 px-6 py-2 text-md"
+                            }`}
+                        >
+                            <LogOut size={collapsed ? 18 : 20} />
+                            <span className={collapsed ? "mt-1" : ""}>
+                                Logout
                             </span>
-                        )}
-                    </button>
-
-                    <button
-                        onClick={handleLogout}
-                        className={`w-full rounded-xl text-slate-600 cursor-pointer hover:bg-red-100 hover:text-red-600 ${
-                            collapsed
-                                ? "flex flex-col items-center px-2 py-2 text-[11px]"
-                                : "flex items-center gap-3 px-6 py-2 text-md"
-                        }`}
-                    >
-                        <LogOut size={collapsed ? 18 : 20} />
-                        <span className={collapsed ? "mt-1" : ""}>Logout</span>
-                    </button>
+                        </button>
+                    </div>
+                </nav>
+            </aside>
+            {newRequestToast && (
+                <div className="fixed right-4 top-4 z-[80] rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700 shadow-lg">
+                    {newRequestToast}
                 </div>
-            </nav>
-        </aside>
+            )}
+        </>
     );
 }
 

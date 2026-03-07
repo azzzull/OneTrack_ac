@@ -199,9 +199,11 @@ export default function AdminRequestsPage() {
         url: "",
         label: "",
     });
+    const [hasDeferredRefresh, setHasDeferredRefresh] = useState(false);
 
     const streamRef = useRef(null);
     const videoRef = useRef(null);
+    const deferRefreshRef = useRef(false);
 
     const loadRequests = useCallback(async () => {
         try {
@@ -270,6 +272,10 @@ export default function AdminRequestsPage() {
                 "postgres_changes",
                 { event: "*", schema: "public", table: "requests" },
                 () => {
+                    if (deferRefreshRef.current) {
+                        setHasDeferredRefresh(true);
+                        return;
+                    }
                     loadRequests();
                 },
             )
@@ -278,6 +284,43 @@ export default function AdminRequestsPage() {
         return () => {
             clearTimeout(timerId);
             channel.unsubscribe();
+        };
+    }, [loadRequests]);
+
+    useEffect(() => {
+        deferRefreshRef.current = Boolean(
+            selectedRequestId || cameraOpen || saving,
+        );
+    }, [cameraOpen, saving, selectedRequestId]);
+
+    useEffect(() => {
+        if (deferRefreshRef.current || !hasDeferredRefresh) return;
+        setHasDeferredRefresh(false);
+        loadRequests();
+    }, [hasDeferredRefresh, loadRequests]);
+
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            if (deferRefreshRef.current) return;
+            loadRequests();
+        }, 5000);
+
+        const onVisibilityChange = () => {
+            if (document.visibilityState !== "visible") return;
+            if (deferRefreshRef.current) {
+                setHasDeferredRefresh(true);
+                return;
+            }
+            loadRequests();
+        };
+
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        return () => {
+            clearInterval(intervalId);
+            document.removeEventListener(
+                "visibilitychange",
+                onVisibilityChange,
+            );
         };
     }, [loadRequests]);
 

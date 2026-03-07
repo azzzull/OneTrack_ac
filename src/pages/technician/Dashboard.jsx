@@ -125,9 +125,11 @@ function TechnicianDashboard() {
         url: "",
         label: "",
     });
+    const [hasDeferredRefresh, setHasDeferredRefresh] = useState(false);
 
     const streamRef = useRef(null);
     const videoRef = useRef(null);
+    const deferRefreshRef = useRef(false);
 
     const loadTasks = useCallback(async () => {
         if (!user?.id) return;
@@ -186,6 +188,16 @@ function TechnicianDashboard() {
     }, [loadTasks]);
 
     useEffect(() => {
+        deferRefreshRef.current = Boolean(selectedTaskId || cameraOpen || saving);
+    }, [cameraOpen, saving, selectedTaskId]);
+
+    useEffect(() => {
+        if (deferRefreshRef.current || !hasDeferredRefresh) return;
+        setHasDeferredRefresh(false);
+        loadTasks();
+    }, [hasDeferredRefresh, loadTasks]);
+
+    useEffect(() => {
         if (!user?.id) return undefined;
 
         const channel = supabase
@@ -193,7 +205,13 @@ function TechnicianDashboard() {
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "requests" },
-                () => loadTasks(),
+                () => {
+                    if (deferRefreshRef.current) {
+                        setHasDeferredRefresh(true);
+                        return;
+                    }
+                    loadTasks();
+                },
             )
             .subscribe();
 

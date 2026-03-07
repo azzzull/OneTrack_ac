@@ -68,8 +68,27 @@ export default function useRequestStats() {
             )
             .subscribe();
 
+        const intervalId = setInterval(() => {
+            loadStats();
+        }, 5000);
+
+        const onVisibilityOrFocus = () => {
+            if (document.visibilityState === "visible") {
+                loadStats();
+            }
+        };
+
+        document.addEventListener("visibilitychange", onVisibilityOrFocus);
+        window.addEventListener("focus", onVisibilityOrFocus);
+
         return () => {
             clearTimeout(timerId);
+            clearInterval(intervalId);
+            document.removeEventListener(
+                "visibilitychange",
+                onVisibilityOrFocus,
+            );
+            window.removeEventListener("focus", onVisibilityOrFocus);
             channel.unsubscribe();
         };
     }, [loadStats]);
