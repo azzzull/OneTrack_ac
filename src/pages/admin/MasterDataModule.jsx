@@ -246,10 +246,8 @@ export default function AdminMasterDataModulePage() {
             role: userForm.role,
             first_name: userForm.firstName,
             last_name: userForm.lastName,
-            full_name: fullName || null,
             firstName: userForm.firstName,
             lastName: userForm.lastName,
-            fullName: fullName || null,
             name: fullName || userForm.firstName || null,
             phone: userForm.phone,
         });
@@ -266,11 +264,14 @@ export default function AdminMasterDataModulePage() {
 
     const updateUser = async () => {
         if (!editUserId) return;
+        const nextName =
+            `${userForm.firstName} ${userForm.lastName}`.trim() ||
+            userForm.email ||
+            null;
         const payload = {
             first_name: userForm.firstName,
             last_name: userForm.lastName,
-            full_name:
-                `${userForm.firstName} ${userForm.lastName}`.trim() || null,
+            name: nextName,
             email: userForm.email,
             role: userForm.role,
             phone: userForm.phone,
@@ -325,10 +326,8 @@ export default function AdminMasterDataModulePage() {
                         role: "customer",
                         first_name: firstName,
                         last_name: lastName,
-                        full_name: simpleForm.name,
                         firstName,
                         lastName,
-                        fullName: simpleForm.name,
                         name: simpleForm.name,
                         phone: simpleForm.phone,
                     },
