@@ -154,6 +154,12 @@ const previewText = (value, max = 90) => {
     return `${raw.slice(0, max).trim()}...`;
 };
 
+const hasValidSerialNumber = (value) => {
+    const normalized = String(value ?? "").trim();
+    if (!normalized) return false;
+    return normalized !== "-" && normalized.toLowerCase() !== "null";
+};
+
 const getCurrentUserDisplayName = (user) => {
     const composed =
         `${user?.user_metadata?.first_name ?? ""} ${user?.user_metadata?.last_name ?? ""}`.trim();
@@ -306,8 +312,8 @@ export default function AdminRequestsPage() {
     useEffect(() => {
         if (!selectedRequest) return;
         setSerialNumberInput(
-            selectedRequest.serialNumber && selectedRequest.serialNumber !== "-"
-                ? selectedRequest.serialNumber
+            hasValidSerialNumber(selectedRequest.serialNumber)
+                ? String(selectedRequest.serialNumber).trim()
                 : "",
         );
         setRepairNotes({
@@ -495,6 +501,17 @@ export default function AdminRequestsPage() {
             const hasBefore = beforeUrl || selectedRequest.beforePhotoUrl;
             const hasProgress = progressUrl || selectedRequest.progressPhotoUrl;
             const hasAfter = afterUrl || selectedRequest.afterPhotoUrl;
+
+            if (
+                role === "technician" &&
+                hasAfter &&
+                !hasValidSerialNumber(nextSerial)
+            ) {
+                await showAlert("harap scan Serial number terlebih dahulu", {
+                    title: "Informasi",
+                });
+                return;
+            }
 
             if (hasAfter) {
                 payload.status = "completed";

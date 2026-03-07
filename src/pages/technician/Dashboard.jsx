@@ -92,6 +92,12 @@ const previewText = (value, max = 90) => {
     return `${raw.slice(0, max).trim()}...`;
 };
 
+const hasValidSerialNumber = (value) => {
+    const normalized = String(value ?? "").trim();
+    if (!normalized) return false;
+    return normalized !== "-" && normalized.toLowerCase() !== "null";
+};
+
 function TechnicianDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -165,7 +171,11 @@ function TechnicianDashboard() {
             replacedParts: selectedTask.replaced_parts ?? "",
             reconditionedParts: selectedTask.reconditioned_parts ?? "",
         });
-        setSerialNumber(selectedTask.serial_number ?? "");
+        setSerialNumber(
+            hasValidSerialNumber(selectedTask.serial_number)
+                ? String(selectedTask.serial_number).trim()
+                : "",
+        );
         setBeforePhotoFile(null);
         setProgressPhotoFile(null);
         setAfterPhotoFile(null);
@@ -305,6 +315,7 @@ function TechnicianDashboard() {
 
     const saveChanges = async () => {
         if (!selectedTask) return;
+        if (selectedTask.status === "completed") return;
 
         // Validasi: minimal ada satu perubahan atau satu foto baru
         const hasRepairNoteChanges =
@@ -342,6 +353,14 @@ function TechnicianDashboard() {
                 ]);
             }
 
+            const hasAfter = afterUrl || selectedTask.after_photo_url;
+            if (hasAfter && !hasValidSerialNumber(serialNumber)) {
+                await showAlert("harap menscan serial number", {
+                    title: "Informasi",
+                });
+                return;
+            }
+
             const payload = {
                 trouble_description: repairNotes.troubleDescription.trim(),
                 replaced_parts: repairNotes.replacedParts.trim(),
@@ -361,7 +380,6 @@ function TechnicianDashboard() {
             // Check current photos + newly uploaded ones
             const hasBefore = beforeUrl || selectedTask.before_photo_url;
             const hasProgress = progressUrl || selectedTask.progress_photo_url;
-            const hasAfter = afterUrl || selectedTask.after_photo_url;
 
             if (hasAfter) {
                 payload.status = "completed";
@@ -838,6 +856,7 @@ function TechnicianDashboard() {
                                         </div>
                                     </>
                                 )}
+                            {selectedTask.status !== "completed" && (
                                 <button
                                     type="button"
                                     onClick={saveChanges}
@@ -848,7 +867,8 @@ function TechnicianDashboard() {
                                         ? "Menyimpan Perubahan..."
                                         : "Simpan Perubahan"}
                                 </button>
-                            </div>
+                            )}
+                        </div>
                         </div>
                     </div>
                 </div>
