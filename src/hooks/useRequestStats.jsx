@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import supabase from "../supabaseClient";
+import { useAuth } from "../context/useAuth";
 
 const INITIAL_STATS = {
     pending: 0,
@@ -8,23 +9,33 @@ const INITIAL_STATS = {
     active: 0,
 };
 
-const countByStatus = async (status) => {
-    const { count, error } = await supabase
+const countByStatus = async (status, { onlyUnassigned = false } = {}) => {
+    let query = supabase
         .from("requests")
         .select("*", { count: "exact", head: true })
         .eq("status", status);
+
+    if (onlyUnassigned) {
+        query = query.is("technician_id", null);
+    }
+
+    const { count, error } = await query;
 
     if (error) throw error;
     return count ?? 0;
 };
 
 export default function useRequestStats() {
+    const { role } = useAuth();
     const [stats, setStats] = useState(INITIAL_STATS);
 
     const loadStats = useCallback(async () => {
         try {
+            const onlyUnassignedPending = role === "technician";
             const [pending, inProgress, completed] = await Promise.all([
-                countByStatus("pending"),
+                countByStatus("pending", {
+                    onlyUnassigned: onlyUnassignedPending,
+                }),
                 countByStatus("in_progress"),
                 countByStatus("completed"),
             ]);
@@ -39,7 +50,7 @@ export default function useRequestStats() {
             console.error("Error loading request stats:", error);
             setStats(INITIAL_STATS);
         }
-    }, []);
+    }, [role]);
 
     useEffect(() => {
         const timerId = setTimeout(() => {

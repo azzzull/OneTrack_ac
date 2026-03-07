@@ -7,6 +7,7 @@ import {
     MapPinned,
     Phone,
     ShieldCheck,
+    Search,
     Wrench,
     X,
     UserRound,
@@ -77,6 +78,20 @@ const formatDate = (value) => {
     }).format(date);
 };
 
+const formatOrderId = (value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "-";
+    if (raw.length <= 12) return raw.toUpperCase();
+    return `${raw.slice(0, 8).toUpperCase()}-${raw.slice(-4).toUpperCase()}`;
+};
+
+const previewText = (value, max = 90) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "-";
+    if (raw.length <= max) return raw;
+    return `${raw.slice(0, max).trim()}...`;
+};
+
 function TechnicianDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -84,6 +99,7 @@ function TechnicianDashboard() {
     const { alert: showAlert } = useDialog();
     const [loading, setLoading] = useState(true);
     const [tasks, setTasks] = useState([]);
+    const [search, setSearch] = useState("");
     const [selectedTaskId, setSelectedTaskId] = useState(null);
     const [saving, setSaving] = useState(false);
     const [repairNotes, setRepairNotes] = useState({
@@ -98,6 +114,11 @@ function TechnicianDashboard() {
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
     const [cameraError, setCameraError] = useState("");
+    const [photoPreview, setPhotoPreview] = useState({
+        open: false,
+        url: "",
+        label: "",
+    });
 
     const streamRef = useRef(null);
     const videoRef = useRef(null);
@@ -126,6 +147,16 @@ function TechnicianDashboard() {
         () => tasks.find((item) => item.id === selectedTaskId) ?? null,
         [selectedTaskId, tasks],
     );
+
+    const filteredTasks = useMemo(() => {
+        const keyword = search.trim().toLowerCase();
+        if (!keyword) return tasks;
+        return tasks.filter((item) =>
+            `${item.title ?? ""} ${item.address ?? item.location ?? ""} ${item.room_location ?? ""} ${item.trouble_description ?? ""} ${item.customer_name ?? ""} ${item.technician_name ?? ""} ${item.id ?? ""} ${formatOrderId(item.id)}`
+                .toLowerCase()
+                .includes(keyword),
+        );
+    }, [search, tasks]);
 
     useEffect(() => {
         if (!selectedTask) return;
@@ -259,11 +290,17 @@ function TechnicianDashboard() {
 
     const closeDetail = () => {
         closeCamera();
+        setPhotoPreview({ open: false, url: "", label: "" });
         setSelectedTaskId(null);
         setSaving(false);
         setBeforePhotoFile(null);
         setProgressPhotoFile(null);
         setAfterPhotoFile(null);
+    };
+
+    const openPhotoPreview = (url, label) => {
+        if (!url) return;
+        setPhotoPreview({ open: true, url, label });
     };
 
     const saveChanges = async () => {
@@ -386,11 +423,25 @@ function TechnicianDashboard() {
                         Daftar pekerjaan yang Anda kerjakan.
                     </p>
 
-                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:p-5">
-                        <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
-                            <Wrench size={18} />
-                            Pekerjaan Saya
-                        </h2>
+                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+                                <Wrench size={18} />
+                                Pekerjaan Saya
+                            </h2>
+                            <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:max-w-sm">
+                                <Search size={16} />
+                                <input
+                                    type="text"
+                                    value={search}
+                                    onChange={(event) =>
+                                        setSearch(event.target.value)
+                                    }
+                                    placeholder="Cari pekerjaan..."
+                                    className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                                />
+                            </label>
+                        </div>
 
                         {loading ? (
                             <p className="mt-4 text-sm text-slate-500">
@@ -400,9 +451,13 @@ function TechnicianDashboard() {
                             <p className="mt-4 rounded-xl border border-dashed border-sky-300 bg-sky-50 p-4 text-sm text-sky-700">
                                 Belum ada pekerjaan yang Anda kerjakan.
                             </p>
+                        ) : filteredTasks.length === 0 ? (
+                            <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
+                                Tidak ada pekerjaan yang cocok dengan pencarian.
+                            </p>
                         ) : (
                             <div className="mt-4 space-y-3">
-                                {tasks.map((item) => (
+                                {filteredTasks.map((item) => (
                                     <article
                                         key={item.id}
                                         className="cursor-pointer overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md hover:scale-[1.01]"
@@ -418,6 +473,19 @@ function TechnicianDashboard() {
                                                             {item.title ??
                                                                 "Pekerjaan Tanpa Judul"}
                                                         </h2>
+                                                        <p className="mt-1 break-all text-xs text-slate-500">
+                                                            Order ID:{" "}
+                                                            <span
+                                                                title={
+                                                                    item.id ??
+                                                                    "-"
+                                                                }
+                                                            >
+                                                                {formatOrderId(
+                                                                    item.id,
+                                                                )}
+                                                            </span>
+                                                        </p>
                                                         <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-slate-500 md:text-base">
                                                             <MapPinned
                                                                 size={16}
@@ -427,6 +495,19 @@ function TechnicianDashboard() {
                                                                     item.location ??
                                                                     "-"}
                                                             </span>
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-slate-500">
+                                                            Ruangan:{" "}
+                                                            {previewText(
+                                                                item.room_location,
+                                                                48,
+                                                            )}
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-slate-500">
+                                                            Deskripsi:{" "}
+                                                            {previewText(
+                                                                item.trouble_description,
+                                                            )}
                                                         </p>
                                                     </div>
 
@@ -493,231 +574,313 @@ function TechnicianDashboard() {
             <MobileBottomNav />
 
             {selectedTask && (
-                <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 md:items-center md:p-4">
-                    <div className="max-h-[92vh] w-full overflow-auto rounded-t-3xl bg-white p-4 shadow-xl md:max-w-4xl md:rounded-2xl md:p-6">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
-                                Detail Pekerjaan
-                            </h2>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+                    <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-xl">
+                        <div className="max-h-[85vh] overflow-y-auto overscroll-contain p-4 md:p-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
+                                    Detail Pekerjaan
+                                </h2>
+                                <button
+                                    type="button"
+                                    onClick={closeDetail}
+                                    className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="rounded-2xl border border-slate-200 p-4">
+                                    <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        <ClipboardList size={14} />
+                                        Ringkasan
+                                    </p>
+                                    <h3 className="mt-2 text-xl font-semibold text-slate-900">
+                                        {selectedTask.title}
+                                    </h3>
+                                    <p className="mt-1 break-all text-xs text-slate-500">
+                                        Order ID:{" "}
+                                        <span title={selectedTask.id ?? "-"}>
+                                            {formatOrderId(selectedTask.id)}
+                                        </span>
+                                    </p>
+                                    <p className="mt-2 inline-flex items-start gap-2 text-sm text-slate-600">
+                                        <MapPinned size={14} />
+                                        {selectedTask.location ??
+                                            selectedTask.address ??
+                                            "-"}
+                                    </p>
+                                    <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
+                                        <Phone size={14} />
+                                        {selectedTask.customer_phone ?? "-"}
+                                    </p>
+                                    <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
+                                        <UserRound size={14} />
+                                        {selectedTask.customer_name ?? "-"}
+                                    </p>
+                                    <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
+                                        <CalendarDays size={14} />
+                                        {formatDate(selectedTask.created_at)}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 p-4 flex flex-col items-start gap-2">
+                                    <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        <ShieldCheck size={14} />
+                                        Status
+                                    </p>
+                                    <div className="mt-2 inline-flex rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 bg-slate-50">
+                                        {STATUS_LABELS[selectedTask.status] ??
+                                            "PENDING"}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Detail Unit AC & Ruangan
+                                </p>
+                                <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-700 md:grid-cols-2">
+                                    <p>
+                                        <span className="font-medium">
+                                            Merk AC:
+                                        </span>{" "}
+                                        {selectedTask.ac_brand ?? "-"}
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">
+                                            Tipe AC:
+                                        </span>{" "}
+                                        {selectedTask.ac_type ?? "-"}
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">
+                                            Kapasitas AC:
+                                        </span>{" "}
+                                        {selectedTask.ac_capacity_pk ?? "-"}
+                                    </p>
+                                    <p>
+                                        <span className="font-medium">
+                                            Serial Number AC:
+                                        </span>{" "}
+                                        {serialNumber ||
+                                            selectedTask.serial_number ||
+                                            "-"}
+                                    </p>
+                                    <p className="md:col-span-2">
+                                        <span className="font-medium">
+                                            Ruangan Dikerjakan:
+                                        </span>{" "}
+                                        {selectedTask.room_location ?? "-"}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
+                                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    <CheckCircle2 size={14} />
+                                    Detail Perbaikan
+                                </p>
+                                <div className="mt-3 space-y-3">
+                                    <label className="block">
+                                        <span className="text-xs font-medium text-slate-600">
+                                            Serial Number (scan barcode kamera)
+                                        </span>
+                                        <div className="mt-1 flex gap-2">
+                                            <input
+                                                value={serialNumber}
+                                                readOnly
+                                                className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none"
+                                                placeholder="Scan barcode serial dari kamera"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openCamera("serial-scan")
+                                                }
+                                                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                                            >
+                                                <Camera size={14} />
+                                                Scan
+                                            </button>
+                                        </div>
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-xs font-medium text-slate-600">
+                                            Detail Perbaikan / Trouble
+                                        </span>
+                                        <textarea
+                                            value={
+                                                repairNotes.troubleDescription
+                                            }
+                                            onChange={(event) =>
+                                                setRepairNotes((prev) => ({
+                                                    ...prev,
+                                                    troubleDescription:
+                                                        event.target.value,
+                                                }))
+                                            }
+                                            rows={3}
+                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-xs font-medium text-slate-600">
+                                            Suku Cadang Diganti
+                                        </span>
+                                        <textarea
+                                            value={repairNotes.replacedParts}
+                                            onChange={(event) =>
+                                                setRepairNotes((prev) => ({
+                                                    ...prev,
+                                                    replacedParts:
+                                                        event.target.value,
+                                                }))
+                                            }
+                                            rows={2}
+                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-xs font-medium text-slate-600">
+                                            Suku Cadang Direkondisi
+                                        </span>
+                                        <textarea
+                                            value={
+                                                repairNotes.reconditionedParts
+                                            }
+                                            onChange={(event) =>
+                                                setRepairNotes((prev) => ({
+                                                    ...prev,
+                                                    reconditionedParts:
+                                                        event.target.value,
+                                                }))
+                                            }
+                                            rows={2}
+                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                        />
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Dokumentasi
+                                </p>
+                                <div className="mt-3 mb-4">
+                                    <p className="text-xs text-slate-500">
+                                        Foto yang sudah diambil:
+                                    </p>
+                                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+                                        {[
+                                            {
+                                                label: "Preview Foto Before",
+                                                url: selectedTask?.before_photo_url,
+                                            },
+                                            {
+                                                label: "Preview Foto Proses",
+                                                url: selectedTask?.progress_photo_url,
+                                            },
+                                            {
+                                                label: "Preview Foto After",
+                                                url: selectedTask?.after_photo_url,
+                                            },
+                                        ].map((item) => (
+                                            <button
+                                                key={item.label}
+                                                type="button"
+                                                disabled={!item.url}
+                                                onClick={() =>
+                                                    openPhotoPreview(
+                                                        item.url,
+                                                        item.label,
+                                                    )
+                                                }
+                                                className="w-full rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:bg-slate-100"
+                                            >
+                                                {item.url
+                                                    ? item.label
+                                                    : "foto belum di ambil"}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {selectedTask.status !== "completed" && (
+                                    <>
+                                        <p className="text-xs text-slate-500 mb-3">
+                                            Ambil foto baru:
+                                        </p>
+                                        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                            <FileCaptureCard
+                                                label="Ambil Before"
+                                                fileName={beforePhotoFile?.name}
+                                                onClick={() =>
+                                                    openCamera("before")
+                                                }
+                                            />
+                                            <FileCaptureCard
+                                                label="Ambil Progress"
+                                                fileName={
+                                                    progressPhotoFile?.name
+                                                }
+                                                onClick={() =>
+                                                    openCamera("progress")
+                                                }
+                                            />
+                                            <FileCaptureCard
+                                                label="Ambil After"
+                                                fileName={afterPhotoFile?.name}
+                                                onClick={() =>
+                                                    openCamera("after")
+                                                }
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={saveChanges}
+                                    disabled={saving}
+                                    className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {saving
+                                        ? "Menyimpan Perubahan..."
+                                        : "Simpan Perubahan"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {photoPreview.open && (
+                <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/70 p-4">
+                    <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-xl">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                            <h3 className="text-sm font-semibold text-slate-900">
+                                Preview Foto {photoPreview.label}
+                            </h3>
                             <button
                                 type="button"
-                                onClick={closeDetail}
+                                onClick={() =>
+                                    setPhotoPreview({
+                                        open: false,
+                                        url: "",
+                                        label: "",
+                                    })
+                                }
                                 className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
                             >
                                 <X size={18} />
                             </button>
                         </div>
-
-                        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <div className="rounded-2xl border border-slate-200 p-4">
-                                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    <ClipboardList size={14} />
-                                    Ringkasan
-                                </p>
-                                <h3 className="mt-2 text-xl font-semibold text-slate-900">
-                                    {selectedTask.title}
-                                </h3>
-                                <p className="mt-2 inline-flex items-start gap-2 text-sm text-slate-600">
-                                    <MapPinned size={14} />
-                                    {selectedTask.location ??
-                                        selectedTask.address ??
-                                        "-"}
-                                </p>
-                                <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
-                                    <Phone size={14} />
-                                    {selectedTask.customer_phone ?? "-"}
-                                </p>
-                                <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
-                                    <UserRound size={14} />
-                                    {selectedTask.customer_name ?? "-"}
-                                </p>
-                                <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
-                                    <CalendarDays size={14} />
-                                    {formatDate(selectedTask.created_at)}
-                                </p>
-                            </div>
-
-                            <div className="rounded-2xl border border-slate-200 p-4 flex flex-col items-start gap-2">
-                                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    <ShieldCheck size={14} />
-                                    Status
-                                </p>
-                                <div className="mt-2 inline-flex rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 bg-slate-50">
-                                    {STATUS_LABELS[selectedTask.status] ??
-                                        "PENDING"}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-                            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                <CheckCircle2 size={14} />
-                                Detail Perbaikan
-                            </p>
-                            <div className="mt-3 space-y-3">
-                                <label className="block">
-                                    <span className="text-xs font-medium text-slate-600">
-                                        Serial Number (scan barcode kamera)
-                                    </span>
-                                    <div className="mt-1 flex gap-2">
-                                        <input
-                                            value={serialNumber}
-                                            readOnly
-                                            className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none"
-                                            placeholder="Scan barcode serial dari kamera"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                openCamera("serial-scan")
-                                            }
-                                            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                                        >
-                                            <Camera size={14} />
-                                            Scan
-                                        </button>
-                                    </div>
-                                </label>
-                                <label className="block">
-                                    <span className="text-xs font-medium text-slate-600">
-                                        Detail Perbaikan / Trouble
-                                    </span>
-                                    <textarea
-                                        value={repairNotes.troubleDescription}
-                                        onChange={(event) =>
-                                            setRepairNotes((prev) => ({
-                                                ...prev,
-                                                troubleDescription:
-                                                    event.target.value,
-                                            }))
-                                        }
-                                        rows={3}
-                                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
-                                    />
-                                </label>
-                                <label className="block">
-                                    <span className="text-xs font-medium text-slate-600">
-                                        Suku Cadang Diganti
-                                    </span>
-                                    <textarea
-                                        value={repairNotes.replacedParts}
-                                        onChange={(event) =>
-                                            setRepairNotes((prev) => ({
-                                                ...prev,
-                                                replacedParts:
-                                                    event.target.value,
-                                            }))
-                                        }
-                                        rows={2}
-                                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
-                                    />
-                                </label>
-                                <label className="block">
-                                    <span className="text-xs font-medium text-slate-600">
-                                        Suku Cadang Direkondisi
-                                    </span>
-                                    <textarea
-                                        value={repairNotes.reconditionedParts}
-                                        onChange={(event) =>
-                                            setRepairNotes((prev) => ({
-                                                ...prev,
-                                                reconditionedParts:
-                                                    event.target.value,
-                                            }))
-                                        }
-                                        rows={2}
-                                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
-                                    />
-                                </label>
-                            </div>
-                        </div>
-
-                        <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Dokumentasi
-                            </p>
-                            {(selectedTask?.before_photo_url ||
-                                selectedTask?.progress_photo_url ||
-                                selectedTask?.after_photo_url) && (
-                                <div className="mt-3 mb-4">
-                                    <p className="text-xs text-slate-500 mb-2">
-                                        Foto yang sudah diambil:
-                                    </p>
-                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                                        {[
-                                            {
-                                                label: "Before",
-                                                url: selectedTask?.before_photo_url,
-                                            },
-                                            {
-                                                label: "Progress",
-                                                url: selectedTask?.progress_photo_url,
-                                            },
-                                            {
-                                                label: "After",
-                                                url: selectedTask?.after_photo_url,
-                                            },
-                                        ].map((item) => (
-                                            <div
-                                                key={item.label}
-                                                className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
-                                            >
-                                                {item.url ? (
-                                                    <a
-                                                        href={item.url}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="block"
-                                                    >
-                                                        <img
-                                                            src={item.url}
-                                                            alt={`Foto ${item.label}`}
-                                                            className="h-40 w-full object-cover"
-                                                        />
-                                                    </a>
-                                                ) : (
-                                                    <div className="flex h-40 items-center justify-center text-sm text-slate-400">
-                                                        Belum ada
-                                                    </div>
-                                                )}
-                                                <p className="border-t border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">
-                                                    {item.label}
-                                                </p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            <p className="text-xs text-slate-500 mb-3">
-                                Ambil foto baru:
-                            </p>
-                            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                                <FileCaptureCard
-                                    label="Ambil Before"
-                                    fileName={beforePhotoFile?.name}
-                                    onClick={() => openCamera("before")}
-                                />
-                                <FileCaptureCard
-                                    label="Ambil Progress"
-                                    fileName={progressPhotoFile?.name}
-                                    onClick={() => openCamera("progress")}
-                                />
-                                <FileCaptureCard
-                                    label="Ambil After"
-                                    fileName={afterPhotoFile?.name}
-                                    onClick={() => openCamera("after")}
-                                />
-                            </div>
-                            <button
-                                type="button"
-                                onClick={saveChanges}
-                                disabled={saving}
-                                className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {saving
-                                    ? "Menyimpan Perubahan..."
-                                    : "Simpan Perubahan"}
-                            </button>
+                        <div className="bg-black">
+                            <img
+                                src={photoPreview.url}
+                                alt={`Foto ${photoPreview.label}`}
+                                className="max-h-[75vh] w-full object-contain"
+                            />
                         </div>
                     </div>
                 </div>

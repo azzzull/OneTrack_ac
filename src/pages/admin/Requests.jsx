@@ -140,6 +140,20 @@ const formatDate = (value) => {
     }).format(date);
 };
 
+const formatOrderId = (value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "-";
+    if (raw.length <= 12) return raw.toUpperCase();
+    return `${raw.slice(0, 8).toUpperCase()}-${raw.slice(-4).toUpperCase()}`;
+};
+
+const previewText = (value, max = 90) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "-";
+    if (raw.length <= max) return raw;
+    return `${raw.slice(0, max).trim()}...`;
+};
+
 const getCurrentUserDisplayName = (user) => {
     const composed =
         `${user?.user_metadata?.first_name ?? ""} ${user?.user_metadata?.last_name ?? ""}`.trim();
@@ -174,6 +188,11 @@ export default function AdminRequestsPage() {
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
     const [cameraError, setCameraError] = useState("");
+    const [photoPreview, setPhotoPreview] = useState({
+        open: false,
+        url: "",
+        label: "",
+    });
 
     const streamRef = useRef(null);
     const videoRef = useRef(null);
@@ -271,7 +290,7 @@ export default function AdminRequestsPage() {
                       ? true
                       : item.status === activeFilter;
             const matchSearch = keyword
-                ? `${item.title} ${item.address} ${item.assignee} ${item.requester}`
+                ? `${item.title} ${item.address} ${item.roomLocation} ${item.troubleDescription} ${item.assignee} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
@@ -301,6 +320,7 @@ export default function AdminRequestsPage() {
     const closeDetail = () => {
         setSelectedRequestId(null);
         setSaving(false);
+        setPhotoPreview({ open: false, url: "", label: "" });
         setBeforePhotoFile(null);
         setProgressPhotoFile(null);
         setAfterPhotoFile(null);
@@ -311,6 +331,11 @@ export default function AdminRequestsPage() {
             streamRef.current.getTracks().forEach((track) => track.stop());
             streamRef.current = null;
         }
+    };
+
+    const openPhotoPreview = (url, label) => {
+        if (!url) return;
+        setPhotoPreview({ open: true, url, label });
     };
 
     const stopCameraStream = useCallback(() => {
@@ -610,11 +635,36 @@ export default function AdminRequestsPage() {
                                                     <h2 className="wrap-break-word text-lg font-semibold text-slate-900  md:text-xl">
                                                         {item.title}
                                                     </h2>
+                                                    <p className="mt-1 break-all text-xs text-slate-500">
+                                                        Order ID:{" "}
+                                                        <span
+                                                            title={
+                                                                item.id ?? "-"
+                                                            }
+                                                        >
+                                                            {formatOrderId(
+                                                                item.id,
+                                                            )}
+                                                        </span>
+                                                    </p>
                                                     <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-slate-500 md:text-base">
                                                         <MapPin size={16} />
                                                         <span>
                                                             {item.address}
                                                         </span>
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        Ruangan:{" "}
+                                                        {previewText(
+                                                            item.roomLocation,
+                                                            48,
+                                                        )}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        Deskripsi:{" "}
+                                                        {previewText(
+                                                            item.troubleDescription,
+                                                        )}
                                                     </p>
                                                 </div>
 
@@ -732,19 +782,19 @@ export default function AdminRequestsPage() {
                                 <div className="mt-3 space-y-2 text-sm text-slate-700">
                                     <p>
                                         <span className="font-medium">
-                                            Merk:
+                                            Merk AC:
                                         </span>{" "}
                                         {selectedRequest.acBrand}
                                     </p>
                                     <p>
                                         <span className="font-medium">
-                                            Tipe:
+                                            Tipe AC:
                                         </span>{" "}
                                         {selectedRequest.acType}
                                     </p>
                                     <p>
                                         <span className="font-medium">
-                                            Kapasitas:
+                                            Kapasitas AC:
                                         </span>{" "}
                                         {selectedRequest.acCapacityPk}
                                     </p>
@@ -756,7 +806,7 @@ export default function AdminRequestsPage() {
                                     </p>
                                     <p>
                                         <span className="font-medium">
-                                            Serial Number:
+                                            Serial Number AC:
                                         </span>{" "}
                                         {selectedRequest.serialNumber}
                                     </p>
@@ -884,99 +934,91 @@ export default function AdminRequestsPage() {
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 Dokumentasi
                             </p>
-                            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
                                 {[
                                     {
-                                        label: "Before",
+                                        label: "Preview Foto Before",
                                         url: selectedRequest.beforePhotoUrl,
                                     },
                                     {
-                                        label: "Progress",
+                                        label: "Preview Foto Proses",
                                         url: selectedRequest.progressPhotoUrl,
                                     },
                                     {
-                                        label: "After",
+                                        label: "Preview Foto After",
                                         url: selectedRequest.afterPhotoUrl,
                                     },
                                 ].map((item) => (
-                                    <div
+                                    <button
                                         key={item.label}
-                                        className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                                        type="button"
+                                        disabled={!item.url}
+                                        onClick={() =>
+                                            openPhotoPreview(
+                                                item.url,
+                                                item.label,
+                                            )
+                                        }
+                                        className="w-full rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:bg-slate-100"
                                     >
-                                        {item.url ? (
-                                            <a
-                                                href={item.url}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="block"
-                                            >
-                                                <img
-                                                    src={item.url}
-                                                    alt={`Foto ${item.label}`}
-                                                    className="h-40 w-full object-cover"
-                                                />
-                                            </a>
-                                        ) : (
-                                            <div className="flex h-40 items-center justify-center text-sm text-slate-400">
-                                                Belum ada foto
-                                            </div>
-                                        )}
-                                        <p className="border-t border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">
-                                            {item.label}
-                                        </p>
-                                    </div>
+                                        {item.url
+                                            ? item.label
+                                            : "foto belum di ambil"}
+                                    </button>
                                 ))}
                             </div>
 
-                            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                                <button
-                                    type="button"
-                                    onClick={() => openCamera("before")}
-                                    className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
-                                >
-                                    <span className="inline-flex items-center gap-2 font-medium">
-                                        <Camera size={15} />
-                                        Ambil Before
-                                    </span>
-                                    <span className="mt-1 block truncate text-xs text-slate-500">
-                                        {beforePhotoFile
-                                            ? beforePhotoFile.name
-                                            : "Belum ambil foto"}
-                                    </span>
-                                </button>
+                            {selectedRequest.status !== "completed" && (
+                                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => openCamera("before")}
+                                        className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
+                                    >
+                                        <span className="inline-flex items-center gap-2 font-medium">
+                                            <Camera size={15} />
+                                            Ambil Before
+                                        </span>
+                                        <span className="mt-1 block truncate text-xs text-slate-500">
+                                            {beforePhotoFile
+                                                ? beforePhotoFile.name
+                                                : "Belum ambil foto"}
+                                        </span>
+                                    </button>
 
-                                <button
-                                    type="button"
-                                    onClick={() => openCamera("progress")}
-                                    className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
-                                >
-                                    <span className="inline-flex items-center gap-2 font-medium">
-                                        <Camera size={15} />
-                                        Ambil Progress
-                                    </span>
-                                    <span className="mt-1 block truncate text-xs text-slate-500">
-                                        {progressPhotoFile
-                                            ? progressPhotoFile.name
-                                            : "Belum ambil foto"}
-                                    </span>
-                                </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => openCamera("progress")}
+                                        className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
+                                    >
+                                        <span className="inline-flex items-center gap-2 font-medium">
+                                            <Camera size={15} />
+                                            Ambil Progress
+                                        </span>
+                                        <span className="mt-1 block truncate text-xs text-slate-500">
+                                            {progressPhotoFile
+                                                ? progressPhotoFile.name
+                                                : "Belum ambil foto"}
+                                        </span>
+                                    </button>
 
-                                <button
-                                    type="button"
-                                    onClick={() => openCamera("after")}
-                                    className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
-                                >
-                                    <span className="inline-flex items-center gap-2 font-medium">
-                                        <Camera size={15} />
-                                        Ambil After
-                                    </span>
-                                    <span className="mt-1 block truncate text-xs text-slate-500">
-                                        {afterPhotoFile
-                                            ? afterPhotoFile.name
-                                            : "Belum ambil foto"}
-                                    </span>
-                                </button>
-                            </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => openCamera("after")}
+                                        className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
+                                    >
+                                        <span className="inline-flex items-center gap-2 font-medium">
+                                            <Camera size={15} />
+                                            Ambil After
+                                        </span>
+                                        <span className="mt-1 block truncate text-xs text-slate-500">
+                                            {afterPhotoFile
+                                                ? afterPhotoFile.name
+                                                : "Belum ambil foto"}
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
 
                             <button
                                 type="button"
@@ -988,6 +1030,38 @@ export default function AdminRequestsPage() {
                                     ? "Menyimpan Perubahan..."
                                     : "Simpan Perubahan"}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {photoPreview.open && (
+                <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/70 p-4">
+                    <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-xl">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                            <h3 className="text-sm font-semibold text-slate-900">
+                                Preview Foto {photoPreview.label}
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setPhotoPreview({
+                                        open: false,
+                                        url: "",
+                                        label: "",
+                                    })
+                                }
+                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="bg-black">
+                            <img
+                                src={photoPreview.url}
+                                alt={`Foto ${photoPreview.label}`}
+                                className="max-h-[75vh] w-full object-contain"
+                            />
                         </div>
                     </div>
                 </div>

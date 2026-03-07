@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     ChevronRight,
     CircleCheckBig,
     Clock3,
     MapPin,
+    Search,
     Wrench,
     X,
 } from "lucide-react";
@@ -67,6 +68,7 @@ const normalizeJob = (row) => {
             ["address", "location", "site_address", "customer_address"],
             "-",
         ),
+        room: pickFirst(row, ["room_location"], "-"),
         status,
         description: noteSections.length > 0 ? noteSections.join(" | ") : "-",
         customer: pickFirst(row, ["customer_name", "customer"], "-"),
@@ -87,12 +89,27 @@ const formatDate = (value) => {
     }).format(date);
 };
 
+const formatOrderId = (value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "-";
+    if (raw.length <= 12) return raw.toUpperCase();
+    return `${raw.slice(0, 8).toUpperCase()}-${raw.slice(-4).toUpperCase()}`;
+};
+
+const previewText = (value, max = 90) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "-";
+    if (raw.length <= max) return raw;
+    return `${raw.slice(0, max).trim()}...`;
+};
+
 function AdminDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const [latestJobs, setLatestJobs] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
     const [loadingJobs, setLoadingJobs] = useState(true);
+    const [search, setSearch] = useState("");
     const stats = useRequestStats();
 
     const jobStatusCards = [
@@ -156,6 +173,16 @@ function AdminDashboard() {
         };
     }, [loadLatestJobs]);
 
+    const filteredJobs = useMemo(() => {
+        const keyword = search.trim().toLowerCase();
+        if (!keyword) return latestJobs;
+        return latestJobs.filter((job) =>
+            `${job.title} ${job.location} ${job.room} ${job.description} ${job.customer} ${job.technician} ${job.id} ${formatOrderId(job.id)}`
+                .toLowerCase()
+                .includes(keyword),
+        );
+    }, [latestJobs, search]);
+
     return (
         <div className="min-h-screen bg-sky-50">
             <div className="flex min-h-screen">
@@ -185,17 +212,31 @@ function AdminDashboard() {
                     </section>
 
                     <section className="mt-9">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <h3 className="text-2xl font-semibold text-slate-900 md:text-2xl">
                                 Pekerjaan Terbaru
                             </h3>
-                            <Link
-                                to="/requests"
-                                className="inline-flex items-center gap-1 text-md font-medium text-sky-500 no-underline hover:text-sky-600"
-                                style={{ textDecoration: "none" }}
-                            >
-                                Lihat semua <ChevronRight size={18} />
-                            </Link>
+                            <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+                                <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:w-72">
+                                    <Search size={16} />
+                                    <input
+                                        type="text"
+                                        value={search}
+                                        onChange={(event) =>
+                                            setSearch(event.target.value)
+                                        }
+                                        placeholder="Cari pekerjaan..."
+                                        className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                                    />
+                                </label>
+                                <Link
+                                    to="/requests"
+                                    className="inline-flex items-center gap-1 text-md font-medium text-sky-500 no-underline hover:text-sky-600"
+                                    style={{ textDecoration: "none" }}
+                                >
+                                    Lihat semua <ChevronRight size={18} />
+                                </Link>
+                            </div>
                         </div>
 
                         {loadingJobs ? (
@@ -217,9 +258,15 @@ function AdminDashboard() {
                                     Buat New Job
                                 </Link>
                             </div>
+                        ) : filteredJobs.length === 0 ? (
+                            <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white p-6">
+                                <p className="text-sm text-slate-500">
+                                    Tidak ada pekerjaan yang cocok dengan pencarian.
+                                </p>
+                            </div>
                         ) : (
                             <ul className="mt-4 space-y-3">
-                                {latestJobs.map((job) => (
+                                {filteredJobs.map((job) => (
                                     <li key={job.id}>
                                         <button
                                             type="button"
@@ -235,8 +282,29 @@ function AdminDashboard() {
                                                         <p className="text-base font-medium text-slate-900 md:text-lg">
                                                             {job.title}
                                                         </p>
+                                                        <p className="mt-1 break-all text-xs text-slate-500">
+                                                            Order ID:{" "}
+                                                            <span title={job.id ?? "-"}>
+                                                                {formatOrderId(
+                                                                    job.id,
+                                                                )}
+                                                            </span>
+                                                        </p>
                                                         <p className="mt-1 text-sm text-slate-500 md:text-base">
                                                             {job.location}
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-slate-500">
+                                                            Ruangan:{" "}
+                                                            {previewText(
+                                                                job.room,
+                                                                48,
+                                                            )}
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-slate-500">
+                                                            Deskripsi:{" "}
+                                                            {previewText(
+                                                                job.description,
+                                                            )}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -307,6 +375,16 @@ function AdminDashboard() {
                                 </p>
                                 <p className="mt-2 text-sm font-semibold text-slate-800">
                                     {formatDate(selectedJob.date)}
+                                </p>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 p-4 md:col-span-2">
+                                <p className="text-xs uppercase tracking-wide text-slate-500">
+                                    Order ID
+                                </p>
+                                <p className="mt-2 break-all text-sm font-semibold text-slate-800">
+                                    <span title={selectedJob.id ?? "-"}>
+                                        {formatOrderId(selectedJob.id)}
+                                    </span>
                                 </p>
                             </div>
                             <div className="rounded-xl bg-slate-50 p-4 md:col-span-2">

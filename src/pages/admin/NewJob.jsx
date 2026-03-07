@@ -62,6 +62,13 @@ const getCurrentUserDisplayName = (user) => {
     );
 };
 
+const getSessionRole = (role, user) => {
+    const metadataRole = String(user?.user_metadata?.role ?? "")
+        .trim()
+        .toLowerCase();
+    return String(role ?? "").trim().toLowerCase() || metadataRole;
+};
+
 export default function AdminNewJobPage() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -82,9 +89,10 @@ export default function AdminNewJobPage() {
     const streamRef = useRef(null);
     const videoRef = useRef(null);
 
-    const { user } = useAuth();
+    const { user, role } = useAuth();
     const { alert: showAlert } = useDialog();
     const navigate = useNavigate();
+    const sessionRole = getSessionRole(role, user);
 
     const setField = (key, value) => {
         setForm((prev) => ({ ...prev, [key]: value }));
@@ -333,18 +341,33 @@ export default function AdminNewJobPage() {
                 after_photo_url: afterUrl,
                 created_by: user?.id ?? null,
             };
-            if (String(user?.user_metadata?.role ?? "").toLowerCase() === "technician") {
+            if (sessionRole === "technician") {
+                payload.technician_id = user?.id ?? null;
                 payload.technician_name = getCurrentUserDisplayName(user);
             }
 
             const { error } = await supabase.from("requests").insert(payload);
             if (error) throw error;
 
-            navigate("/requests");
+            navigate(
+                sessionRole === "technician"
+                    ? "/technician/requests"
+                    : "/requests",
+            );
         } catch (error) {
             console.error("Error submitting new job:", error);
+            const detail = [
+                error?.message,
+                error?.details,
+                error?.hint,
+                error?.code ? `code=${error.code}` : "",
+            ]
+                .filter(Boolean)
+                .join(" | ");
             await showAlert(
-                "Gagal menyimpan data pekerjaan. Cek struktur tabel Supabase.",
+                detail
+                    ? `Gagal menyimpan data pekerjaan: ${detail}`
+                    : "Gagal menyimpan data pekerjaan. Cek struktur tabel Supabase.",
                 { title: "Simpan Gagal" },
             );
         } finally {
@@ -370,7 +393,11 @@ export default function AdminNewJobPage() {
                 <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8">
                     <div className="mb-6 flex items-center gap-3">
                         <Link
-                            to="/requests"
+                            to={
+                                sessionRole === "technician"
+                                    ? "/technician/requests"
+                                    : "/requests"
+                            }
                             className="inline-flex rounded-lg p-2 text-slate-600 no-underline hover:bg-slate-100"
                             style={{ textDecoration: "none" }}
                         >
