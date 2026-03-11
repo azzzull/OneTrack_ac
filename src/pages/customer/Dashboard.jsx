@@ -479,7 +479,7 @@ function CustomerDashboard() {
             )}
 
             {photoPreview.open && (
-                <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/70 p-4">
+                <div className="fixed inset-0 z-55 flex items-center justify-center bg-slate-900/70 p-4">
                     <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-xl">
                         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                             <h3 className="text-sm font-semibold text-slate-900">

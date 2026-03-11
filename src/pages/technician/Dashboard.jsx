@@ -188,7 +188,9 @@ function TechnicianDashboard() {
     }, [loadTasks]);
 
     useEffect(() => {
-        deferRefreshRef.current = Boolean(selectedTaskId || cameraOpen || saving);
+        deferRefreshRef.current = Boolean(
+            selectedTaskId || cameraOpen || saving,
+        );
     }, [cameraOpen, saving, selectedTaskId]);
 
     useEffect(() => {
@@ -874,26 +876,26 @@ function TechnicianDashboard() {
                                         </div>
                                     </>
                                 )}
-                            {selectedTask.status !== "completed" && (
-                                <button
-                                    type="button"
-                                    onClick={saveChanges}
-                                    disabled={saving}
-                                    className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {saving
-                                        ? "Menyimpan Perubahan..."
-                                        : "Simpan Perubahan"}
-                                </button>
-                            )}
-                        </div>
+                                {selectedTask.status !== "completed" && (
+                                    <button
+                                        type="button"
+                                        onClick={saveChanges}
+                                        disabled={saving}
+                                        className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {saving
+                                            ? "Menyimpan Perubahan..."
+                                            : "Simpan Perubahan"}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
 
             {photoPreview.open && (
-                <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/70 p-4">
+                <div className="fixed inset-0 z-55 flex items-center justify-center bg-slate-900/70 p-4">
                     <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-xl">
                         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                             <h3 className="text-sm font-semibold text-slate-900">
@@ -925,7 +927,7 @@ function TechnicianDashboard() {
             )}
 
             {cameraOpen && (
-                <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/80 p-0 md:items-center md:p-4">
+                <div className="fixed inset-0 z-60 flex items-end justify-center bg-slate-900/80 p-0 md:items-center md:p-4">
                     <div className="w-full rounded-t-3xl bg-white p-4 shadow-xl md:max-w-xl md:rounded-2xl">
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-slate-900">
