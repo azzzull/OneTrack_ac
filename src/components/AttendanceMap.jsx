@@ -13,81 +13,73 @@ const AttendanceMap = ({ technicianId }) => {
     const [markers, setMarkers] = useState([]);
 
     useEffect(() => {
-        loadTodayData();
-    }, [technicianId]);
+        const loadData = async () => {
+            setLoading(true);
+            const result = await getTodayAttendance(technicianId);
 
-    const loadTodayData = async () => {
-        setLoading(true);
-        const result = await getTodayAttendance(technicianId);
+            if (result.data) {
+                setAttendanceData(result.data);
+                const markerList = [];
 
-        if (result.data) {
-            setAttendanceData(result.data);
-            buildMarkers(result.data);
-        }
-
-        setLoading(false);
-    };
-
-    /**
-     * Build markers array from attendance data
-     */
-    const buildMarkers = (data) => {
-        const markerList = [];
-
-        // Check-in marker
-        if (data.check_in_latitude && data.check_in_longitude) {
-            markerList.push({
-                lat: parseFloat(data.check_in_latitude),
-                lng: parseFloat(data.check_in_longitude),
-                label: "Lokasi Masuk",
-                info: {
-                    waktu: new Date(data.check_in_time).toLocaleTimeString(
-                        "id-ID",
-                        {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
+                // Check-in marker
+                if (result.data.check_in_latitude && result.data.check_in_longitude) {
+                    markerList.push({
+                        lat: parseFloat(result.data.check_in_latitude),
+                        lng: parseFloat(result.data.check_in_longitude),
+                        label: "Lokasi Masuk",
+                        info: {
+                            waktu: new Date(result.data.check_in_time).toLocaleTimeString(
+                                "id-ID",
+                                {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                },
+                            ),
+                            alamat: result.data.check_in_street_address || "-",
+                            kecamatan: result.data.check_in_district || "-",
+                            akurasi:
+                                result.data.check_in_accuracy_meters &&
+                                result.data.check_in_accuracy_meters > 0
+                                    ? `±${Math.round(result.data.check_in_accuracy_meters)}m`
+                                    : "N/A",
                         },
-                    ),
-                    alamat: data.check_in_street_address || "-",
-                    kecamatan: data.check_in_district || "-",
-                    akurasi:
-                        data.check_in_accuracy_meters &&
-                        data.check_in_accuracy_meters > 0
-                            ? `±${Math.round(data.check_in_accuracy_meters)}m`
-                            : "N/A",
-                },
-            });
-        }
+                    });
+                }
 
-        // Check-out marker (if available)
-        if (data.check_out_latitude && data.check_out_longitude) {
-            markerList.push({
-                lat: parseFloat(data.check_out_latitude),
-                lng: parseFloat(data.check_out_longitude),
-                label: "Lokasi Pulang",
-                info: {
-                    waktu: new Date(data.check_out_time).toLocaleTimeString(
-                        "id-ID",
-                        {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
+                // Check-out marker (if available)
+                if (result.data.check_out_latitude && result.data.check_out_longitude) {
+                    markerList.push({
+                        lat: parseFloat(result.data.check_out_latitude),
+                        lng: parseFloat(result.data.check_out_longitude),
+                        label: "Lokasi Pulang",
+                        info: {
+                            waktu: new Date(result.data.check_out_time).toLocaleTimeString(
+                                "id-ID",
+                                {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                },
+                            ),
+                            alamat: result.data.check_out_street_address || "-",
+                            kecamatan: result.data.check_out_district || "-",
+                            akurasi:
+                                result.data.check_out_accuracy_meters &&
+                                result.data.check_out_accuracy_meters > 0
+                                    ? `±${Math.round(result.data.check_out_accuracy_meters)}m`
+                                    : "N/A",
                         },
-                    ),
-                    alamat: data.check_out_street_address || "-",
-                    kecamatan: data.check_out_district || "-",
-                    akurasi:
-                        data.check_out_accuracy_meters &&
-                        data.check_out_accuracy_meters > 0
-                            ? `±${Math.round(data.check_out_accuracy_meters)}m`
-                            : "N/A",
-                },
-            });
-        }
+                    });
+                }
 
-        setMarkers(markerList);
-    };
+                setMarkers(markerList);
+            }
+
+            setLoading(false);
+        };
+        loadData();
+    }, [technicianId, getTodayAttendance]);
 
     // Don't show map if no check-in yet
     if (!attendanceData) {

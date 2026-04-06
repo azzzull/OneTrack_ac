@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { CalendarDays, MapPin, Loader, Filter } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
@@ -31,17 +31,26 @@ const AttendanceHistory = () => {
         type: null,
     });
 
-    const loadAttendanceData = useCallback(async () => {
+    const handleShowMap = (data, type) => {
+        setMapModal({
+            isOpen: true,
+            data,
+            type,
+        });
+    };
+
+    useEffect(() => {
         if (!user?.id) return;
-
-        const result = await getAttendanceHistory(user.id, null, null);
-
-        if (result.success) {
-            setAttendanceData(result.data || []);
-        }
+        const loadData = async () => {
+            const result = await getAttendanceHistory(user.id, null, null);
+            if (result.success) {
+                setAttendanceData(result.data || []);
+            }
+        };
+        loadData();
     }, [user?.id, getAttendanceHistory]);
 
-    const applyFilters = useCallback(() => {
+    useEffect(() => {
         let filtered = [...attendanceData];
         const today = new Date();
         let dateFrom, dateTo;
@@ -84,23 +93,6 @@ const AttendanceHistory = () => {
 
         setFilteredData(filtered);
     }, [attendanceData, filterPeriod, customDateFrom, customDateTo]);
-
-    const handleShowMap = (data, type) => {
-        setMapModal({
-            isOpen: true,
-            data,
-            type,
-        });
-    };
-
-    useEffect(() => {
-        loadAttendanceData();
-    }, [loadAttendanceData]);
-
-    useEffect(() => {
-        applyFilters();
-    }, [applyFilters]);
-
     return (
         <div className="min-h-screen bg-sky-50">
             <div className="flex min-h-screen">

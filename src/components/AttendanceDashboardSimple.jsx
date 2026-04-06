@@ -14,21 +14,19 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
     const [loadingAttendance, setLoadingAttendance] = useState(true);
 
     React.useEffect(() => {
-        loadTodayData();
-    }, [technicianId]);
-
-    const loadTodayData = async () => {
-        setLoadingAttendance(true);
-        try {
-            const result = await getTodayAttendance(technicianId);
-            setTodayAttendance(result.data);
-        } catch (error) {
-            console.error("Error loading today attendance:", error);
-        } finally {
-            setLoadingAttendance(false);
-        }
-    };
-
+        const loadData = async () => {
+            setLoadingAttendance(true);
+            try {
+                const result = await getTodayAttendance(technicianId);
+                setTodayAttendance(result.data);
+            } catch (error) {
+                console.error("Error loading attendance:", error);
+            } finally {
+                setLoadingAttendance(false);
+            }
+        };
+        loadData();
+    }, [technicianId, getTodayAttendance]);
     const handleOpenModal = (type) => {
         setModalType(type);
         setModalOpen(true);

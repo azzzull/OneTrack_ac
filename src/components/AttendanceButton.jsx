@@ -24,15 +24,14 @@ const AttendanceButton = ({
     const [loadingStatus, setLoadingStatus] = useState(true);
 
     React.useEffect(() => {
-        loadTodayStatus();
-    }, []);
-
-    const loadTodayStatus = async () => {
-        setLoadingStatus(true);
-        const result = await getTodayAttendance(technicianId);
-        setTodayStatus(result.status);
-        setLoadingStatus(false);
-    };
+        const loadStatus = async () => {
+            setLoadingStatus(true);
+            const result = await getTodayAttendance(technicianId);
+            setTodayStatus(result.status);
+            setLoadingStatus(false);
+        };
+        loadStatus();
+    }, [technicianId, getTodayAttendance]);
 
     const handleCheckIn = async () => {
         const result = await recordCheckIn(technicianId);

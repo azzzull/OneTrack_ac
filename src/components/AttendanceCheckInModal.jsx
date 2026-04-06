@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { X, MapPin, Loader, AlertCircle } from "lucide-react";
 import LeafletMap from "./Maps/LeafletMap";
 import { getCurrentLocationWithRetry } from "../utils/geoLocation";

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { CalendarDays, MapPin, Loader, Filter, Download } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
@@ -16,8 +16,7 @@ import supabase from "../../supabaseClient";
 const AttendanceLog = () => {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
-    const { user } = useAuth();
-    const { getAdminAttendanceLog, loading, getTodayAttendance } =
+    const { getAdminAttendanceLog, loading } =
         useAttendance();
 
     const [attendanceData, setAttendanceData] = useState([]);
@@ -37,27 +36,27 @@ const AttendanceLog = () => {
         technicianName: "",
     });
 
-    const loadTechnicians = useCallback(async () => {
-        const { data, error } = await supabase
-            .from("profiles")
-            .select("id, first_name, last_name, role")
-            .eq("role", "technician")
-            .order("first_name", { ascending: true });
+    useEffect(() => {
+        const loadInitialData = async () => {
+            const { data, error } = await supabase
+                .from("profiles")
+                .select("id, first_name, last_name, role")
+                .eq("role", "technician")
+                .order("first_name", { ascending: true });
 
-        if (!error && data) {
-            setTechnicians(data);
-        }
-    }, []);
+            if (!error && data) {
+                setTechnicians(data);
+            }
 
-    const loadAttendanceData = useCallback(async () => {
-        const result = await getAdminAttendanceLog(null, null, null, null);
-
-        if (result.success) {
-            setAttendanceData(result.data || []);
-        }
+            const result = await getAdminAttendanceLog(null, null, null, null);
+            if (result.success) {
+                setAttendanceData(result.data || []);
+            }
+        };
+        loadInitialData();
     }, [getAdminAttendanceLog]);
 
-    const applyFilters = useCallback(() => {
+    useEffect(() => {
         let filtered = [...attendanceData];
 
         if (filterTechnician) {
@@ -96,15 +95,6 @@ const AttendanceLog = () => {
         filterDateTo,
         filterStatus,
     ]);
-
-    useEffect(() => {
-        loadTechnicians();
-        loadAttendanceData();
-    }, [loadTechnicians, loadAttendanceData]);
-
-    useEffect(() => {
-        applyFilters();
-    }, [applyFilters]);
 
     const handleShowMap = (data, type, technicianName) => {
         setMapModal({

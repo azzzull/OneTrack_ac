@@ -12,28 +12,23 @@ import { formatAddressShort } from "../utils/nominatim";
  * Shows: check-in time/location, check-out time/location, working hours
  */
 const AttendanceSummary = ({ technicianId }) => {
-    const { getTodayAttendance, loading } = useAttendance();
+    const { getTodayAttendance } = useAttendance();
     const [attendanceData, setAttendanceData] = useState(null);
-    const [loadingData, setLoadingData] = useState(true);
 
     useEffect(() => {
-        loadTodayData();
+        const loadData = async () => {
+            const result = await getTodayAttendance(technicianId);
+
+            if (result.data) {
+                setAttendanceData(result.data);
+            }
+        };
+        loadData();
 
         // Refresh every 30 seconds
-        const interval = setInterval(loadTodayData, 30000);
+        const interval = setInterval(loadData, 30000);
         return () => clearInterval(interval);
-    }, [technicianId]);
-
-    const loadTodayData = async () => {
-        setLoadingData(true);
-        const result = await getTodayAttendance(technicianId);
-
-        if (result.data) {
-            setAttendanceData(result.data);
-        }
-
-        setLoadingData(false);
-    };
+    }, [technicianId, getTodayAttendance]);
 
     // Not checked in yet
     if (!attendanceData) {

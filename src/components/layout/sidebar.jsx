@@ -109,10 +109,10 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                     ? `ada ${addedCount} pekerjaan baru yang di request`
                     : "ada pekerjaan baru yang di request";
 
-            setNewRequestToast(message);
             if (toastTimerRef.current) {
                 clearTimeout(toastTimerRef.current);
             }
+            setNewRequestToast(message);
             toastTimerRef.current = setTimeout(() => {
                 setNewRequestToast("");
             }, 4500);
