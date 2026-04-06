@@ -5,14 +5,12 @@
 
 /**
  * Format date to dd-mm-yyyy
- * Handles both YYYY-MM-DD strings and Date objects
+ * Handles ISO datetime strings, YYYY-MM-DD strings, and Date objects
  * @param {string|Date} dateValue - Date value to format
  * @returns {string} Formatted date as dd-mm-yyyy or "-" if invalid
  */
 export const formatDateUniversal = (dateValue) => {
     if (!dateValue) return "-";
-
-    let dateStr;
 
     // Handle Date objects
     if (dateValue instanceof Date) {
@@ -23,13 +21,17 @@ export const formatDateUniversal = (dateValue) => {
         return `${day}-${month}-${year}`;
     }
 
-    // Handle string dates in YYYY-MM-DD format
-    if (typeof dateValue === "string" && dateValue.match(/^\d{4}-\d{2}-\d{2}/)) {
-        const [year, month, day] = dateValue.split("-");
-        return `${day}-${month}-${year}`;
+    // Handle string dates
+    if (typeof dateValue === "string") {
+        // Extract YYYY-MM-DD from ISO datetime (e.g., "2026-04-03T09:19:31.584+00:00" -> "2026-04-03")
+        const isoMatch = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (isoMatch) {
+            const [, year, month, day] = isoMatch;
+            return `${day}-${month}-${year}`;
+        }
     }
 
-    // Handle ISO strings and other date formats
+    // Handle other date formats with Date constructor
     const date = new Date(dateValue);
     if (isNaN(date.getTime())) return "-";
 
