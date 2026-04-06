@@ -9,7 +9,9 @@ import AdminMasterDataModulePage from "@/pages/admin/MasterDataModule";
 import AdminNewJobPage from "@/pages/admin/NewJob";
 import AdminReportsPage from "@/pages/admin/Reports";
 import AdminRequestsPage from "@/pages/admin/Requests";
+import AdminAttendanceLogPage from "@/pages/admin/AttendanceLog";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
+import TechnicianAttendanceHistoryPage from "@/pages/technician/AttendanceHistory";
 import CustomerDashboard from "@/pages/customer/Dashboard";
 import CustomerRequestFormPage from "@/pages/customer/RequestForm";
 import ProfilePage from "@/pages/Profile";
@@ -116,6 +118,22 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={["customer", "technician"]}>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/technician/attendance"
+        element={
+          <ProtectedRoute allowedRoles={["technician"]}>
+            <TechnicianAttendanceHistoryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/attendance"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <AdminAttendanceLogPage />
           </ProtectedRoute>
         }
       />

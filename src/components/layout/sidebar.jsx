@@ -12,6 +12,7 @@ import {
     PanelLeftOpen,
     Menu,
     X,
+    CalendarDays,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
@@ -25,11 +26,13 @@ const menuByRole = {
         { label: "New Job", path: "/jobs/new", icon: Plus },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Reports", path: "/reports", icon: PieChart },
+        { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
         { label: "Requests", path: "/technician/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
+        { label: "History Absensi", path: "/technician/attendance", icon: CalendarDays },
     ],
     customer: [
         { label: "My Service", path: "/services", icon: List },
