@@ -15,6 +15,8 @@ import {
     UserRound,
     Wrench,
     X,
+    ChevronLeft,
+    ChevronRight,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
@@ -193,6 +195,8 @@ export default function AdminRequestsPage() {
         label: "",
     });
     const [hasDeferredRefresh, setHasDeferredRefresh] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 5;
 
     const streamRef = useRef(null);
     const videoRef = useRef(null);
@@ -339,6 +343,19 @@ export default function AdminRequestsPage() {
             return matchTechnicianQueue && matchFilter && matchSearch;
         });
     }, [activeFilter, requests, role, search]);
+
+    // Pagination calculations
+    const totalPages = Math.ceil(filteredRequests.length / ITEMS_PER_PAGE);
+    const paginatedRequests = useMemo(() => {
+        const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
+        const endIdx = startIdx + ITEMS_PER_PAGE;
+        return filteredRequests.slice(startIdx, endIdx);
+    }, [filteredRequests, currentPage]);
+
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeFilter, search]);
 
     const selectedRequest = useMemo(
         () => requests.find((item) => item.id === selectedRequestId) ?? null,
@@ -673,7 +690,7 @@ export default function AdminRequestsPage() {
                                 </p>
                             </div>
                         ) : (
-                            filteredRequests.map((item) => (
+                            paginatedRequests.map((item) => (
                                 <article
                                     key={item.id}
                                     className="cursor-pointer overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md hover:scale-[1.01]"
@@ -764,6 +781,79 @@ export default function AdminRequestsPage() {
                                     </div>
                                 </article>
                             ))
+                        )}
+
+                        {filteredRequests.length > ITEMS_PER_PAGE && (
+                            <div className="mt-6 flex flex-col items-center justify-between gap-4 sm:flex-row">
+                                <div className="text-sm text-slate-600">
+                                    Page{" "}
+                                    <span className="font-semibold">
+                                        {currentPage}
+                                    </span>{" "}
+                                    of{" "}
+                                    <span className="font-semibold">
+                                        {totalPages}
+                                    </span>{" "}
+                                    • Showing{" "}
+                                    <span className="font-semibold">
+                                        {paginatedRequests.length}
+                                    </span>{" "}
+                                    of{" "}
+                                    <span className="font-semibold">
+                                        {filteredRequests.length}
+                                    </span>{" "}
+                                    results
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() =>
+                                            setCurrentPage((p) =>
+                                                Math.max(1, p - 1),
+                                            )
+                                        }
+                                        disabled={currentPage === 1}
+                                        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                                        title="Previous page"
+                                    >
+                                        <ChevronLeft size={18} />
+                                    </button>
+
+                                    <div className="flex gap-1">
+                                        {Array.from(
+                                            { length: totalPages },
+                                            (_, i) => i + 1,
+                                        ).map((page) => (
+                                            <button
+                                                key={page}
+                                                onClick={() =>
+                                                    setCurrentPage(page)
+                                                }
+                                                className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                                    currentPage === page
+                                                        ? "bg-sky-500 text-white"
+                                                        : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                                }`}
+                                            >
+                                                {page}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <button
+                                        onClick={() =>
+                                            setCurrentPage((p) =>
+                                                Math.min(totalPages, p + 1),
+                                            )
+                                        }
+                                        disabled={currentPage === totalPages}
+                                        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                                        title="Next page"
+                                    >
+                                        <ChevronRight size={18} />
+                                    </button>
+                                </div>
+                            </div>
                         )}
                     </section>
                 </main>

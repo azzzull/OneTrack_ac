@@ -46,7 +46,13 @@ const normalizeJob = (row) => {
 
     const trouble = pickFirst(
         row,
-        ["trouble_description", "description", "notes", "issue_detail", "problem"],
+        [
+            "trouble_description",
+            "description",
+            "notes",
+            "issue_detail",
+            "problem",
+        ],
         "",
     );
     const replacedParts = pickFirst(row, ["replaced_parts"], "");
@@ -254,7 +260,8 @@ function AdminDashboard() {
                         ) : filteredJobs.length === 0 ? (
                             <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white p-6">
                                 <p className="text-sm text-slate-500">
-                                    Tidak ada pekerjaan yang cocok dengan pencarian.
+                                    Tidak ada pekerjaan yang cocok dengan
+                                    pencarian.
                                 </p>
                             </div>
                         ) : (
@@ -277,7 +284,12 @@ function AdminDashboard() {
                                                         </p>
                                                         <p className="mt-1 break-all text-xs text-slate-500">
                                                             Order ID:{" "}
-                                                            <span title={job.id ?? "-"}>
+                                                            <span
+                                                                title={
+                                                                    job.id ??
+                                                                    "-"
+                                                                }
+                                                            >
                                                                 {formatOrderId(
                                                                     job.id,
                                                                 )}
