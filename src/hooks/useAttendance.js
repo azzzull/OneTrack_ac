@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import supabase from "../supabaseClient";
 import { getCurrentLocationWithRetry } from "../utils/geoLocation";
 import { reverseGeocode } from "../utils/nominatim";
+import { formatDateUniversal } from "../utils/dateFormatter";
 
 /**
  * Hook for attendance check-in/check-out operations
@@ -389,12 +390,8 @@ export const formatTimeShort = (timestamp) => {
 
 /**
  * Helper function to format date display (dd-mm-yyyy)
+ * Handles YYYY-MM-DD format from database
  */
 export const formatDateShort = (dateString) => {
-    if (!dateString) return "-";
-    const date = new Date(dateString + "T00:00:00");
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}-${month}-${year}`;
+    return formatDateUniversal(dateString);
 };

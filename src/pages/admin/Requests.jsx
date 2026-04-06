@@ -23,6 +23,7 @@ import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
+import { formatDateUniversal } from "../../utils/dateFormatter";
 
 const FILTERS = [
     { key: "all", label: "All" },
@@ -129,15 +130,7 @@ const normalizeRequest = (row, creatorName = "") => {
 };
 
 const formatDate = (value) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-
-    return new Intl.DateTimeFormat("en-US", {
-        month: "numeric",
-        day: "numeric",
-        year: "numeric",
-    }).format(date);
+    return formatDateUniversal(value);
 };
 
 const formatOrderId = (value) => {

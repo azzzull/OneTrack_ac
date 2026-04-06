@@ -14,6 +14,7 @@ import Card from "../../components/card";
 import useRequestStats from "../../hooks/useRequestStats";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import supabase from "../../supabaseClient";
+import { formatDateUniversal } from "../../utils/dateFormatter";
 
 const statusLabelByKey = {
     pending: "PENDING",
@@ -78,15 +79,7 @@ const normalizeJob = (row) => {
 };
 
 const formatDate = (value) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-
-    return new Intl.DateTimeFormat("en-US", {
-        month: "numeric",
-        day: "numeric",
-        year: "numeric",
-    }).format(date);
+    return formatDateUniversal(value);
 };
 
 const formatOrderId = (value) => {
