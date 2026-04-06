@@ -417,31 +417,33 @@ export function MobileBottomNav() {
                 )}
             </header>
 
-            <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-1 py-1 md:hidden">
-                <ul className="flex items-center justify-between gap-2">
+            <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white md:hidden">
+                <ul className="flex items-center justify-around gap-0">
                     {menus.map(({ label, path, icon, badge }) => (
-                        <li key={label} className="flex-1 min-w-0">
+                        <li key={label} className="flex-1">
                             <NavLink
+                                end
                                 to={path}
                                 className={({ isActive }) =>
-                                    ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex w-full flex-col items-center justify-center rounded-lg px-1.5 py-2 text-xs font-medium transition relative
-                                    ${
+                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! block px-2 py-2.5 transition-colors duration-200 ${
                                         isActive
-                                            ? "bg-sky-100 text-sky-500"
-                                            : "text-slate-500 hover:bg-slate-100"
-                                    }
-                                `
+                                            ? "text-sky-500 border-b-2 border-sky-500 font-semibold"
+                                            : "text-slate-500 border-b-2 border-transparent hover:text-slate-700"
+                                    }`
                                 }
                                 style={{ textDecoration: "none" }}
                             >
-                                {createElement(icon, { size: 18 })}
-                                <span className="mt-1">{label}</span>
-
-                                {badge && (
-                                    <span className="absolute top-1 right-4 rounded-full bg-red-500 px-1.5 text-[10px] text-white">
-                                        {badge}
+                                <div className="flex flex-col items-center gap-1">
+                                    {createElement(icon, { size: 20 })}
+                                    <span className="text-xs font-medium truncate">
+                                        {label}
                                     </span>
-                                )}
+                                    {badge && (
+                                        <span className="absolute right-2 top-2 rounded-full bg-red-500 px-1 text-[10px] text-white">
+                                            {badge}
+                                        </span>
+                                    )}
+                                </div>
                             </NavLink>
                         </li>
                     ))}
