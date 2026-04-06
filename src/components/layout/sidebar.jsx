@@ -32,7 +32,11 @@ const menuByRole = {
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
         { label: "Requests", path: "/technician/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
-        { label: "History Absensi", path: "/technician/attendance", icon: CalendarDays },
+        {
+            label: "History Absensi",
+            path: "/technician/attendance",
+            icon: CalendarDays,
+        },
     ],
     customer: [
         { label: "My Service", path: "/services", icon: List },
@@ -155,7 +159,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             <img
                                 src="/saplogo.svg"
                                 alt="SAP Logo"
-                                className={collapsed ? "h-10 w-10 object-contain" : "h-12 w-12 object-contain"}
+                                className={
+                                    collapsed
+                                        ? "h-10 w-10 object-contain"
+                                        : "h-12 w-12 object-contain"
+                                }
                             />
                             {!collapsed && (
                                 <h1 className="text-2xl font-bold text-sky-500">
@@ -190,8 +198,9 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             <li key={label}>
                                 <NavLink
                                     to={path}
+                                    end
                                     className={({ isActive }) =>
-                                        ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
+                                        `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
                                     ${
                                         isActive
                                             ? "bg-sky-100 text-sky-500"
@@ -199,7 +208,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                     }
                                     ${
                                         collapsed
-                                            ? "flex flex-col items-center px-2 py-2 text-[11px] font-medium"
+                                            ? "flex flex-col items-center justify-center px-2 py-2 text-[11px] font-medium text-center"
                                             : "flex items-center gap-4 px-5 py-3 text-md"
                                     }
                                 `

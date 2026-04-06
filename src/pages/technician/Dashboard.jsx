@@ -19,9 +19,7 @@ import { useDialog } from "../../context/useDialog";
 import CustomSelect from "../../components/ui/CustomSelect";
 import supabase from "../../supabaseClient";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
-import AttendanceButton from "../../components/AttendanceButton";
-import AttendanceSummary from "../../components/AttendanceSummary";
-import AttendanceMap from "../../components/AttendanceMap";
+import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
 
 const STATUS_LABELS = {
     pending: "PENDING",
@@ -472,31 +470,12 @@ function TechnicianDashboard() {
                                 Absensi Hari Ini
                             </h2>
                         </div>
-
-                        <div className="space-y-4">
-                            <AttendanceSummary technicianId={user?.id} />
-                            <AttendanceMap technicianId={user?.id} />
-                            <div className="flex justify-center">
-                                <AttendanceButton 
-                                    technicianId={user?.id}
-                                    onCheckInSuccess={() => {
-                                        // Refresh attendance data
-                                        setTimeout(() => window.location.reload(), 1000);
-                                    }}
-                                    onCheckOutSuccess={() => {
-                                        // Refresh attendance data
-                                        setTimeout(() => window.location.reload(), 1000);
-                                    }}
-                                    onError={(err) => {
-                                        showAlert({
-                                            title: 'Kesalahan Absensi',
-                                            message: err,
-                                            type: 'error'
-                                        });
-                                    }}
-                                />
-                            </div>
-                        </div>
+                        <AttendanceDashboardSimple
+                            technicianId={user?.id}
+                            onDataChange={() => {
+                                // Optional: refresh tasks or update UI
+                            }}
+                        />
                     </section>
 
                     <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
