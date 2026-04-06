@@ -16,8 +16,7 @@ import supabase from "../../supabaseClient";
 const AttendanceLog = () => {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
-    const { getAdminAttendanceLog, loading } =
-        useAttendance();
+    const { getAdminAttendanceLog, loading } = useAttendance();
 
     const [attendanceData, setAttendanceData] = useState([]);
     const [filteredData, setFilteredData] = useState([]);

@@ -22,20 +22,22 @@ const AttendanceMap = ({ technicianId }) => {
                 const markerList = [];
 
                 // Check-in marker
-                if (result.data.check_in_latitude && result.data.check_in_longitude) {
+                if (
+                    result.data.check_in_latitude &&
+                    result.data.check_in_longitude
+                ) {
                     markerList.push({
                         lat: parseFloat(result.data.check_in_latitude),
                         lng: parseFloat(result.data.check_in_longitude),
                         label: "Lokasi Masuk",
                         info: {
-                            waktu: new Date(result.data.check_in_time).toLocaleTimeString(
-                                "id-ID",
-                                {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    second: "2-digit",
-                                },
-                            ),
+                            waktu: new Date(
+                                result.data.check_in_time,
+                            ).toLocaleTimeString("id-ID", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                            }),
                             alamat: result.data.check_in_street_address || "-",
                             kecamatan: result.data.check_in_district || "-",
                             akurasi:
@@ -48,20 +50,22 @@ const AttendanceMap = ({ technicianId }) => {
                 }
 
                 // Check-out marker (if available)
-                if (result.data.check_out_latitude && result.data.check_out_longitude) {
+                if (
+                    result.data.check_out_latitude &&
+                    result.data.check_out_longitude
+                ) {
                     markerList.push({
                         lat: parseFloat(result.data.check_out_latitude),
                         lng: parseFloat(result.data.check_out_longitude),
                         label: "Lokasi Pulang",
                         info: {
-                            waktu: new Date(result.data.check_out_time).toLocaleTimeString(
-                                "id-ID",
-                                {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    second: "2-digit",
-                                },
-                            ),
+                            waktu: new Date(
+                                result.data.check_out_time,
+                            ).toLocaleTimeString("id-ID", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                            }),
                             alamat: result.data.check_out_street_address || "-",
                             kecamatan: result.data.check_out_district || "-",
                             akurasi:

@@ -144,16 +144,29 @@ const AttendanceHistory = () => {
                                 </p>
                             </div>
 
-                            <div className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4">
-                                <p className="text-sm text-amber-600 font-medium">
-                                    Check-in Saja
+                            <div className="rounded-2xl bg-purple-50 border-2 border-purple-200 p-4">
+                                <p className="text-sm text-purple-600 font-medium">
+                                    Rata-rata Jam Kerja
                                 </p>
-                                <p className="text-3xl font-bold text-amber-900 mt-2">
-                                    {
-                                        attendanceData.filter(
-                                            (r) => r.check_in_time && !r.check_out_time,
-                                        ).length
-                                    }
+                                <p className="text-3xl font-bold text-purple-900 mt-2">
+                                    {(() => {
+                                        const daysWorked = attendanceData.filter(
+                                            (r) => r.working_hours_minutes,
+                                        ).length;
+                                        if (daysWorked === 0) return "0 jam";
+                                        const totalMinutes = attendanceData.reduce(
+                                            (sum, r) =>
+                                                sum +
+                                                (r.working_hours_minutes || 0),
+                                            0,
+                                        );
+                                        const avgMinutes = Math.round(
+                                            totalMinutes / daysWorked,
+                                        );
+                                        const hours = Math.floor(avgMinutes / 60);
+                                        const mins = avgMinutes % 60;
+                                        return `${hours}h ${mins}m`;
+                                    })()}
                                 </p>
                             </div>
                         </div>
@@ -381,8 +394,6 @@ const AttendanceHistory = () => {
                             </div>
                         )}
                     </div>
-
-
                 </main>
             </div>
 
