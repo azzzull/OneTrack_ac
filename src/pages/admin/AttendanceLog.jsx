@@ -936,7 +936,7 @@ const AttendanceLog = () => {
 
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                                 <p className="text-xs text-blue-600">
-                                    💡 <strong>Catatan:</strong> Lokasi check-in
+                                    <strong>Catatan:</strong> Lokasi check-in
                                     dan check-out tidak dapat diubah. Hanya jam
                                     yang dapat diedit.
                                 </p>
@@ -1017,9 +1017,7 @@ const AttendanceLog = () => {
                                                     {tech.id.substring(0, 8)}...
                                                 </p>
                                             </div>
-                                            <div className="text-2xl text-red-600">
-                                                ⚠️
-                                            </div>
+                                            <div className="text-2xl text-red-600"></div>
                                         </div>
                                     ))}
                                 </div>
