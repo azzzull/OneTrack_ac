@@ -112,7 +112,10 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             if (toastTimerRef.current) {
                 clearTimeout(toastTimerRef.current);
             }
-            setNewRequestToast(message);
+            // Defer setState to avoid triggering cascading renders
+            Promise.resolve().then(() => {
+                setNewRequestToast(message);
+            });
             toastTimerRef.current = setTimeout(() => {
                 setNewRequestToast("");
             }, 4500);
@@ -278,7 +281,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 </nav>
             </aside>
             {newRequestToast && (
-                <div className="fixed right-4 top-4 z-[80] rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700 shadow-lg">
+                <div className="fixed right-4 top-4 z-80 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700 shadow-lg">
                     {newRequestToast}
                 </div>
             )}
@@ -366,7 +369,7 @@ export function MobileBottomNav() {
                     showTopNav ? "translate-y-0" : "-translate-y-full"
                 }`}
             >
-                <div className="flex min-h-[72px] items-center justify-between px-3 py-3">
+                <div className="flex min-h-18 items-center justify-between px-3 py-3">
                     <div className="inline-flex items-center gap-2">
                         <img
                             src="/saplogo.svg"
@@ -414,14 +417,14 @@ export function MobileBottomNav() {
                 )}
             </header>
 
-            <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-2 py-2 md:hidden">
-                <ul className="flex items-center justify-between gap-1">
+            <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-1 py-1 md:hidden">
+                <ul className="flex items-center justify-between gap-2">
                     {menus.map(({ label, path, icon, badge }) => (
-                        <li key={label} className="flex-1">
+                        <li key={label} className="flex-1 min-w-0">
                             <NavLink
                                 to={path}
                                 className={({ isActive }) =>
-                                    ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-xs font-medium transition relative
+                                    ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex w-full flex-col items-center justify-center rounded-lg px-1.5 py-2 text-xs font-medium transition relative
                                     ${
                                         isActive
                                             ? "bg-sky-100 text-sky-500"

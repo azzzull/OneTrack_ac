@@ -3,7 +3,7 @@ import { CalendarDays, MapPin, Loader, Filter, Download } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import CustomSelect from "../../components/ui/CustomSelect";
-import { useAuth } from "../../context/useAuth";
+
 import {
     useAttendance,
     formatTimeShort,
@@ -56,37 +56,40 @@ const AttendanceLog = () => {
     }, [getAdminAttendanceLog]);
 
     useEffect(() => {
-        let filtered = [...attendanceData];
+        const applyFilter = () => {
+            let filtered = [...attendanceData];
 
-        if (filterTechnician) {
-            filtered = filtered.filter(
-                (item) => item.technician_id === filterTechnician,
-            );
-        }
+            if (filterTechnician) {
+                filtered = filtered.filter(
+                    (item) => item.technician_id === filterTechnician,
+                );
+            }
 
-        if (filterDateFrom) {
-            filtered = filtered.filter(
-                (item) => item.attendance_date >= filterDateFrom,
-            );
-        }
+            if (filterDateFrom) {
+                filtered = filtered.filter(
+                    (item) => item.attendance_date >= filterDateFrom,
+                );
+            }
 
-        if (filterDateTo) {
-            filtered = filtered.filter(
-                (item) => item.attendance_date <= filterDateTo,
-            );
-        }
+            if (filterDateTo) {
+                filtered = filtered.filter(
+                    (item) => item.attendance_date <= filterDateTo,
+                );
+            }
 
-        if (filterStatus === "check_in_only") {
-            filtered = filtered.filter(
-                (item) => item.check_in_time && !item.check_out_time,
-            );
-        } else if (filterStatus === "checked_in_and_out") {
-            filtered = filtered.filter(
-                (item) => item.check_in_time && item.check_out_time,
-            );
-        }
+            if (filterStatus === "check_in_only") {
+                filtered = filtered.filter(
+                    (item) => item.check_in_time && !item.check_out_time,
+                );
+            } else if (filterStatus === "checked_in_and_out") {
+                filtered = filtered.filter(
+                    (item) => item.check_in_time && item.check_out_time,
+                );
+            }
 
-        setFilteredData(filtered);
+            setFilteredData(filtered);
+        };
+        applyFilter();
     }, [
         attendanceData,
         filterTechnician,

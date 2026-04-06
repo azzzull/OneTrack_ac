@@ -82,7 +82,7 @@ const AttendanceButton = ({
             <button
                 onClick={handleCheckIn}
                 disabled={attendanceLoading}
-                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium flex items-center gap-2 shadow-md"
+                className="px-6 py-3 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium flex items-center gap-2 shadow-md"
             >
                 {attendanceLoading ? (
                     <Loader size={18} className="animate-spin" />
@@ -100,7 +100,7 @@ const AttendanceButton = ({
             <button
                 onClick={handleCheckOut}
                 disabled={attendanceLoading}
-                className="px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium flex items-center gap-2 shadow-md"
+                className="px-6 py-3 bg-linear-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium flex items-center gap-2 shadow-md"
             >
                 {attendanceLoading ? (
                     <Loader size={18} className="animate-spin" />

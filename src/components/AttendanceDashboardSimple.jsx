@@ -43,7 +43,9 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
 
             if (result.success) {
                 setModalOpen(false);
-                await loadTodayData();
+                // Reload attendance data
+                const reloadResult = await getTodayAttendance(technicianId);
+                setTodayAttendance(reloadResult.data);
                 onDataChange?.();
             } else {
                 alert(result.error || "Gagal menyimpan absensi");
@@ -76,7 +78,7 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                 {/* Time Boxes */}
                 <div className="mb-6 grid grid-cols-2 gap-4">
                     {/* Check-in Box */}
-                    <div className="rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 p-4 border-2 border-blue-200">
+                    <div className="rounded-xl bg-linear-to-br from-blue-50 to-blue-100 p-4 border-2 border-blue-200">
                         <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">
                             Jam Masuk
                         </p>
@@ -93,7 +95,7 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                     </div>
 
                     {/* Check-out Box */}
-                    <div className="rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 p-4 border-2 border-amber-200">
+                    <div className="rounded-xl bg-linear-to-br from-amber-50 to-amber-100 p-4 border-2 border-amber-200">
                         <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
                             Jam Pulang
                         </p>
@@ -142,7 +144,7 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                     <div className="rounded-xl bg-green-50 p-4 flex items-center gap-3 border-2 border-green-200">
                         <CheckCircle2
                             size={20}
-                            className="text-green-600 flex-shrink-0"
+                            className="text-green-600 shrink-0"
                         />
                         <p className="text-sm text-green-700 font-medium">
                             Anda sudah lengkap absen hari ini

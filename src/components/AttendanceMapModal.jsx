@@ -96,7 +96,7 @@ const AttendanceMapModal = ({
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                 {/* Header */}
-                <div className="sticky top-0 bg-gradient-to-r from-sky-500 to-sky-600 text-white px-6 py-5 flex justify-between items-center">
+                <div className="sticky top-0 bg-linear-to-r from-sky-500 to-sky-600 text-white px-6 py-5 flex justify-between items-center">
                     <div>
                         <h2 className="text-xl font-bold">
                             {type === "check-in"
@@ -145,7 +145,7 @@ const AttendanceMapModal = ({
                             <div className="flex items-start gap-3">
                                 <Clock
                                     size={18}
-                                    className="text-sky-600 mt-0.5 flex-shrink-0"
+                                    className="text-sky-600 mt-0.5 shrink-0"
                                 />
                                 <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium text-sky-700 uppercase tracking-wider">
@@ -164,7 +164,7 @@ const AttendanceMapModal = ({
                             <div className="flex items-start gap-3">
                                 <Gauge
                                     size={18}
-                                    className="text-sky-600 mt-0.5 flex-shrink-0"
+                                    className="text-sky-600 mt-0.5 shrink-0"
                                 />
                                 <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium text-sky-700 uppercase tracking-wider">
@@ -182,7 +182,7 @@ const AttendanceMapModal = ({
                             <div className="flex items-start gap-3">
                                 <MapPin
                                     size={18}
-                                    className="text-sky-600 mt-0.5 flex-shrink-0"
+                                    className="text-sky-600 mt-0.5 shrink-0"
                                 />
                                 <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium text-sky-700 uppercase tracking-wider">

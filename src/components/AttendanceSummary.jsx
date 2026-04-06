@@ -33,7 +33,7 @@ const AttendanceSummary = ({ technicianId }) => {
     // Not checked in yet
     if (!attendanceData) {
         return (
-            <div className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="bg-linear-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-gray-700 font-medium">
                     <AlertCircle
                         className="inline mr-2 text-blue-500"
@@ -54,7 +54,7 @@ const AttendanceSummary = ({ technicianId }) => {
     // Only checked in
     if (!attendanceData.check_out_time) {
         return (
-            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="bg-linear-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <div className="space-y-2">
                     <div className="flex items-center gap-2">
                         <Clock className="text-blue-500" size={18} />
@@ -84,7 +84,7 @@ const AttendanceSummary = ({ technicianId }) => {
 
     // Checked in and out
     return (
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 mb-6">
+        <div className="bg-linear-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 mb-6">
             <div className="space-y-3">
                 {/* Check-in section */}
                 <div>
@@ -107,7 +107,7 @@ const AttendanceSummary = ({ technicianId }) => {
                 </div>
 
                 {/* Divider */}
-                <div className="h-px bg-gradient-to-r from-green-200 to-emerald-200"></div>
+                <div className="h-px bg-linear-to-r from-green-200 to-emerald-200"></div>
 
                 {/* Check-out section */}
                 <div>

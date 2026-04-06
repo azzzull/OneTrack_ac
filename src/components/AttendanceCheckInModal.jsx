@@ -88,7 +88,7 @@ const AttendanceCheckInModal = ({
                                 <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3">
                                     <AlertCircle
                                         size={16}
-                                        className="mt-0.5 flex-shrink-0 text-red-600"
+                                        className="mt-0.5 shrink-0 text-red-600"
                                     />
                                     <p className="text-xs text-red-700">
                                         {error}

@@ -51,47 +51,54 @@ const AttendanceHistory = () => {
     }, [user?.id, getAttendanceHistory]);
 
     useEffect(() => {
-        let filtered = [...attendanceData];
-        const today = new Date();
-        let dateFrom, dateTo;
+        const applyFilter = () => {
+            let filtered = [...attendanceData];
+            const today = new Date();
+            let dateFrom, dateTo;
 
-        switch (filterPeriod) {
-            case "week":
-                dateFrom = new Date(today);
-                dateFrom.setDate(today.getDate() - today.getDay());
-                dateTo = today;
-                break;
-            case "month":
-                dateFrom = new Date(today.getFullYear(), today.getMonth(), 1);
-                dateTo = today;
-                break;
-            case "custom":
-                if (customDateFrom && customDateTo) {
-                    dateFrom = new Date(customDateFrom);
-                    dateTo = new Date(customDateTo);
-                } else {
+            switch (filterPeriod) {
+                case "week":
+                    dateFrom = new Date(today);
+                    dateFrom.setDate(today.getDate() - today.getDay());
+                    dateTo = today;
+                    break;
+                case "month":
+                    dateFrom = new Date(
+                        today.getFullYear(),
+                        today.getMonth(),
+                        1,
+                    );
+                    dateTo = today;
+                    break;
+                case "custom":
+                    if (customDateFrom && customDateTo) {
+                        dateFrom = new Date(customDateFrom);
+                        dateTo = new Date(customDateTo);
+                    } else {
+                        dateFrom = null;
+                        dateTo = null;
+                    }
+                    break;
+                default:
                     dateFrom = null;
                     dateTo = null;
-                }
-                break;
-            default:
-                dateFrom = null;
-                dateTo = null;
-        }
+            }
 
-        if (dateFrom && dateTo) {
-            const dateFromStr = dateFrom.toISOString().split("T")[0];
-            const dateToStr = dateTo.toISOString().split("T")[0];
+            if (dateFrom && dateTo) {
+                const dateFromStr = dateFrom.toISOString().split("T")[0];
+                const dateToStr = dateTo.toISOString().split("T")[0];
 
-            filtered = filtered.filter((item) => {
-                return (
-                    item.attendance_date >= dateFromStr &&
-                    item.attendance_date <= dateToStr
-                );
-            });
-        }
+                filtered = filtered.filter((item) => {
+                    return (
+                        item.attendance_date >= dateFromStr &&
+                        item.attendance_date <= dateToStr
+                    );
+                });
+            }
 
-        setFilteredData(filtered);
+            setFilteredData(filtered);
+        };
+        applyFilter();
     }, [attendanceData, filterPeriod, customDateFrom, customDateTo]);
     return (
         <div className="min-h-screen bg-sky-50">
@@ -150,20 +157,25 @@ const AttendanceHistory = () => {
                                 </p>
                                 <p className="text-3xl font-bold text-purple-900 mt-2">
                                     {(() => {
-                                        const daysWorked = attendanceData.filter(
-                                            (r) => r.working_hours_minutes,
-                                        ).length;
+                                        const daysWorked =
+                                            attendanceData.filter(
+                                                (r) => r.working_hours_minutes,
+                                            ).length;
                                         if (daysWorked === 0) return "0 jam";
-                                        const totalMinutes = attendanceData.reduce(
-                                            (sum, r) =>
-                                                sum +
-                                                (r.working_hours_minutes || 0),
-                                            0,
-                                        );
+                                        const totalMinutes =
+                                            attendanceData.reduce(
+                                                (sum, r) =>
+                                                    sum +
+                                                    (r.working_hours_minutes ||
+                                                        0),
+                                                0,
+                                            );
                                         const avgMinutes = Math.round(
                                             totalMinutes / daysWorked,
                                         );
-                                        const hours = Math.floor(avgMinutes / 60);
+                                        const hours = Math.floor(
+                                            avgMinutes / 60,
+                                        );
                                         const mins = avgMinutes % 60;
                                         return `${hours}h ${mins}m`;
                                     })()}
