@@ -550,9 +550,12 @@ export default function AdminRequestsPage() {
                 hasAfter &&
                 !hasValidSerialNumber(nextSerial)
             ) {
-                await showAlert("harap scan Serial number terlebih dahulu", {
-                    title: "Informasi",
-                });
+                await showAlert(
+                    "harap isi serial number (scan atau ketik manual)",
+                    {
+                        title: "Informasi",
+                    },
+                );
                 return;
             }
 
@@ -882,15 +885,18 @@ export default function AdminRequestsPage() {
                                     <div className="mt-3 space-y-3">
                                         <label className="block">
                                             <span className="text-xs font-medium text-slate-600">
-                                                Serial Number (scan barcode
-                                                kamera)
+                                                Serial Number
                                             </span>
                                             <div className="mt-1 flex gap-2">
                                                 <input
                                                     value={serialNumberInput}
-                                                    readOnly
+                                                    onChange={(event) =>
+                                                        setSerialNumberInput(
+                                                            event.target.value,
+                                                        )
+                                                    }
                                                     className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none"
-                                                    placeholder="Scan barcode serial dari kamera"
+                                                    placeholder="Scan dari kamera atau ketik manual"
                                                 />
                                                 <button
                                                     type="button"
@@ -905,7 +911,22 @@ export default function AdminRequestsPage() {
                                                     <Camera size={14} />
                                                     Scan
                                                 </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSerialNumberInput("")
+                                                    }
+                                                    className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                                                    title="Kosongkan serial number"
+                                                >
+                                                    <X size={14} />
+                                                    Hapus
+                                                </button>
                                             </div>
+                                            <p className="mt-2 text-xs text-slate-500">
+                                                Jika unit tidak punya barcode,
+                                                isi manual nomor seri.
+                                            </p>
                                         </label>
                                         <label className="block">
                                             <span className="text-xs font-medium text-slate-600">
