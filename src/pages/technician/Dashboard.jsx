@@ -335,7 +335,6 @@ function TechnicianDashboard() {
 
     const saveChanges = async () => {
         if (!selectedTask) return;
-        if (selectedTask.status === "completed") return;
 
         // Validasi: minimal ada satu perubahan atau satu foto baru
         const hasRepairNoteChanges =
@@ -410,6 +409,8 @@ function TechnicianDashboard() {
                 payload.status = "in_progress";
             } else if (hasBefore) {
                 payload.status = "pending";
+            } else {
+                payload.status = selectedTask.status;
             }
 
             const { error } = await supabase
@@ -898,18 +899,16 @@ function TechnicianDashboard() {
                                         </div>
                                     </>
                                 )}
-                                {selectedTask.status !== "completed" && (
-                                    <button
-                                        type="button"
-                                        onClick={saveChanges}
-                                        disabled={saving}
-                                        className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                        {saving
-                                            ? "Menyimpan Perubahan..."
-                                            : "Simpan Perubahan"}
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={saveChanges}
+                                    disabled={saving}
+                                    className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {saving
+                                        ? "Menyimpan Perubahan..."
+                                        : "Simpan Perubahan"}
+                                </button>
                             </div>
                         </div>
                     </div>
