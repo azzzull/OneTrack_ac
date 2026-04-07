@@ -606,8 +606,13 @@ export default function AdminNewJobPage() {
                                         <div className="mt-1 flex gap-2">
                                             <input
                                                 value={form.serialNumber}
-                                                readOnly
-                                                placeholder="Scan barcode serial dari kamera"
+                                                onChange={(e) =>
+                                                    setField(
+                                                        "serialNumber",
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                placeholder="Scan dari kamera atau ketik manual"
                                                 className={inputClass}
                                             />
                                             <button
@@ -620,7 +625,21 @@ export default function AdminNewJobPage() {
                                             >
                                                 <Camera size={16} />
                                             </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setField("serialNumber", "")
+                                                }
+                                                className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-600 hover:bg-slate-200"
+                                                title="Kosongkan serial number"
+                                            >
+                                                <X size={16} />
+                                            </button>
                                         </div>
+                                        <p className="mt-2 text-xs text-slate-500">
+                                            Jika unit tidak punya barcode, isi
+                                            manual nomor seri.
+                                        </p>
                                     </label>
                                 </div>
                             </div>
