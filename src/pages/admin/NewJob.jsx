@@ -402,6 +402,7 @@ export default function AdminNewJobPage() {
 
                     <form
                         onSubmit={handleSubmit}
+                        noValidate
                         className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:p-6"
                     >
                         <section>
@@ -587,7 +588,6 @@ export default function AdminNewJobPage() {
                                         }
                                         placeholder="Contoh: Ruang Meeting A"
                                         className={inputClass}
-                                        required
                                     />
                                 </label>
                                 <div className="md:col-span-2">
@@ -720,7 +720,6 @@ export default function AdminNewJobPage() {
                                         }
                                         placeholder="Jelaskan keluhan kerusakan"
                                         className={`${inputClass} min-h-24`}
-                                        required
                                     />
                                 </label>
                                 <label>
