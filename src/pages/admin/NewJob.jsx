@@ -3,6 +3,7 @@ import { Camera, CheckCircle2, Send, ArrowLeft, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
+import PhotoUploadInput from "../../components/PhotoUploadInput";
 import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
@@ -78,9 +79,9 @@ export default function AdminNewJobPage() {
     const [acBrands, setAcBrands] = useState([]);
     const [acTypes, setAcTypes] = useState([]);
     const [acPks, setAcPks] = useState([]);
-    const [beforePhoto, setBeforePhoto] = useState(null);
-    const [progressPhoto, setProgressPhoto] = useState(null);
-    const [afterPhoto, setAfterPhoto] = useState(null);
+    const [beforePhotoUrl, setBeforePhotoUrl] = useState(null);
+    const [progressPhotoUrl, setProgressPhotoUrl] = useState(null);
+    const [afterPhotoUrl, setAfterPhotoUrl] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
@@ -276,9 +277,6 @@ export default function AdminNewJobPage() {
             }
             return;
         }
-        if (cameraTarget === "before") setBeforePhoto(file);
-        if (cameraTarget === "progress") setProgressPhoto(file);
-        if (cameraTarget === "after") setAfterPhoto(file);
 
         closeCamera();
     };
@@ -308,17 +306,11 @@ export default function AdminNewJobPage() {
         setSubmitting(true);
 
         try {
-            const [beforeUrl, progressUrl, afterUrl] = await Promise.all([
-                uploadPhoto(beforePhoto, "before"),
-                uploadPhoto(progressPhoto, "progress"),
-                uploadPhoto(afterPhoto, "after"),
-            ]);
-
             const payload = {
                 title: selectedProject?.project_name ?? "",
-                status: afterUrl
+                status: afterPhotoUrl
                     ? "completed"
-                    : progressUrl
+                    : progressPhotoUrl
                       ? "in_progress"
                       : "pending",
                 location: selectedProject?.location ?? selectedCustomer?.location ?? "",
@@ -336,9 +328,9 @@ export default function AdminNewJobPage() {
                 trouble_description: form.troubleDescription,
                 replaced_parts: form.replacedParts,
                 reconditioned_parts: form.reconditionedParts,
-                before_photo_url: beforeUrl,
-                progress_photo_url: progressUrl,
-                after_photo_url: afterUrl,
+                before_photo_url: beforePhotoUrl,
+                progress_photo_url: progressPhotoUrl,
+                after_photo_url: afterPhotoUrl,
                 created_by: user?.id ?? null,
             };
             if (sessionRole === "technician") {
@@ -647,22 +639,67 @@ export default function AdminNewJobPage() {
 
                         <section className="mt-8">
                             <SectionTitle>Dokumentasi Foto</SectionTitle>
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                <FileCaptureCard
-                                    label="Foto Before"
-                                    fileName={beforePhoto?.name}
-                                    onClick={() => openCamera("before")}
-                                />
-                                <FileCaptureCard
-                                    label="Foto Progress"
-                                    fileName={progressPhoto?.name}
-                                    onClick={() => openCamera("progress")}
-                                />
-                                <FileCaptureCard
-                                    label="Foto After"
-                                    fileName={afterPhoto?.name}
-                                    onClick={() => openCamera("after")}
-                                />
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                                        Foto Before
+                                    </label>
+                                    <PhotoUploadInput
+                                        folderName="before"
+                                        photoType="before"
+                                        supabaseClient={supabase}
+                                        onPhotoSelected={() => {}}
+                                        onUploadSuccess={async (metadata, photoUrl) => {
+                                            setBeforePhotoUrl(photoUrl);
+                                        }}
+                                        showQueuedStatus={false}
+                                    />
+                                    {beforePhotoUrl && (
+                                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                            <p className="text-xs text-emerald-700">Foto terpilih</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                                        Foto Progress
+                                    </label>
+                                    <PhotoUploadInput
+                                        folderName="progress"
+                                        photoType="progress"
+                                        supabaseClient={supabase}
+                                        onPhotoSelected={() => {}}
+                                        onUploadSuccess={async (metadata, photoUrl) => {
+                                            setProgressPhotoUrl(photoUrl);
+                                        }}
+                                        showQueuedStatus={false}
+                                    />
+                                    {progressPhotoUrl && (
+                                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                            <p className="text-xs text-emerald-700">Foto terpilih</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                                        Foto After
+                                    </label>
+                                    <PhotoUploadInput
+                                        folderName="after"
+                                        photoType="after"
+                                        supabaseClient={supabase}
+                                        onPhotoSelected={() => {}}
+                                        onUploadSuccess={async (metadata, photoUrl) => {
+                                            setAfterPhotoUrl(photoUrl);
+                                        }}
+                                        showQueuedStatus={false}
+                                    />
+                                    {afterPhotoUrl && (
+                                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                            <p className="text-xs text-emerald-700">Foto terpilih</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </section>
 
@@ -736,14 +773,12 @@ export default function AdminNewJobPage() {
 
             <MobileBottomNav />
 
-            {cameraOpen && (
+            {cameraOpen && cameraTarget === "serial-scan" && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4">
                     <div className="w-full max-w-md rounded-2xl bg-white p-4">
                         <div className="mb-3 flex items-center justify-between">
                             <p className="text-sm font-semibold text-slate-800">
-                                {cameraTarget === "serial-scan"
-                                    ? "Scan Barcode Serial"
-                                    : "Ambil Foto"}
+                                Scan Barcode Serial
                             </p>
                             <button
                                 type="button"
@@ -768,9 +803,7 @@ export default function AdminNewJobPage() {
                             className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600"
                         >
                             <Camera size={16} />
-                            {cameraTarget === "serial-scan"
-                                ? "Scan Sekarang"
-                                : "Ambil Foto"}
+                            Scan Sekarang
                         </button>
                     </div>
                 </div>

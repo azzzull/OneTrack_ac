@@ -1,0 +1,469 @@
+/**
+ * PhotoUploadInput - Reusable photo upload component
+ * Supports both camera capture and gallery/local file picker
+ * Handles offline queueing and shows upload status
+ */
+
+import React, { useRef, useState, useEffect } from 'react';
+import { useOfflineUpload } from '../hooks/useOfflineUpload';
+import { useAuth } from '../context/useAuth';
+
+const PhotoUploadInput = ({
+  folderName = 'temp',
+  onPhotoSelected = () => {},
+  onUploadSuccess = () => {},
+  photoType = 'generic', // for metadata
+  disabled = false,
+  className = '',
+  showQueuedStatus = true,
+  supabaseClient = null,
+}) => {
+  const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [uploadMode, setUploadMode] = useState('gallery'); // gallery or camera
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [messageType, setMessageType] = useState('info'); // info, success, error
+
+  const { user } = useAuth();
+  const {
+    isOnline,
+    queuedPhotos,
+    uploadPhoto,
+    triggerSync,
+  } = useOfflineUpload();
+
+  // Cleanup camera on unmount
+  useEffect(() => {
+    const video = videoRef.current;
+    return () => {
+      if (video && video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  /**
+   * Start camera capture
+   */
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }, // rear camera for mobile
+        audio: false,
+      });
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setIsCameraActive(true);
+        setUploadMode('camera');
+      }
+    } catch (error) {
+      console.error('Failed to access camera:', error);
+      setUploadMessage('Camera access denied. Using gallery instead.');
+      setMessageType('error');
+      setUploadMode('gallery');
+    }
+  };
+
+  /**
+   * Stop camera capture
+   */
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = videoRef.current.srcObject.getTracks();
+      tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  /**
+   * Capture frame from video stream
+   */
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const context = canvasRef.current.getContext('2d');
+      const video = videoRef.current;
+
+      // Set canvas size to match video
+      canvasRef.current.width = video.videoWidth;
+      canvasRef.current.height = video.videoHeight;
+
+      // Draw video frame to canvas
+      context.drawImage(video, 0, 0);
+
+      // Convert to blob
+      canvasRef.current.toBlob(
+        (blob) => {
+          const file = new File([blob], `photo_${Date.now()}.jpg`, {
+            type: 'image/jpeg',
+          });
+
+          // Show preview
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            setPreviewImage(e.target.result);
+          };
+          reader.readAsDataURL(blob);
+
+          // Stop camera
+          stopCamera();
+
+          // Continue with upload flow
+          handlePhotoSelected(file);
+        },
+        'image/jpeg',
+        0.9 // 90% quality
+      );
+    }
+  };
+
+  /**
+   * Handle file selection from gallery
+   */
+  const handleGallerySelect = (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Show preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPreviewImage(e.target.result);
+      };
+      reader.readAsDataURL(file);
+
+      handlePhotoSelected(file);
+    }
+  };
+
+  /**
+   * Process selected/captured photo
+   */
+  const handlePhotoSelected = (file) => {
+    onPhotoSelected(file);
+    // Don't close modal yet, let user confirm
+  };
+
+  /**
+   * Confirm and upload the selected photo
+   */
+  const confirmUpload = async () => {
+    if (!previewImage) return;
+
+    try {
+      setIsUploading(true);
+      setUploadMessage('');
+
+      // Get file from preview (reconstruct from canvas or input)
+      let fileToUpload;
+      if (uploadMode === 'camera' && canvasRef.current) {
+        canvasRef.current.toBlob((blob) => {
+          fileToUpload = new File([blob], `photo_${Date.now()}.jpg`, {
+            type: 'image/jpeg',
+          });
+          performUpload(fileToUpload);
+        }, 'image/jpeg', 0.9);
+      } else if (fileInputRef.current?.files?.[0]) {
+        fileToUpload = fileInputRef.current.files[0];
+        performUpload(fileToUpload);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadMessage(`Upload failed: ${error.message}`);
+      setMessageType('error');
+      setIsUploading(false);
+    }
+  };
+
+  /**
+   * Perform the actual upload
+   */
+  const performUpload = async (file) => {
+    if (!user || !supabaseClient) {
+      setUploadMessage('User not authenticated. Please log in.');
+      setMessageType('error');
+      setIsUploading(false);
+      return;
+    }
+
+    const metadata = {
+      userId: user.id,
+      photoType,
+      timestamp: Date.now(),
+    };
+
+    try {
+      const result = await uploadPhoto(
+        file,
+        folderName,
+        metadata,
+        supabaseClient,
+        async (meta, photoUrl) => {
+          // Callback: update database with photo URL
+          await onUploadSuccess(meta, photoUrl);
+        }
+      );
+
+      if (result.success) {
+        setUploadMessage('✓ Photo uploaded successfully');
+        setMessageType('success');
+      } else if (result.queued) {
+        setUploadMessage(`⏳ Offline - photo queued. Will upload when signal returns.`);
+        setMessageType('info');
+      } else {
+        setUploadMessage(result.message || 'Upload failed');
+        setMessageType('error');
+      }
+
+      // Reset after success
+      setTimeout(() => {
+        setPreviewImage(null);
+        setUploadMessage('');
+        setIsOpen(false);
+        setUploadMode('gallery');
+      }, 2000);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadMessage(`Error: ${error.message}`);
+      setMessageType('error');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  /**
+   * Cancel upload flow
+   */
+  const handleCancel = () => {
+    stopCamera();
+    setPreviewImage(null);
+    setUploadMessage('');
+    setIsOpen(false);
+    setUploadMode('gallery');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Queued photos count
+  const queuedCount = queuedPhotos?.length || 0;
+
+  return (
+    <div className={`photo-upload-container ${className}`}>
+      {/* Main Button */}
+      <button
+        onClick={() => setIsOpen(true)}
+        disabled={disabled || isUploading}
+        className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg font-medium disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+      >
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
+        </svg>
+        Upload Photo
+      </button>
+
+      {/* Queued Status Badge */}
+      {showQueuedStatus && queuedCount > 0 && (
+        <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-amber-800">
+              {queuedCount} photo{queuedCount > 1 ? 's' : ''} queued (offline)
+            </span>
+            {isOnline && (
+              <button
+                onClick={() => triggerSync(supabaseClient, onUploadSuccess)}
+                className="text-xs px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded"
+              >
+                Sync Now
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal */}
+      {isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center">
+              <h2 className="text-lg font-semibold text-slate-900">Upload Photo</h2>
+              <button
+                onClick={handleCancel}
+                className="text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg p-2"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Mode Tabs */}
+            {!previewImage && (
+              <div className="flex border-b border-slate-200 px-6 pt-4">
+                <button
+                  onClick={() => {
+                    setUploadMode('gallery');
+                    stopCamera();
+                  }}
+                  className={`px-4 py-2 font-medium border-b-2 transition ${
+                    uploadMode === 'gallery'
+                      ? 'border-sky-500 text-sky-600'
+                      : 'border-transparent text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  From Gallery
+                </button>
+                <button
+                  onClick={() => {
+                    setUploadMode('camera');
+                    startCamera();
+                  }}
+                  className={`px-4 py-2 font-medium border-b-2 transition ${
+                    uploadMode === 'camera'
+                      ? 'border-sky-500 text-sky-600'
+                      : 'border-transparent text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Camera
+                </button>
+              </div>
+            )}
+
+            {/* Content */}
+            <div className="p-6">
+              {/* Network Status */}
+              {!isOnline && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-700">
+                    Offline mode - photos will be queued and uploaded when signal returns.
+                  </p>
+                </div>
+              )}
+
+              {/* Gallery Mode */}
+              {uploadMode === 'gallery' && !previewImage && (
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleGallerySelect}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-12 border-2 border-dashed border-slate-300 rounded-lg hover:border-sky-500 hover:bg-sky-50 transition flex flex-col items-center justify-center gap-3 cursor-pointer"
+                  >
+                    <svg className="w-12 h-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <p className="text-lg font-medium text-slate-700">Select a photo</p>
+                    <p className="text-sm text-slate-500">Tap to browse your gallery</p>
+                  </button>
+                </div>
+              )}
+
+              {/* Camera Mode */}
+              {uploadMode === 'camera' && !previewImage && (
+                <div>
+                  <div className="bg-slate-900 rounded-lg overflow-hidden mb-4">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      className="w-full aspect-video object-cover"
+                    />
+                  </div>
+                  <button
+                    onClick={capturePhoto}
+                    disabled={!isCameraActive}
+                    className="w-full py-3 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-400 text-white font-medium rounded-lg transition"
+                  >
+                    Capture Photo
+                  </button>
+                </div>
+              )}
+
+              {/* Preview Mode */}
+              {previewImage && (
+                <div>
+                  <div className="mb-4">
+                    <p className="text-sm text-slate-600 mb-2">Preview:</p>
+                    <img
+                      src={previewImage}
+                      alt="Preview"
+                      className="w-full rounded-lg max-h-96 object-contain bg-slate-100"
+                    />
+                  </div>
+
+                  {/* Message */}
+                  {uploadMessage && (
+                    <div
+                      className={`p-3 rounded-lg mb-4 text-sm ${
+                        messageType === 'success'
+                          ? 'bg-green-50 text-green-700 border border-green-200'
+                          : messageType === 'error'
+                          ? 'bg-red-50 text-red-700 border border-red-200'
+                          : 'bg-blue-50 text-blue-700 border border-blue-200'
+                      }`}
+                    >
+                      {uploadMessage}
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleCancel}
+                      disabled={isUploading}
+                      className="flex-1 py-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium rounded-lg disabled:opacity-50 transition"
+                    >
+                      Retake
+                    </button>
+                    <button
+                      onClick={confirmUpload}
+                      disabled={isUploading || !previewImage}
+                      className="flex-1 py-3 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-400 text-white font-medium rounded-lg disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                    >
+                      {isUploading && (
+                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                      )}
+                      {isUploading ? 'Uploading...' : 'Upload'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden canvas for camera capture */}
+      <canvas ref={canvasRef} className="hidden" />
+    </div>
+  );
+};
+
+export default PhotoUploadInput;
