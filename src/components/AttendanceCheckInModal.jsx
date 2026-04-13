@@ -63,7 +63,7 @@ const AttendanceCheckInModal = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4">
             <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl">
                 {/* Header */}
                 <div className="sticky top-0 border-b border-slate-200 bg-white px-6 py-4">

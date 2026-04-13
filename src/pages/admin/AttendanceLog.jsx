@@ -632,7 +632,7 @@ const AttendanceLog = () => {
                                     </p>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <div className="min-w-[160px]">
+                                    <div className="min-w-40">
                                         <CustomSelect
                                             value={dailyStatusFilter}
                                             onChange={setDailyStatusFilter}
@@ -717,75 +717,76 @@ const AttendanceLog = () => {
                                                     "belum_absen"
                                                 ) {
                                                     return (
-                                                        status ===
-                                                        "Belum Absen"
+                                                        status === "Belum Absen"
                                                     );
                                                 }
                                                 return true;
                                             })
                                             .map((tech) => {
-                                            const record =
-                                                dailyAttendanceMap[tech.id];
-                                            const status =
-                                                getDailyStatus(record);
+                                                const record =
+                                                    dailyAttendanceMap[tech.id];
+                                                const status =
+                                                    getDailyStatus(record);
 
-                                            const statusColor =
-                                                status === "Masuk & Pulang"
-                                                    ? "bg-green-100 text-green-700"
-                                                    : status === "Masuk"
-                                                      ? "bg-amber-100 text-amber-700"
-                                                      : "bg-red-100 text-red-700";
+                                                const statusColor =
+                                                    status === "Masuk & Pulang"
+                                                        ? "bg-green-100 text-green-700"
+                                                        : status === "Masuk"
+                                                          ? "bg-amber-100 text-amber-700"
+                                                          : "bg-red-100 text-red-700";
 
-                                            return (
-                                                <tr
-                                                    key={tech.id}
-                                                    className="border-t border-slate-100 hover:bg-slate-50"
-                                                >
-                                                    <td className="px-4 py-3 text-slate-900 font-medium">
-                                                        <button
-                                                            onClick={() =>
-                                                                handleOpenTechnicianLog(
-                                                                    tech.id,
-                                                                )
-                                                            }
-                                                            className="text-slate-900 font-semibold hover:text-sky-600 transition"
-                                                        >
-                                                            {tech.first_name}{" "}
-                                                            {tech.last_name}
-                                                        </button>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-left">
-                                                        <span
-                                                            className={`inline-flex items-center text-center rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}
-                                                        >
-                                                            {status}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-slate-700">
-                                                        {formatTimeShort(
-                                                            record?.check_in_time,
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-slate-700">
-                                                        {formatTimeShort(
-                                                            record?.check_out_time,
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-left">
-                                                        <button
-                                                            onClick={() =>
-                                                                handleOpenTechnicianLog(
-                                                                    tech.id,
-                                                                )
-                                                            }
-                                                            className="inline-flex items-center gap-1 rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-200 transition"
-                                                        >
-                                                            Lihat Log
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
+                                                return (
+                                                    <tr
+                                                        key={tech.id}
+                                                        className="border-t border-slate-100 hover:bg-slate-50"
+                                                    >
+                                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                                            <button
+                                                                onClick={() =>
+                                                                    handleOpenTechnicianLog(
+                                                                        tech.id,
+                                                                    )
+                                                                }
+                                                                className="text-slate-900 font-semibold hover:text-sky-600 transition"
+                                                            >
+                                                                {
+                                                                    tech.first_name
+                                                                }{" "}
+                                                                {tech.last_name}
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-left">
+                                                            <span
+                                                                className={`inline-flex items-center text-center rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}
+                                                            >
+                                                                {status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-slate-700">
+                                                            {formatTimeShort(
+                                                                record?.check_in_time,
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-slate-700">
+                                                            {formatTimeShort(
+                                                                record?.check_out_time,
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-left">
+                                                            <button
+                                                                onClick={() =>
+                                                                    handleOpenTechnicianLog(
+                                                                        tech.id,
+                                                                    )
+                                                                }
+                                                                className="inline-flex items-center gap-1 rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-200 transition"
+                                                            >
+                                                                Lihat Log
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                     </tbody>
                                 </table>
                             </div>
