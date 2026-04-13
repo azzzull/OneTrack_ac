@@ -29,7 +29,7 @@ const AttendanceMapModal = ({
     // Safety check - ensure we have valid coordinates
     if (!latitude || !longitude) {
         return (
-            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6">
                     <h2 className="text-xl font-bold text-slate-900 mb-4">
                         Error
@@ -55,7 +55,7 @@ const AttendanceMapModal = ({
     // Verify coordinates are valid
     if (isNaN(lat) || isNaN(lng)) {
         return (
-            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6">
                     <h2 className="text-xl font-bold text-slate-900 mb-4">
                         Error
@@ -93,8 +93,8 @@ const AttendanceMapModal = ({
     });
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="sticky top-0 bg-linear-to-r from-sky-500 to-sky-600 text-white px-6 py-5 flex justify-between items-center">
                     <div>

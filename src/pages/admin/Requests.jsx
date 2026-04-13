@@ -754,9 +754,9 @@ export default function AdminRequestsPage() {
 
                                             <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
                                                 <p className="inline-flex items-center text-base gap-2">
-                                                    <UserRound size={14} />
+                                                    <CalendarDays size={14} />
                                                     <span className="break-all">
-                                                        {item.phone}
+                                                        {formatDate(item.date)}
                                                     </span>
                                                 </p>
                                                 <p className="inline-flex items-center gap-2">
@@ -770,8 +770,10 @@ export default function AdminRequestsPage() {
 
                                         <aside className="border-t border-slate-200 bg-slate-50 p-4 md:border-l md:border-t-0 md:p-5">
                                             <p className="inline-flex items-center gap-2 text-sm text-slate-600">
-                                                <CalendarDays size={15} />
-                                                {formatDate(item.date)}
+                                                <UserRound size={15} />
+                                                <span className="break-all">
+                                                    {item.phone}
+                                                </span>
                                             </p>
                                             <p className="mt-3 inline-flex items-center gap-2 wrap-break-word text-sm text-slate-600">
                                                 <ListFilter size={15} />

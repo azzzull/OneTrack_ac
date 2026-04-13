@@ -7,12 +7,15 @@ import {
     Search,
     Wrench,
     X,
+    CalendarDays,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import Card from "../../components/card";
 import useRequestStats from "../../hooks/useRequestStats";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
+import { useAuth } from "../../context/useAuth";
+import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
 import supabase from "../../supabaseClient";
 import { formatDateUniversal } from "../../utils/dateFormatter";
 
@@ -105,6 +108,7 @@ const previewText = (value, max = 90) => {
 function AdminDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
+    const { user } = useAuth();
     const [latestJobs, setLatestJobs] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
     const [loadingJobs, setLoadingJobs] = useState(true);
@@ -208,6 +212,22 @@ function AdminDashboard() {
                                 tone={item.tone}
                             />
                         ))}
+                    </section>
+
+                    {/* Attendance Section */}
+                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+                                <CalendarDays size={18} />
+                                Absensi Hari Ini
+                            </h2>
+                        </div>
+                        <AttendanceDashboardSimple
+                            technicianId={user?.id}
+                            onDataChange={() => {
+                                // Optional: refresh tasks or update UI
+                            }}
+                        />
                     </section>
 
                     <section className="mt-9">
@@ -344,8 +364,8 @@ function AdminDashboard() {
             <MobileBottomNav />
 
             {selectedJob && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-                    <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
+                <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 md:items-center md:p-4">
+                    <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl md:rounded-2xl md:p-6">
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <h4 className="text-xl font-semibold text-slate-900 md:text-2xl">

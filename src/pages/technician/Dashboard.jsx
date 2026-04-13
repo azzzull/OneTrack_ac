@@ -582,10 +582,11 @@ function TechnicianDashboard() {
 
                                                 <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
                                                     <p className="inline-flex items-center gap-2">
-                                                        <Phone size={14} />
+                                                        <CalendarDays size={14} />
                                                         <span className="break-all">
-                                                            {item.customer_phone ??
-                                                                "-"}
+                                                            {formatDate(
+                                                                item.created_at,
+                                                            )}
                                                         </span>
                                                     </p>
                                                     <p className="inline-flex items-center gap-2">
@@ -603,12 +604,11 @@ function TechnicianDashboard() {
                                             <aside className="border-t border-slate-200 bg-slate-50 p-4 md:border-l md:border-t-0 md:p-5">
                                                 <div className="flex flex-col gap-3 md:gap-4">
                                                     <p className="inline-flex items-center gap-2 text-sm text-slate-600">
-                                                        <CalendarDays
-                                                            size={15}
-                                                        />
-                                                        {formatDate(
-                                                            item.created_at,
-                                                        )}
+                                                        <Phone size={15} />
+                                                        <span className="break-all">
+                                                            {item.customer_phone ??
+                                                                "-"}
+                                                        </span>
                                                     </p>
                                                     <p className="inline-flex items-center gap-2 wrap-break-word text-sm text-slate-600">
                                                         <UserRound size={15} />

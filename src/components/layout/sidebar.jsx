@@ -11,6 +11,7 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     Menu,
+    MoreHorizontal,
     X,
     CalendarDays,
 } from "lucide-react";
@@ -294,6 +295,7 @@ export function MobileBottomNav() {
     const navigate = useNavigate();
     const stats = useRequestStats();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [moreOpen, setMoreOpen] = useState(false);
     const [showTopNav, setShowTopNav] = useState(true);
     const lastScrollRef = useRef(0);
     const MOBILE_TOP_NAV_HEIGHT = 72;
@@ -311,6 +313,9 @@ export function MobileBottomNav() {
             badge: count > 0 ? count : null,
         };
     });
+    const primaryCount = 4;
+    const primaryMenus = menus.slice(0, primaryCount);
+    const extraMenus = menus.slice(primaryCount);
     const canOpenProfile = role === "customer" || role === "technician";
     const identityLabel =
         `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() ||
@@ -419,7 +424,7 @@ export function MobileBottomNav() {
 
             <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white md:hidden">
                 <ul className="flex items-center justify-around gap-0">
-                    {menus.map(({ label, path, icon, badge }) => (
+                    {primaryMenus.map(({ label, path, icon, badge }) => (
                         <li key={label} className="flex-1">
                             <NavLink
                                 end
@@ -447,8 +452,75 @@ export function MobileBottomNav() {
                             </NavLink>
                         </li>
                     ))}
+                    {extraMenus.length > 0 && (
+                        <li className="flex-1">
+                            <button
+                                type="button"
+                                onClick={() => setMoreOpen(true)}
+                                className="no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! block w-full px-2 py-2.5 text-slate-500 transition-colors duration-200 hover:text-slate-700"
+                            >
+                                <div className="flex flex-col items-center gap-1">
+                                    <MoreHorizontal size={20} />
+                                    <span className="text-xs font-medium truncate">
+                                        Lainnya
+                                    </span>
+                                </div>
+                            </button>
+                        </li>
+                    )}
                 </ul>
             </nav>
+
+            {moreOpen && (
+                <div className="fixed inset-0 z-50 md:hidden">
+                    <button
+                        type="button"
+                        onClick={() => setMoreOpen(false)}
+                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+                        aria-label="Tutup menu lainnya"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white p-4 shadow-2xl">
+                        <div className="mb-3 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-slate-700">
+                                Menu Lainnya
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setMoreOpen(false)}
+                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            {extraMenus.map(({ label, path, icon, badge }) => (
+                                <NavLink
+                                    key={label}
+                                    end
+                                    to={path}
+                                    onClick={() => setMoreOpen(false)}
+                                    className={({ isActive }) =>
+                                        `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex items-center gap-2 rounded-2xl border px-3 py-3 text-sm font-medium transition ${
+                                            isActive
+                                                ? "border-sky-200 bg-sky-50 text-sky-600"
+                                                : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                                        }`
+                                    }
+                                    style={{ textDecoration: "none" }}
+                                >
+                                    {createElement(icon, { size: 18 })}
+                                    <span className="flex-1">{label}</span>
+                                    {badge && (
+                                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] text-white">
+                                            {badge}
+                                        </span>
+                                    )}
+                                </NavLink>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, MapPin, Loader, AlertCircle } from "lucide-react";
 import LeafletMap from "./Maps/LeafletMap";
 import { getCurrentLocationWithRetry } from "../utils/geoLocation";
@@ -14,8 +14,6 @@ const AttendanceCheckInModal = ({
     const [gpsLoading, setGpsLoading] = useState(false);
     const [locationData, setLocationData] = useState(null);
     const [error, setError] = useState(null);
-
-    if (!isOpen) return null;
 
     const handleGetLocation = async () => {
         setGpsLoading(true);
@@ -56,9 +54,17 @@ const AttendanceCheckInModal = ({
         }
     };
 
+    useEffect(() => {
+        if (isOpen && type === "check-in" && !locationData && !gpsLoading) {
+            handleGetLocation();
+        }
+    }, [isOpen, type, locationData, gpsLoading]);
+
+    if (!isOpen) return null;
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+            <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl">
                 {/* Header */}
                 <div className="sticky top-0 border-b border-slate-200 bg-white px-6 py-4">
                     <div className="flex items-center justify-between">
@@ -80,41 +86,79 @@ const AttendanceCheckInModal = ({
                 <div className="px-6 py-6">
                     {!locationData ? (
                         <div className="space-y-4">
-                            <p className="text-sm text-slate-600">
-                                Klik tombol di bawah untuk mengambil lokasi Anda
-                                dengan GPS
-                            </p>
-                            {error && (
-                                <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3">
-                                    <AlertCircle
-                                        size={16}
-                                        className="mt-0.5 shrink-0 text-red-600"
-                                    />
-                                    <p className="text-xs text-red-700">
-                                        {error}
+                            {type === "check-in" ? (
+                                <>
+                                    <p className="text-sm text-slate-600">
+                                        Mengambil lokasi GPS otomatis untuk
+                                        absen masuk...
                                     </p>
-                                </div>
-                            )}
-                            <button
-                                onClick={handleGetLocation}
-                                disabled={gpsLoading}
-                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 py-3 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-70"
-                            >
-                                {gpsLoading ? (
-                                    <>
+                                    {error && (
+                                        <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3">
+                                            <AlertCircle
+                                                size={16}
+                                                className="mt-0.5 shrink-0 text-red-600"
+                                            />
+                                            <p className="text-xs text-red-700">
+                                                {error}
+                                            </p>
+                                        </div>
+                                    )}
+                                    <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 py-3 text-sm font-medium text-slate-700">
                                         <Loader
                                             size={16}
                                             className="animate-spin"
                                         />
                                         Mengambil Lokasi...
-                                    </>
-                                ) : (
-                                    <>
-                                        <MapPin size={16} />
-                                        Ambil Lokasi GPS
-                                    </>
-                                )}
-                            </button>
+                                    </div>
+                                    {error && (
+                                        <button
+                                            onClick={handleGetLocation}
+                                            disabled={gpsLoading}
+                                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-70"
+                                        >
+                                            Coba Lagi
+                                        </button>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <p className="text-sm text-slate-600">
+                                        Klik tombol di bawah untuk mengambil
+                                        lokasi Anda dengan GPS
+                                    </p>
+                                    {error && (
+                                        <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3">
+                                            <AlertCircle
+                                                size={16}
+                                                className="mt-0.5 shrink-0 text-red-600"
+                                            />
+                                            <p className="text-xs text-red-700">
+                                                {error}
+                                            </p>
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={handleGetLocation}
+                                        disabled={gpsLoading}
+                                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 py-3 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-70"
+                                    >
+                                        {gpsLoading ? (
+                                            <>
+                                                <Loader
+                                                    size={16}
+                                                    className="animate-spin"
+                                                />
+                                                Mengambil Lokasi...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <MapPin size={16} />
+                                                Ambil Lokasi GPS
+                                            </>
+                                        )}
+                                    </button>
+                                </>
+                            )}
                         </div>
                     ) : (
                         <div className="space-y-4">
@@ -141,25 +185,59 @@ const AttendanceCheckInModal = ({
                             </div>
 
                             {/* Location Details */}
-                            <div className="space-y-2 rounded-lg bg-sky-50 p-3 border border-sky-200">
+                            <div className="space-y-3 rounded-lg bg-sky-50 p-3 border border-sky-200">
                                 <p className="text-xs font-medium text-sky-700 uppercase tracking-wider">
-                                    📍 Lokasi
+                                    Detail Lokasi
                                 </p>
-                                <p className="text-sm font-medium text-slate-900">
-                                    {locationData.street_address}
-                                </p>
-                                <p className="text-xs text-slate-600">
-                                    {[
-                                        locationData.sub_district,
-                                        locationData.district,
-                                        locationData.postal_code,
-                                    ]
-                                        .filter(Boolean)
-                                        .join(", ")}
-                                </p>
-                                <p className="text-xs text-slate-500 mt-1">
-                                    Akurasi: ±{locationData.accuracy_meters}m
-                                </p>
+                                <div className="grid grid-cols-1 gap-2 text-xs text-slate-700">
+                                    <div className="rounded bg-white/80 p-2 border border-sky-100">
+                                        <p className="text-slate-500 text-[11px] font-medium">
+                                            Nama Jalan
+                                        </p>
+                                        <p className="text-slate-800 mt-1">
+                                            {locationData.street_address || "-"}
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="rounded bg-white/80 p-2 border border-sky-100">
+                                            <p className="text-slate-500 text-[11px] font-medium">
+                                                Kelurahan
+                                            </p>
+                                            <p className="text-slate-800 mt-1">
+                                                {locationData.sub_district ||
+                                                    "-"}
+                                            </p>
+                                        </div>
+                                        <div className="rounded bg-white/80 p-2 border border-sky-100">
+                                            <p className="text-slate-500 text-[11px] font-medium">
+                                                Kecamatan
+                                            </p>
+                                            <p className="text-slate-800 mt-1">
+                                                {locationData.district || "-"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="rounded bg-white/80 p-2 border border-sky-100">
+                                            <p className="text-slate-500 text-[11px] font-medium">
+                                                Kode Pos
+                                            </p>
+                                            <p className="text-slate-800 mt-1">
+                                                {locationData.postal_code ||
+                                                    "-"}
+                                            </p>
+                                        </div>
+                                        <div className="rounded bg-white/80 p-2 border border-sky-100">
+                                            <p className="text-slate-500 text-[11px] font-medium">
+                                                Akurasi GPS
+                                            </p>
+                                            <p className="text-slate-800 mt-1">
+                                                +/-{" "}
+                                                {locationData.accuracy_meters}m
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* GPS Coordinates */}
@@ -204,10 +282,8 @@ const AttendanceCheckInModal = ({
                                             />
                                             Proses...
                                         </>
-                                    ) : type === "check-in" ? (
-                                        "Submit Masuk"
                                     ) : (
-                                        "Submit Pulang"
+                                        "Submit Absen"
                                     )}
                                 </button>
                             </div>

@@ -42,6 +42,7 @@ const AttendanceLog = () => {
     const [filterDateFrom, setFilterDateFrom] = useState("");
     const [filterDateTo, setFilterDateTo] = useState("");
     const [filterStatus, setFilterStatus] = useState(""); // 'all', 'check_in_only', 'checked_in_and_out'
+    const [dailyStatusFilter, setDailyStatusFilter] = useState("");
 
     // Map modal
     const [mapModal, setMapModal] = useState({
@@ -72,7 +73,7 @@ const AttendanceLog = () => {
             const { data, error } = await supabase
                 .from("profiles")
                 .select("id, first_name, last_name, role")
-                .eq("role", "technician")
+                .in("role", ["technician", "admin"])
                 .order("first_name", { ascending: true });
 
             if (!error && data) {
@@ -144,6 +145,12 @@ const AttendanceLog = () => {
         });
     };
 
+    const getDailyStatus = (record) => {
+        if (record?.check_out_time) return "Masuk & Pulang";
+        if (record?.check_in_time) return "Masuk";
+        return "Belum Absen";
+    };
+
     const handleOpenTechnicianLog = (techId) => {
         setSelectedTechnicianId(techId);
         setFilterTechnician(techId);
@@ -185,6 +192,60 @@ const AttendanceLog = () => {
             checkOutTime: "",
             isSaving: false,
         });
+    };
+
+    const handleExportDailyCSV = () => {
+        const filteredTechs = technicians.filter((tech) => {
+            if (!dailyStatusFilter) return true;
+            const record = dailyAttendanceMap[tech.id];
+            const status = getDailyStatus(record);
+            if (dailyStatusFilter === "masuk") return status === "Masuk";
+            if (dailyStatusFilter === "masuk_pulang")
+                return status === "Masuk & Pulang";
+            if (dailyStatusFilter === "belum_absen")
+                return status === "Belum Absen";
+            return true;
+        });
+
+        if (filteredTechs.length === 0) {
+            alert("Tidak ada data untuk di-export");
+            return;
+        }
+
+        const headers = [
+            "Tanggal",
+            "Teknisi",
+            "Status",
+            "Jam Masuk",
+            "Jam Pulang",
+        ];
+
+        const rows = filteredTechs.map((tech) => {
+            const record = dailyAttendanceMap[tech.id];
+            const status = getDailyStatus(record);
+            return [
+                formatDateShort(dailyDate),
+                `${tech.first_name} ${tech.last_name}`.trim(),
+                status,
+                formatTimeShort(record?.check_in_time),
+                formatTimeShort(record?.check_out_time),
+            ];
+        });
+
+        const csvContent = [
+            headers.join(","),
+            ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: "text/csv" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `attendance_daily_${dailyDate}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
     };
 
     const handleSaveEditModal = async () => {
@@ -465,7 +526,7 @@ const AttendanceLog = () => {
                                             onChange={(e) =>
                                                 setDailyDate(e.target.value)
                                             }
-                                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                            className="rounded-4xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
                                         />
                                     </div>
                                 )}
@@ -558,7 +619,7 @@ const AttendanceLog = () => {
 
                     {viewMode === "daily" && (
                         <div className="mb-6 rounded-2xl bg-white shadow-sm">
-                            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4 sm:px-6">
+                            <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                                 <div>
                                     <h2 className="text-base font-semibold text-slate-900">
                                         Absensi Per Hari
@@ -569,6 +630,39 @@ const AttendanceLog = () => {
                                             {formatDateShort(dailyDate)}
                                         </span>
                                     </p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <div className="min-w-[160px]">
+                                        <CustomSelect
+                                            value={dailyStatusFilter}
+                                            onChange={setDailyStatusFilter}
+                                            options={[
+                                                {
+                                                    value: "",
+                                                    label: "Semua Status",
+                                                },
+                                                {
+                                                    value: "masuk_pulang",
+                                                    label: "Masuk & Pulang",
+                                                },
+                                                {
+                                                    value: "masuk",
+                                                    label: "Masuk",
+                                                },
+                                                {
+                                                    value: "belum_absen",
+                                                    label: "Belum Absen",
+                                                },
+                                            ]}
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={handleExportDailyCSV}
+                                        className="inline-flex items-center gap-2 px-3 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition text-sm font-semibold shadow-sm"
+                                    >
+                                        <Download size={16} />
+                                        Export CSV
+                                    </button>
                                 </div>
                             </div>
 
@@ -588,21 +682,52 @@ const AttendanceLog = () => {
                                             <th className="px-4 py-3 text-left font-semibold">
                                                 Jam Pulang
                                             </th>
-                                            <th className="px-4 py-3 text-right font-semibold">
+                                            <th className="px-4 py-3 text-left font-semibold">
                                                 Aksi
                                             </th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {technicians.map((tech) => {
+                                        {technicians
+                                            .filter((tech) => {
+                                                if (!dailyStatusFilter) {
+                                                    return true;
+                                                }
+                                                const record =
+                                                    dailyAttendanceMap[tech.id];
+                                                const status =
+                                                    getDailyStatus(record);
+                                                if (
+                                                    dailyStatusFilter ===
+                                                    "masuk"
+                                                ) {
+                                                    return status === "Masuk";
+                                                }
+                                                if (
+                                                    dailyStatusFilter ===
+                                                    "masuk_pulang"
+                                                ) {
+                                                    return (
+                                                        status ===
+                                                        "Masuk & Pulang"
+                                                    );
+                                                }
+                                                if (
+                                                    dailyStatusFilter ===
+                                                    "belum_absen"
+                                                ) {
+                                                    return (
+                                                        status ===
+                                                        "Belum Absen"
+                                                    );
+                                                }
+                                                return true;
+                                            })
+                                            .map((tech) => {
                                             const record =
                                                 dailyAttendanceMap[tech.id];
                                             const status =
-                                                record?.check_out_time
-                                                    ? "Masuk & Pulang"
-                                                    : record?.check_in_time
-                                                      ? "Masuk"
-                                                      : "Belum Absen";
+                                                getDailyStatus(record);
 
                                             const statusColor =
                                                 status === "Masuk & Pulang"
@@ -629,9 +754,9 @@ const AttendanceLog = () => {
                                                             {tech.last_name}
                                                         </button>
                                                     </td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-4 py-3 text-left">
                                                         <span
-                                                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}
+                                                            className={`inline-flex items-center text-center rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}
                                                         >
                                                             {status}
                                                         </span>
@@ -646,7 +771,7 @@ const AttendanceLog = () => {
                                                             record?.check_out_time,
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3 text-right">
+                                                    <td className="px-4 py-3 text-left">
                                                         <button
                                                             onClick={() =>
                                                                 handleOpenTechnicianLog(
@@ -687,7 +812,7 @@ const AttendanceLog = () => {
                                 </div>
                             )}
                             {/* Filters */}
-                            <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm md:px-6">
+                            <div className="rounded-t-2xl border-b border-slate-200 bg-white p-4 shadow-sm md:px-6">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-2">
                                         <Filter
@@ -789,7 +914,13 @@ const AttendanceLog = () => {
                     {(viewMode === "log" || viewMode === "technician") && (
                         <>
                             {/* Data Table */}
-                            <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
+                            <div
+                                className={`bg-white shadow-sm overflow-hidden ${
+                                    viewMode === "log"
+                                        ? "rounded-b-2xl rounded-t-none"
+                                        : "rounded-2xl"
+                                }`}
+                            >
                                 {loading ? (
                                     <div className="flex items-center justify-center p-8">
                                         <Loader
