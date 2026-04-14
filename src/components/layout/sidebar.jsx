@@ -52,9 +52,8 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     const navigate = useNavigate();
     const stats = useRequestStats();
     const [newRequestToast, setNewRequestToast] = useState("");
-    const prevPendingRef = useRef(null);
-    const lastNotifiedPendingRef = useRef(null);
     const toastTimerRef = useRef(null);
+    const notifiedRequestIdsRef = useRef(new Set());
     const menus = getMenus(role).map((menu) => {
         const badgeByPath = {
             "/requests": stats.pending,
@@ -91,63 +90,62 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     }, []);
 
     useEffect(() => {
-        const currentPending = Number(stats.pending ?? 0);
+        if (role !== "technician") return;
 
-        if (role !== "technician") {
-            prevPendingRef.current = currentPending;
-            return;
-        }
+        const channel = supabase
+            .channel("requests-new-notify")
+            .on(
+                "postgres_changes",
+                { event: "INSERT", schema: "public", table: "requests" },
+                (payload) => {
+                    const row = payload?.new;
+                    if (!row) return;
+                    const status = String(row.status ?? "pending").toLowerCase();
+                    const isUnassigned = !row.technician_id;
+                    if (status !== "pending" || !isUnassigned) return;
 
-        if (prevPendingRef.current === null) {
-            prevPendingRef.current = currentPending;
-            return;
-        }
+                    const requestId =
+                        row.id ?? `${row.created_at}-${row.customer_id ?? ""}`;
+                    if (notifiedRequestIdsRef.current.has(requestId)) return;
+                    notifiedRequestIdsRef.current.add(requestId);
 
-        const previousPending = prevPendingRef.current;
-        if (currentPending > previousPending) {
-            const addedCount = currentPending - previousPending;
-            const message =
-                addedCount > 1
-                    ? `ada ${addedCount} pekerjaan baru yang di request`
-                    : "ada pekerjaan baru yang di request";
+                    const message = "ada pekerjaan baru yang di request";
 
-            if (lastNotifiedPendingRef.current === currentPending) {
-                prevPendingRef.current = currentPending;
-                return;
-            }
-
-            if (toastTimerRef.current) {
-                clearTimeout(toastTimerRef.current);
-            }
-            // Defer setState to avoid triggering cascading renders
-            Promise.resolve().then(() => {
-                setNewRequestToast(message);
-            });
-            toastTimerRef.current = setTimeout(() => {
-                setNewRequestToast("");
-            }, 4500);
-
-            if ("Notification" in window) {
-                if (Notification.permission === "granted") {
-                    new Notification("OneTrack", {
-                        body: message,
+                    if (toastTimerRef.current) {
+                        clearTimeout(toastTimerRef.current);
+                    }
+                    Promise.resolve().then(() => {
+                        setNewRequestToast(message);
                     });
-                } else if (Notification.permission === "default") {
-                    Notification.requestPermission().then((permission) => {
-                        if (permission === "granted") {
+                    toastTimerRef.current = setTimeout(() => {
+                        setNewRequestToast("");
+                    }, 4500);
+
+                    if ("Notification" in window) {
+                        if (Notification.permission === "granted") {
                             new Notification("OneTrack", {
                                 body: message,
                             });
+                        } else if (Notification.permission === "default") {
+                            Notification.requestPermission().then(
+                                (permission) => {
+                                    if (permission === "granted") {
+                                        new Notification("OneTrack", {
+                                            body: message,
+                                        });
+                                    }
+                                },
+                            );
                         }
-                    });
-                }
-            }
+                    }
+                },
+            )
+            .subscribe();
 
-            lastNotifiedPendingRef.current = currentPending;
-        }
-
-        prevPendingRef.current = currentPending;
-    }, [role, stats.pending]);
+        return () => {
+            channel.unsubscribe();
+        };
+    }, [role]);
 
     return (
         <>

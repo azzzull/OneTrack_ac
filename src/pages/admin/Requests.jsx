@@ -20,6 +20,7 @@ import {
     Trash2,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import PhotoUploadInput from "../../components/PhotoUploadInput";
 import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
@@ -184,9 +185,9 @@ export default function AdminRequestsPage() {
         reconditionedParts: "",
     });
     const [serialNumberInput, setSerialNumberInput] = useState("");
-    const [beforePhotoFile, setBeforePhotoFile] = useState(null);
-    const [progressPhotoFile, setProgressPhotoFile] = useState(null);
-    const [afterPhotoFile, setAfterPhotoFile] = useState(null);
+    const [beforePhotoUrl, setBeforePhotoUrl] = useState(null);
+    const [progressPhotoUrl, setProgressPhotoUrl] = useState(null);
+    const [afterPhotoUrl, setAfterPhotoUrl] = useState(null);
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
     const [cameraError, setCameraError] = useState("");
@@ -202,9 +203,6 @@ export default function AdminRequestsPage() {
     const streamRef = useRef(null);
     const videoRef = useRef(null);
     const deferRefreshRef = useRef(false);
-    const beforeFileInputRef = useRef(null);
-    const progressFileInputRef = useRef(null);
-    const afterFileInputRef = useRef(null);
 
     const loadRequests = useCallback(async () => {
         try {
@@ -329,9 +327,9 @@ export default function AdminRequestsPage() {
         if (!requestExists) {
             // Request was deleted elsewhere, close modal and clear selection
             setSelectedRequestId(null);
-            setBeforePhotoFile(null);
-            setProgressPhotoFile(null);
-            setAfterPhotoFile(null);
+            setBeforePhotoUrl(null);
+            setProgressPhotoUrl(null);
+            setAfterPhotoUrl(null);
             setPhotoPreview({ open: false, url: "", label: "" });
         }
     }, [requests, selectedRequestId]);
@@ -414,15 +412,18 @@ export default function AdminRequestsPage() {
             replacedParts: selectedRequest.replacedParts ?? "",
             reconditionedParts: selectedRequest.reconditionedParts ?? "",
         });
+        setBeforePhotoUrl(null);
+        setProgressPhotoUrl(null);
+        setAfterPhotoUrl(null);
     }, [selectedRequest]);
 
     const closeDetail = () => {
         setSelectedRequestId(null);
         setSaving(false);
         setPhotoPreview({ open: false, url: "", label: "" });
-        setBeforePhotoFile(null);
-        setProgressPhotoFile(null);
-        setAfterPhotoFile(null);
+        setBeforePhotoUrl(null);
+        setProgressPhotoUrl(null);
+        setAfterPhotoUrl(null);
         setCameraOpen(false);
         setCameraTarget(null);
         setCameraError("");
@@ -516,28 +517,7 @@ export default function AdminRequestsPage() {
                     { title: "Scan Gagal" },
                 );
             }
-            return;
         }
-        if (cameraTarget === "before") setBeforePhotoFile(file);
-        if (cameraTarget === "progress") setProgressPhotoFile(file);
-        if (cameraTarget === "after") setAfterPhotoFile(file);
-
-        closeCamera();
-    };
-
-    const handleGallerySelect = (target, event) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        if (target === "before") setBeforePhotoFile(file);
-        if (target === "progress") setProgressPhotoFile(file);
-        if (target === "after") setAfterPhotoFile(file);
-        event.target.value = "";
-    };
-
-    const openGalleryPicker = (target) => {
-        if (target === "before") beforeFileInputRef.current?.click();
-        if (target === "progress") progressFileInputRef.current?.click();
-        if (target === "after") afterFileInputRef.current?.click();
     };
 
     const saveChanges = async () => {
@@ -560,7 +540,7 @@ export default function AdminRequestsPage() {
             nextSerial !== currentSerial;
 
         const hasNewPhotos =
-            beforePhotoFile || progressPhotoFile || afterPhotoFile;
+            beforePhotoUrl || progressPhotoUrl || afterPhotoUrl;
 
         if (!hasRepairNoteChanges && !hasNewPhotos) {
             await showAlert("Tidak ada perubahan yang disimpan.", {
@@ -572,19 +552,6 @@ export default function AdminRequestsPage() {
         try {
             setSaving(true);
 
-            let beforeUrl = null;
-            let progressUrl = null;
-            let afterUrl = null;
-
-            // Upload new photos if any
-            if (hasNewPhotos) {
-                [beforeUrl, progressUrl, afterUrl] = await Promise.all([
-                    uploadPhoto(beforePhotoFile, "before"),
-                    uploadPhoto(progressPhotoFile, "progress"),
-                    uploadPhoto(afterPhotoFile, "after"),
-                ]);
-            }
-
             const payload = {
                 trouble_description: nextTrouble,
                 replaced_parts: nextReplaced,
@@ -594,9 +561,11 @@ export default function AdminRequestsPage() {
             };
 
             // Add photo URLs if uploaded
-            if (beforeUrl) payload.before_photo_url = beforeUrl;
-            if (progressUrl) payload.progress_photo_url = progressUrl;
-            if (afterUrl) payload.after_photo_url = afterUrl;
+            if (beforePhotoUrl)
+                payload.before_photo_url = beforePhotoUrl;
+            if (progressPhotoUrl)
+                payload.progress_photo_url = progressPhotoUrl;
+            if (afterPhotoUrl) payload.after_photo_url = afterPhotoUrl;
 
             // Add technician info if technician
             if (role === "technician") {
@@ -606,9 +575,10 @@ export default function AdminRequestsPage() {
 
             // Determine status automatically based on photos
             // Check current photos + newly uploaded ones
-            const hasBefore = beforeUrl || selectedRequest.beforePhotoUrl;
-            const hasProgress = progressUrl || selectedRequest.progressPhotoUrl;
-            const hasAfter = afterUrl || selectedRequest.afterPhotoUrl;
+            const hasBefore = beforePhotoUrl || selectedRequest.beforePhotoUrl;
+            const hasProgress =
+                progressPhotoUrl || selectedRequest.progressPhotoUrl;
+            const hasAfter = afterPhotoUrl || selectedRequest.afterPhotoUrl;
 
             if (
                 role === "technician" &&
@@ -643,9 +613,9 @@ export default function AdminRequestsPage() {
             if (error) throw error;
 
             await loadRequests();
-            setBeforePhotoFile(null);
-            setProgressPhotoFile(null);
-            setAfterPhotoFile(null);
+            setBeforePhotoUrl(null);
+            setProgressPhotoUrl(null);
+            setAfterPhotoUrl(null);
 
             await showAlert("Perubahan berhasil disimpan.", {
                 title: "Sukses",
@@ -656,21 +626,6 @@ export default function AdminRequestsPage() {
         } finally {
             setSaving(false);
         }
-    };
-
-    const uploadPhoto = async (file, folderName) => {
-        if (!file) return null;
-        const ext = file.name.split(".").pop() || "jpg";
-        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const path = `${user?.id ?? "anonymous"}/requests/${folderName}/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-            .from("job-photos")
-            .upload(path, file, { upsert: false });
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage.from("job-photos").getPublicUrl(path);
-        return data?.publicUrl ?? null;
     };
 
     const deleteRequest = async () => {
@@ -1261,138 +1216,80 @@ export default function AdminRequestsPage() {
 
                             {selectedRequest.status !== "completed" && (
                                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                                    <div className="rounded-xl border border-dashed border-slate-300 p-3 text-sm text-slate-600">
-                                        <input
-                                            ref={beforeFileInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={(event) =>
-                                                handleGallerySelect(
-                                                    "before",
-                                                    event,
-                                                )
-                                            }
-                                            className="hidden"
-                                        />
-                                        <p className="font-medium">
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-700">
                                             Foto Before
-                                        </p>
-                                        <p className="mt-1 truncate text-xs text-slate-500">
-                                            {beforePhotoFile
-                                                ? beforePhotoFile.name
-                                                : "Belum pilih foto"}
-                                        </p>
-                                        <div className="mt-2 flex gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openCamera("before")
-                                                }
-                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                                            >
-                                                <Camera size={14} />
-                                                Kamera
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openGalleryPicker("before")
-                                                }
-                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                                            >
-                                                Pilih Galeri
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="rounded-xl border border-dashed border-slate-300 p-3 text-sm text-slate-600">
-                                        <input
-                                            ref={progressFileInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={(event) =>
-                                                handleGallerySelect(
-                                                    "progress",
-                                                    event,
-                                                )
-                                            }
-                                            className="hidden"
+                                        </label>
+                                        <PhotoUploadInput
+                                            folderName="before"
+                                            photoType="before"
+                                            supabaseClient={supabase}
+                                            onPhotoSelected={() => {}}
+                                            onUploadSuccess={async (
+                                                metadata,
+                                                photoUrl,
+                                            ) => {
+                                                setBeforePhotoUrl(photoUrl);
+                                            }}
+                                            showQueuedStatus={false}
                                         />
-                                        <p className="font-medium">
+                                        {beforePhotoUrl && (
+                                            <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                                <p className="text-xs text-emerald-700">
+                                                    Foto terpilih
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-700">
                                             Foto Progress
-                                        </p>
-                                        <p className="mt-1 truncate text-xs text-slate-500">
-                                            {progressPhotoFile
-                                                ? progressPhotoFile.name
-                                                : "Belum pilih foto"}
-                                        </p>
-                                        <div className="mt-2 flex gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openCamera("progress")
-                                                }
-                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                                            >
-                                                <Camera size={14} />
-                                                Kamera
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openGalleryPicker(
-                                                        "progress",
-                                                    )
-                                                }
-                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                                            >
-                                                Pilih Galeri
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="rounded-xl border border-dashed border-slate-300 p-3 text-sm text-slate-600">
-                                        <input
-                                            ref={afterFileInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={(event) =>
-                                                handleGallerySelect(
-                                                    "after",
-                                                    event,
-                                                )
-                                            }
-                                            className="hidden"
+                                        </label>
+                                        <PhotoUploadInput
+                                            folderName="progress"
+                                            photoType="progress"
+                                            supabaseClient={supabase}
+                                            onPhotoSelected={() => {}}
+                                            onUploadSuccess={async (
+                                                metadata,
+                                                photoUrl,
+                                            ) => {
+                                                setProgressPhotoUrl(photoUrl);
+                                            }}
+                                            showQueuedStatus={false}
                                         />
-                                        <p className="font-medium">
+                                        {progressPhotoUrl && (
+                                            <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                                <p className="text-xs text-emerald-700">
+                                                    Foto terpilih
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-700">
                                             Foto After
-                                        </p>
-                                        <p className="mt-1 truncate text-xs text-slate-500">
-                                            {afterPhotoFile
-                                                ? afterPhotoFile.name
-                                                : "Belum pilih foto"}
-                                        </p>
-                                        <div className="mt-2 flex gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openCamera("after")
-                                                }
-                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                                            >
-                                                <Camera size={14} />
-                                                Kamera
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openGalleryPicker("after")
-                                                }
-                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                                            >
-                                                Pilih Galeri
-                                            </button>
-                                        </div>
+                                        </label>
+                                        <PhotoUploadInput
+                                            folderName="after"
+                                            photoType="after"
+                                            supabaseClient={supabase}
+                                            onPhotoSelected={() => {}}
+                                            onUploadSuccess={async (
+                                                metadata,
+                                                photoUrl,
+                                            ) => {
+                                                setAfterPhotoUrl(photoUrl);
+                                            }}
+                                            showQueuedStatus={false}
+                                        />
+                                        {afterPhotoUrl && (
+                                            <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                                <p className="text-xs text-emerald-700">
+                                                    Foto terpilih
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
