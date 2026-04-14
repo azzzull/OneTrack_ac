@@ -180,10 +180,21 @@ function TechnicianDashboard() {
                 ? String(selectedTask.serial_number).trim()
                 : "",
         );
-        setBeforePhotoFile(null);
-        setProgressPhotoFile(null);
-        setAfterPhotoFile(null);
     }, [selectedTask]);
+
+    // Check if selected task still exists (not deleted by admin elsewhere)
+    useEffect(() => {
+        if (!selectedTaskId || !tasks) return;
+        const taskExists = tasks.some((task) => task.id === selectedTaskId);
+
+        if (!taskExists) {
+            // Task was deleted, close modal and clear selection
+            setSelectedTaskId(null);
+            setBeforePhotoUrl(null);
+            setProgressPhotoUrl(null);
+            setAfterPhotoUrl(null);
+        }
+    }, [tasks, selectedTaskId]);
 
     useEffect(() => {
         loadTasks();
@@ -208,7 +219,28 @@ function TechnicianDashboard() {
             .channel(`technician-tasks-${user.id}`)
             .on(
                 "postgres_changes",
-                { event: "*", schema: "public", table: "requests" },
+                { event: "DELETE", schema: "public", table: "requests" },
+                () => {
+                    // Immediately refresh on delete
+                    if (!deferRefreshRef.current) {
+                        loadTasks();
+                    }
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "INSERT", schema: "public", table: "requests" },
+                () => {
+                    if (deferRefreshRef.current) {
+                        setHasDeferredRefresh(true);
+                        return;
+                    }
+                    loadTasks();
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "UPDATE", schema: "public", table: "requests" },
                 () => {
                     if (deferRefreshRef.current) {
                         setHasDeferredRefresh(true);
@@ -386,7 +418,8 @@ function TechnicianDashboard() {
             // Determine status automatically based on photos
             // Check current photos + newly uploaded ones
             const hasBefore = beforePhotoUrl || selectedTask.before_photo_url;
-            const hasProgress = progressPhotoUrl || selectedTask.progress_photo_url;
+            const hasProgress =
+                progressPhotoUrl || selectedTask.progress_photo_url;
 
             if (hasAfter) {
                 payload.status = "completed";
@@ -568,7 +601,9 @@ function TechnicianDashboard() {
 
                                                 <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
                                                     <p className="inline-flex items-center gap-2">
-                                                        <CalendarDays size={14} />
+                                                        <CalendarDays
+                                                            size={14}
+                                                        />
                                                         <span className="break-all">
                                                             {formatDate(
                                                                 item.created_at,
@@ -862,14 +897,21 @@ function TechnicianDashboard() {
                                                     photoType="before"
                                                     supabaseClient={supabase}
                                                     onPhotoSelected={() => {}}
-                                                    onUploadSuccess={async (metadata, photoUrl) => {
-                                                        setBeforePhotoUrl(photoUrl);
+                                                    onUploadSuccess={async (
+                                                        metadata,
+                                                        photoUrl,
+                                                    ) => {
+                                                        setBeforePhotoUrl(
+                                                            photoUrl,
+                                                        );
                                                     }}
                                                     showQueuedStatus={false}
                                                 />
                                                 {beforePhotoUrl && (
                                                     <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                                        <p className="text-xs text-emerald-700">Foto terpilih</p>
+                                                        <p className="text-xs text-emerald-700">
+                                                            Foto terpilih
+                                                        </p>
                                                     </div>
                                                 )}
                                             </div>
@@ -882,14 +924,21 @@ function TechnicianDashboard() {
                                                     photoType="progress"
                                                     supabaseClient={supabase}
                                                     onPhotoSelected={() => {}}
-                                                    onUploadSuccess={async (metadata, photoUrl) => {
-                                                        setProgressPhotoUrl(photoUrl);
+                                                    onUploadSuccess={async (
+                                                        metadata,
+                                                        photoUrl,
+                                                    ) => {
+                                                        setProgressPhotoUrl(
+                                                            photoUrl,
+                                                        );
                                                     }}
                                                     showQueuedStatus={false}
                                                 />
                                                 {progressPhotoUrl && (
                                                     <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                                        <p className="text-xs text-emerald-700">Foto terpilih</p>
+                                                        <p className="text-xs text-emerald-700">
+                                                            Foto terpilih
+                                                        </p>
                                                     </div>
                                                 )}
                                             </div>
@@ -902,14 +951,21 @@ function TechnicianDashboard() {
                                                     photoType="after"
                                                     supabaseClient={supabase}
                                                     onPhotoSelected={() => {}}
-                                                    onUploadSuccess={async (metadata, photoUrl) => {
-                                                        setAfterPhotoUrl(photoUrl);
+                                                    onUploadSuccess={async (
+                                                        metadata,
+                                                        photoUrl,
+                                                    ) => {
+                                                        setAfterPhotoUrl(
+                                                            photoUrl,
+                                                        );
                                                     }}
                                                     showQueuedStatus={false}
                                                 />
                                                 {afterPhotoUrl && (
                                                     <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                                        <p className="text-xs text-emerald-700">Foto terpilih</p>
+                                                        <p className="text-xs text-emerald-700">
+                                                            Foto terpilih
+                                                        </p>
                                                     </div>
                                                 )}
                                             </div>

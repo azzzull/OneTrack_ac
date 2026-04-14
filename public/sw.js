@@ -2,11 +2,10 @@
  * Service Worker for background sync and offline handling
  */
 
-const CACHE_NAME = 'onetrack-v1';
+const CACHE_NAME = 'onetrack-v2';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
-  '/src/main.jsx',
 ];
 
 // Install event - cache static assets
@@ -41,38 +40,51 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - implement fallback for offline
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
-  if (event.request.method !== 'GET') {
+  if (event.request.method !== 'GET') return;
+
+  const requestUrl = new URL(event.request.url);
+  const isSameOrigin = requestUrl.origin === self.location.origin;
+  const isApiRequest =
+    requestUrl.pathname.startsWith('/rest/v1') ||
+    requestUrl.pathname.startsWith('/storage/v1') ||
+    requestUrl.hostname.includes('supabase');
+
+  if (!isSameOrigin || isApiRequest) {
+    // Never cache API or cross-origin requests
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      // Return cached response if found
-      if (response) {
-        return response;
-      }
+  const isNavigation = event.request.mode === 'navigate';
 
-      // Otherwise, fetch from network
+  if (isNavigation) {
+    // Network-first for navigation to avoid stale app shell
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put('/', responseToCache);
+          });
+          return response;
+        })
+        .catch(() => caches.match('/') || caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // Cache-first for static assets
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) return cachedResponse;
       return fetch(event.request).then((response) => {
-        // Don't cache non-successful responses or cross-origin requests
         if (!response || response.status !== 200 || response.type === 'error') {
           return response;
         }
-
-        // Clone the response
         const responseToCache = response.clone();
-
         caches.open(CACHE_NAME).then((cache) => {
           cache.put(event.request, responseToCache);
         });
-
         return response;
-      }).catch(() => {
-        // Offline fallback - return cached version or offline page
-        return caches.match(event.request).then((cachedResponse) => {
-          return cachedResponse || new Response('Offline');
-        });
       });
     })
   );

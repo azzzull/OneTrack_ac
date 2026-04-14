@@ -17,6 +17,7 @@ import {
     X,
     ChevronLeft,
     ChevronRight,
+    Trash2,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
@@ -168,7 +169,7 @@ const getCurrentUserDisplayName = (user) => {
 
 export default function AdminRequestsPage() {
     const { user, role } = useAuth();
-    const { alert: showAlert } = useDialog();
+    const { alert: showAlert, confirm: showConfirm } = useDialog();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const [activeFilter, setActiveFilter] = useState("all");
@@ -267,7 +268,26 @@ export default function AdminRequestsPage() {
             .channel("admin-requests-page")
             .on(
                 "postgres_changes",
-                { event: "*", schema: "public", table: "requests" },
+                { event: "DELETE", schema: "public", table: "requests" },
+                () => {
+                    // Immediately refresh on delete
+                    loadRequests();
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "INSERT", schema: "public", table: "requests" },
+                () => {
+                    if (deferRefreshRef.current) {
+                        setHasDeferredRefresh(true);
+                        return;
+                    }
+                    loadRequests();
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "UPDATE", schema: "public", table: "requests" },
                 () => {
                     if (deferRefreshRef.current) {
                         setHasDeferredRefresh(true);
@@ -295,6 +315,23 @@ export default function AdminRequestsPage() {
         setHasDeferredRefresh(false);
         loadRequests();
     }, [hasDeferredRefresh, loadRequests]);
+
+    // Check if selected request still exists (not deleted elsewhere)
+    useEffect(() => {
+        if (!selectedRequestId || !requests) return;
+        const requestExists = requests.some(
+            (req) => req.id === selectedRequestId,
+        );
+
+        if (!requestExists) {
+            // Request was deleted elsewhere, close modal and clear selection
+            setSelectedRequestId(null);
+            setBeforePhotoFile(null);
+            setProgressPhotoFile(null);
+            setAfterPhotoFile(null);
+            setPhotoPreview({ open: false, url: "", label: "" });
+        }
+    }, [requests, selectedRequestId]);
 
     useEffect(() => {
         const intervalId = setInterval(() => {
@@ -615,6 +652,64 @@ export default function AdminRequestsPage() {
         return data?.publicUrl ?? null;
     };
 
+    const deleteRequest = async () => {
+        const confirmed = await showConfirm(
+            "Apakah Anda yakin ingin menghapus pekerjaan ini? Tindakan ini tidak dapat dibatalkan.",
+            {
+                title: "Konfirmasi Hapus",
+                danger: true,
+                confirmText: "Ya, Hapus",
+                cancelText: "Batal",
+            },
+        );
+
+        if (!confirmed) return;
+
+        try {
+            // Delete photos from storage if they exist
+            const photosToDelete = [
+                selectedRequest.beforePhotoUrl,
+                selectedRequest.progressPhotoUrl,
+                selectedRequest.afterPhotoUrl,
+            ].filter(Boolean);
+
+            for (const photoUrl of photosToDelete) {
+                try {
+                    // Extract path from public URL
+                    // URL format: https://[bucket-url]/storage/v1/object/public/job-photos/[path]
+                    const urlParts = photoUrl.split("/job-photos/");
+                    if (urlParts.length > 1) {
+                        const path = urlParts[1];
+                        await supabase.storage
+                            .from("job-photos")
+                            .remove([path]);
+                    }
+                } catch (photoError) {
+                    console.error("Error deleting photo:", photoError);
+                    // Continue with deletion even if photo delete fails
+                }
+            }
+
+            // Delete request from database
+            const { error } = await supabase
+                .from("requests")
+                .delete()
+                .eq("id", selectedRequest.id);
+
+            if (error) throw error;
+
+            await showAlert("Pekerjaan dan foto berhasil dihapus.", {
+                title: "Sukses",
+            });
+
+            await loadRequests();
+            closeDetail();
+        } catch (error) {
+            console.error("Error deleting request:", error);
+            await showAlert("Gagal menghapus pekerjaan.", { title: "Error" });
+        }
+    };
+
     useEffect(() => {
         if (cameraOpen && videoRef.current && streamRef.current) {
             videoRef.current.srcObject = streamRef.current;
@@ -870,13 +965,23 @@ export default function AdminRequestsPage() {
                             <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
                                 Detail Pekerjaan
                             </h2>
-                            <button
-                                type="button"
-                                onClick={closeDetail}
-                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                            >
-                                <X size={18} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={deleteRequest}
+                                    className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                                    title="Hapus pekerjaan"
+                                >
+                                    <Trash2 size={18} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={closeDetail}
+                                    className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -127,8 +127,25 @@ function CustomerDashboard() {
             .channel(`customer-dashboard-${user.id}`)
             .on(
                 "postgres_changes",
-                { event: "*", schema: "public", table: "requests" },
-                () => fetchCustomerRequests(),
+                { event: "DELETE", schema: "public", table: "requests" },
+                () => {
+                    // Immediately refresh on delete
+                    fetchCustomerRequests();
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "INSERT", schema: "public", table: "requests" },
+                () => {
+                    fetchCustomerRequests();
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "UPDATE", schema: "public", table: "requests" },
+                () => {
+                    fetchCustomerRequests();
+                },
             )
             .subscribe();
 
@@ -136,6 +153,20 @@ function CustomerDashboard() {
             channel.unsubscribe();
         };
     }, [fetchCustomerRequests, user?.id]);
+
+    // Check if selected request still exists (not deleted by admin elsewhere)
+    useEffect(() => {
+        if (!selectedRequest || !requests) return;
+        const requestExists = requests.some(
+            (req) => req.id === selectedRequest.id,
+        );
+
+        if (!requestExists) {
+            // Request was deleted, close modal and clear selection
+            setSelectedRequest(null);
+            setPhotoPreview({ open: false, url: "", label: "" });
+        }
+    }, [requests, selectedRequest]);
 
     const filteredRequests = useMemo(() => {
         const keyword = search.trim().toLowerCase();

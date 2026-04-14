@@ -67,7 +67,11 @@ const getSessionRole = (role, user) => {
     const metadataRole = String(user?.user_metadata?.role ?? "")
         .trim()
         .toLowerCase();
-    return String(role ?? "").trim().toLowerCase() || metadataRole;
+    return (
+        String(role ?? "")
+            .trim()
+            .toLowerCase() || metadataRole
+    );
 };
 
 export default function AdminNewJobPage() {
@@ -101,28 +105,29 @@ export default function AdminNewJobPage() {
 
     const loadMasterData = useCallback(async () => {
         try {
-            const [customersRes, projectsRes, brandsRes, typesRes, pksRes] = await Promise.all([
-                supabase
-                    .from("master_customers")
-                    .select("*")
-                    .order("name", { ascending: true }),
-                supabase
-                    .from("master_projects")
-                    .select("*")
-                    .order("project_name", { ascending: true }),
-                supabase
-                    .from("master_ac_brands")
-                    .select("*")
-                    .order("name", { ascending: true }),
-                supabase
-                    .from("master_ac_types")
-                    .select("*")
-                    .order("name", { ascending: true }),
-                supabase
-                    .from("master_ac_pks")
-                    .select("*")
-                    .order("label", { ascending: true }),
-            ]);
+            const [customersRes, projectsRes, brandsRes, typesRes, pksRes] =
+                await Promise.all([
+                    supabase
+                        .from("master_customers")
+                        .select("*")
+                        .order("name", { ascending: true }),
+                    supabase
+                        .from("master_projects")
+                        .select("*")
+                        .order("project_name", { ascending: true }),
+                    supabase
+                        .from("master_ac_brands")
+                        .select("*")
+                        .order("name", { ascending: true }),
+                    supabase
+                        .from("master_ac_types")
+                        .select("*")
+                        .order("name", { ascending: true }),
+                    supabase
+                        .from("master_ac_pks")
+                        .select("*")
+                        .order("label", { ascending: true }),
+                ]);
 
             if (customersRes.error) throw customersRes.error;
             if (projectsRes.error) throw projectsRes.error;
@@ -162,7 +167,9 @@ export default function AdminNewJobPage() {
     }, [form.customerId, projects]);
 
     const selectedProject = useMemo(
-        () => availableProjects.find((item) => item.id === form.projectId) ?? null,
+        () =>
+            availableProjects.find((item) => item.id === form.projectId) ??
+            null,
         [availableProjects, form.projectId],
     );
 
@@ -175,26 +182,16 @@ export default function AdminNewJobPage() {
             setForm((prev) => ({ ...prev, projectId: "" }));
             return;
         }
-        const isStillValid = availableProjects.some((item) => item.id === form.projectId);
+        const isStillValid = availableProjects.some(
+            (item) => item.id === form.projectId,
+        );
         if (!isStillValid) {
-            setForm((prev) => ({ ...prev, projectId: availableProjects[0].id }));
+            setForm((prev) => ({
+                ...prev,
+                projectId: availableProjects[0].id,
+            }));
         }
     }, [availableProjects, form.customerId, form.projectId]);
-
-    const uploadPhoto = async (file, folderName) => {
-        if (!file) return null;
-        const ext = file.name.split(".").pop() || "jpg";
-        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const path = `${user?.id ?? "anonymous"}/${folderName}/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-            .from("job-photos")
-            .upload(path, file, { upsert: false });
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage.from("job-photos").getPublicUrl(path);
-        return data?.publicUrl ?? null;
-    };
 
     const stopCameraStream = useCallback(() => {
         if (streamRef.current) {
@@ -313,11 +310,15 @@ export default function AdminNewJobPage() {
                     : progressPhotoUrl
                       ? "in_progress"
                       : "pending",
-                location: selectedProject?.location ?? selectedCustomer?.location ?? "",
-                customer_name:
-                    selectedCustomer?.name ?? "",
-                customer_phone: selectedProject?.phone ?? selectedCustomer?.phone ?? "",
-                address: selectedProject?.address ?? selectedCustomer?.address ?? "",
+                location:
+                    selectedProject?.location ??
+                    selectedCustomer?.location ??
+                    "",
+                customer_name: selectedCustomer?.name ?? "",
+                customer_phone:
+                    selectedProject?.phone ?? selectedCustomer?.phone ?? "",
+                address:
+                    selectedProject?.address ?? selectedCustomer?.address ?? "",
                 customer_id: form.customerId,
                 project_id: form.projectId,
                 ac_brand: form.acBrand,
@@ -342,9 +343,7 @@ export default function AdminNewJobPage() {
             if (error) throw error;
 
             navigate(
-                sessionRole === "technician"
-                    ? "/technician/requests"
-                    : "/requests",
+                sessionRole === "technician" ? "/technician" : "/requests",
             );
         } catch (error) {
             console.error("Error submitting new job:", error);
@@ -447,11 +446,18 @@ export default function AdminNewJobPage() {
                                             }))
                                         }
                                         options={[
-                                            { value: "", label: "Pilih proyek" },
-                                            ...availableProjects.map((item) => ({
-                                                value: item.id,
-                                                label: item.project_name ?? "-",
-                                            })),
+                                            {
+                                                value: "",
+                                                label: "Pilih proyek",
+                                            },
+                                            ...availableProjects.map(
+                                                (item) => ({
+                                                    value: item.id,
+                                                    label:
+                                                        item.project_name ??
+                                                        "-",
+                                                }),
+                                            ),
                                         ]}
                                         placeholder="Pilih proyek"
                                     />
@@ -584,7 +590,10 @@ export default function AdminNewJobPage() {
                                     <input
                                         value={form.roomLocation}
                                         onChange={(e) =>
-                                            setField("roomLocation", e.target.value)
+                                            setField(
+                                                "roomLocation",
+                                                e.target.value,
+                                            )
                                         }
                                         placeholder="Contoh: Ruang Meeting A"
                                         className={inputClass}
@@ -649,14 +658,19 @@ export default function AdminNewJobPage() {
                                         photoType="before"
                                         supabaseClient={supabase}
                                         onPhotoSelected={() => {}}
-                                        onUploadSuccess={async (metadata, photoUrl) => {
+                                        onUploadSuccess={async (
+                                            metadata,
+                                            photoUrl,
+                                        ) => {
                                             setBeforePhotoUrl(photoUrl);
                                         }}
                                         showQueuedStatus={false}
                                     />
                                     {beforePhotoUrl && (
                                         <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                            <p className="text-xs text-emerald-700">Foto terpilih</p>
+                                            <p className="text-xs text-emerald-700">
+                                                Foto terpilih
+                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -669,14 +683,19 @@ export default function AdminNewJobPage() {
                                         photoType="progress"
                                         supabaseClient={supabase}
                                         onPhotoSelected={() => {}}
-                                        onUploadSuccess={async (metadata, photoUrl) => {
+                                        onUploadSuccess={async (
+                                            metadata,
+                                            photoUrl,
+                                        ) => {
                                             setProgressPhotoUrl(photoUrl);
                                         }}
                                         showQueuedStatus={false}
                                     />
                                     {progressPhotoUrl && (
                                         <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                            <p className="text-xs text-emerald-700">Foto terpilih</p>
+                                            <p className="text-xs text-emerald-700">
+                                                Foto terpilih
+                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -689,14 +708,19 @@ export default function AdminNewJobPage() {
                                         photoType="after"
                                         supabaseClient={supabase}
                                         onPhotoSelected={() => {}}
-                                        onUploadSuccess={async (metadata, photoUrl) => {
+                                        onUploadSuccess={async (
+                                            metadata,
+                                            photoUrl,
+                                        ) => {
                                             setAfterPhotoUrl(photoUrl);
                                         }}
                                         showQueuedStatus={false}
                                     />
                                     {afterPhotoUrl && (
                                         <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                            <p className="text-xs text-emerald-700">Foto terpilih</p>
+                                            <p className="text-xs text-emerald-700">
+                                                Foto terpilih
+                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -729,7 +753,10 @@ export default function AdminNewJobPage() {
                                     <textarea
                                         value={form.replacedParts}
                                         onChange={(e) =>
-                                            setField("replacedParts", e.target.value)
+                                            setField(
+                                                "replacedParts",
+                                                e.target.value,
+                                            )
                                         }
                                         placeholder="Daftar part baru"
                                         className={`${inputClass} min-h-20`}
