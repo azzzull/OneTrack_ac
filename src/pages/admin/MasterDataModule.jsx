@@ -554,6 +554,59 @@ export default function AdminMasterDataModulePage() {
         }
     };
 
+    const deleteCustomerData = async (customerIds) => {
+        if (!customerIds.length) return;
+
+        const { data: requestRows, error: requestFetchError } = await supabase
+            .from("requests")
+            .select("before_photo_url, progress_photo_url, after_photo_url")
+            .in("customer_id", customerIds);
+        if (requestFetchError) throw requestFetchError;
+
+        const photoUrls = [];
+        (requestRows ?? []).forEach((row) => {
+            if (row?.before_photo_url) photoUrls.push(row.before_photo_url);
+            if (row?.progress_photo_url) photoUrls.push(row.progress_photo_url);
+            if (row?.after_photo_url) photoUrls.push(row.after_photo_url);
+        });
+
+        if (photoUrls.length > 0) {
+            try {
+                const paths = photoUrls
+                    .map((url) => {
+                        const parts = String(url ?? "").split("/job-photos/");
+                        return parts.length > 1 ? parts[1] : null;
+                    })
+                    .filter(Boolean);
+
+                if (paths.length > 0) {
+                    await supabase.storage.from("job-photos").remove(paths);
+                }
+            } catch (photoError) {
+                console.error("Error deleting customer photos:", photoError);
+                // Continue even if photo delete fails
+            }
+        }
+
+        const { error: deleteRequestsError } = await supabase
+            .from("requests")
+            .delete()
+            .in("customer_id", customerIds);
+        if (deleteRequestsError) throw deleteRequestsError;
+
+        const { error: deleteProjectsError } = await supabase
+            .from("master_projects")
+            .delete()
+            .in("customer_id", customerIds);
+        if (deleteProjectsError) throw deleteProjectsError;
+
+        const { error: deleteCustomersError } = await supabase
+            .from("master_customers")
+            .delete()
+            .in("id", customerIds);
+        if (deleteCustomersError) throw deleteCustomersError;
+    };
+
     const deleteItem = async (itemId, linkedEmail = "") => {
         try {
             if (moduleKey === "users") {
@@ -591,19 +644,7 @@ export default function AdminMasterDataModulePage() {
                 );
 
                 if (linkedCustomerIds.length > 0) {
-                    const { error: deleteLinkedRequestsError } = await supabase
-                        .from("requests")
-                        .delete()
-                        .in("customer_id", linkedCustomerIds);
-                    if (deleteLinkedRequestsError)
-                        throw deleteLinkedRequestsError;
-
-                    const { error: deleteLinkedCustomersError } = await supabase
-                        .from("master_customers")
-                        .delete()
-                        .in("id", linkedCustomerIds);
-                    if (deleteLinkedCustomersError)
-                        throw deleteLinkedCustomersError;
+                    await deleteCustomerData(linkedCustomerIds);
                 }
 
                 const { error } = await invokeAdminFunction(
@@ -643,19 +684,7 @@ export default function AdminMasterDataModulePage() {
                 );
                 if (!confirmed) return;
 
-                if (totalJobs > 0) {
-                    const { error: deleteRequestsError } = await supabase
-                        .from("requests")
-                        .delete()
-                        .eq("customer_id", itemId);
-                    if (deleteRequestsError) throw deleteRequestsError;
-                }
-
-                const { error: deleteCustomerError } = await supabase
-                    .from("master_customers")
-                    .delete()
-                    .eq("id", itemId);
-                if (deleteCustomerError) throw deleteCustomerError;
+                await deleteCustomerData([itemId]);
             } else {
                 const confirmed = await confirm(
                     "Yakin ingin menghapus data ini?",

@@ -15,6 +15,9 @@ import {
     UserRound,
     Wrench,
     X,
+    ChevronLeft,
+    ChevronRight,
+    Trash2,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
@@ -23,6 +26,7 @@ import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
+import { formatDateUniversal } from "../../utils/dateFormatter";
 
 const FILTERS = [
     { key: "all", label: "All" },
@@ -129,15 +133,7 @@ const normalizeRequest = (row, creatorName = "") => {
 };
 
 const formatDate = (value) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-
-    return new Intl.DateTimeFormat("en-US", {
-        month: "numeric",
-        day: "numeric",
-        year: "numeric",
-    }).format(date);
+    return formatDateUniversal(value);
 };
 
 const formatOrderId = (value) => {
@@ -173,7 +169,7 @@ const getCurrentUserDisplayName = (user) => {
 
 export default function AdminRequestsPage() {
     const { user, role } = useAuth();
-    const { alert: showAlert } = useDialog();
+    const { alert: showAlert, confirm: showConfirm } = useDialog();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const [activeFilter, setActiveFilter] = useState("all");
@@ -200,6 +196,8 @@ export default function AdminRequestsPage() {
         label: "",
     });
     const [hasDeferredRefresh, setHasDeferredRefresh] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 5;
 
     const streamRef = useRef(null);
     const videoRef = useRef(null);
@@ -270,7 +268,26 @@ export default function AdminRequestsPage() {
             .channel("admin-requests-page")
             .on(
                 "postgres_changes",
-                { event: "*", schema: "public", table: "requests" },
+                { event: "DELETE", schema: "public", table: "requests" },
+                () => {
+                    // Immediately refresh on delete
+                    loadRequests();
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "INSERT", schema: "public", table: "requests" },
+                () => {
+                    if (deferRefreshRef.current) {
+                        setHasDeferredRefresh(true);
+                        return;
+                    }
+                    loadRequests();
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "UPDATE", schema: "public", table: "requests" },
                 () => {
                     if (deferRefreshRef.current) {
                         setHasDeferredRefresh(true);
@@ -298,6 +315,23 @@ export default function AdminRequestsPage() {
         setHasDeferredRefresh(false);
         loadRequests();
     }, [hasDeferredRefresh, loadRequests]);
+
+    // Check if selected request still exists (not deleted elsewhere)
+    useEffect(() => {
+        if (!selectedRequestId || !requests) return;
+        const requestExists = requests.some(
+            (req) => req.id === selectedRequestId,
+        );
+
+        if (!requestExists) {
+            // Request was deleted elsewhere, close modal and clear selection
+            setSelectedRequestId(null);
+            setBeforePhotoFile(null);
+            setProgressPhotoFile(null);
+            setAfterPhotoFile(null);
+            setPhotoPreview({ open: false, url: "", label: "" });
+        }
+    }, [requests, selectedRequestId]);
 
     useEffect(() => {
         const intervalId = setInterval(() => {
@@ -346,6 +380,19 @@ export default function AdminRequestsPage() {
             return matchTechnicianQueue && matchFilter && matchSearch;
         });
     }, [activeFilter, requests, role, search]);
+
+    // Pagination calculations
+    const totalPages = Math.ceil(filteredRequests.length / ITEMS_PER_PAGE);
+    const paginatedRequests = useMemo(() => {
+        const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
+        const endIdx = startIdx + ITEMS_PER_PAGE;
+        return filteredRequests.slice(startIdx, endIdx);
+    }, [filteredRequests, currentPage]);
+
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeFilter, search]);
 
     const selectedRequest = useMemo(
         () => requests.find((item) => item.id === selectedRequestId) ?? null,
@@ -608,6 +655,64 @@ export default function AdminRequestsPage() {
         return data?.publicUrl ?? null;
     };
 
+    const deleteRequest = async () => {
+        const confirmed = await showConfirm(
+            "Apakah Anda yakin ingin menghapus pekerjaan ini? Tindakan ini tidak dapat dibatalkan.",
+            {
+                title: "Konfirmasi Hapus",
+                danger: true,
+                confirmText: "Ya, Hapus",
+                cancelText: "Batal",
+            },
+        );
+
+        if (!confirmed) return;
+
+        try {
+            // Delete photos from storage if they exist
+            const photosToDelete = [
+                selectedRequest.beforePhotoUrl,
+                selectedRequest.progressPhotoUrl,
+                selectedRequest.afterPhotoUrl,
+            ].filter(Boolean);
+
+            for (const photoUrl of photosToDelete) {
+                try {
+                    // Extract path from public URL
+                    // URL format: https://[bucket-url]/storage/v1/object/public/job-photos/[path]
+                    const urlParts = photoUrl.split("/job-photos/");
+                    if (urlParts.length > 1) {
+                        const path = urlParts[1];
+                        await supabase.storage
+                            .from("job-photos")
+                            .remove([path]);
+                    }
+                } catch (photoError) {
+                    console.error("Error deleting photo:", photoError);
+                    // Continue with deletion even if photo delete fails
+                }
+            }
+
+            // Delete request from database
+            const { error } = await supabase
+                .from("requests")
+                .delete()
+                .eq("id", selectedRequest.id);
+
+            if (error) throw error;
+
+            await showAlert("Pekerjaan dan foto berhasil dihapus.", {
+                title: "Sukses",
+            });
+
+            await loadRequests();
+            closeDetail();
+        } catch (error) {
+            console.error("Error deleting request:", error);
+            await showAlert("Gagal menghapus pekerjaan.", { title: "Error" });
+        }
+    };
+
     useEffect(() => {
         if (cameraOpen && videoRef.current && streamRef.current) {
             videoRef.current.srcObject = streamRef.current;
@@ -683,7 +788,7 @@ export default function AdminRequestsPage() {
                                 </p>
                             </div>
                         ) : (
-                            filteredRequests.map((item) => (
+                            paginatedRequests.map((item) => (
                                 <article
                                     key={item.id}
                                     className="cursor-pointer overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md hover:scale-[1.01]"
@@ -747,9 +852,9 @@ export default function AdminRequestsPage() {
 
                                             <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
                                                 <p className="inline-flex items-center text-base gap-2">
-                                                    <UserRound size={14} />
+                                                    <CalendarDays size={14} />
                                                     <span className="break-all">
-                                                        {item.phone}
+                                                        {formatDate(item.date)}
                                                     </span>
                                                 </p>
                                                 <p className="inline-flex items-center gap-2">
@@ -763,8 +868,10 @@ export default function AdminRequestsPage() {
 
                                         <aside className="border-t border-slate-200 bg-slate-50 p-4 md:border-l md:border-t-0 md:p-5">
                                             <p className="inline-flex items-center gap-2 text-sm text-slate-600">
-                                                <CalendarDays size={15} />
-                                                {formatDate(item.date)}
+                                                <UserRound size={15} />
+                                                <span className="break-all">
+                                                    {item.phone}
+                                                </span>
                                             </p>
                                             <p className="mt-3 inline-flex items-center gap-2 wrap-break-word text-sm text-slate-600">
                                                 <ListFilter size={15} />
@@ -774,6 +881,79 @@ export default function AdminRequestsPage() {
                                     </div>
                                 </article>
                             ))
+                        )}
+
+                        {filteredRequests.length > ITEMS_PER_PAGE && (
+                            <div className="mt-6 flex flex-col items-center justify-between gap-4 sm:flex-row">
+                                <div className="text-sm text-slate-600">
+                                    Page{" "}
+                                    <span className="font-semibold">
+                                        {currentPage}
+                                    </span>{" "}
+                                    of{" "}
+                                    <span className="font-semibold">
+                                        {totalPages}
+                                    </span>{" "}
+                                    • Showing{" "}
+                                    <span className="font-semibold">
+                                        {paginatedRequests.length}
+                                    </span>{" "}
+                                    of{" "}
+                                    <span className="font-semibold">
+                                        {filteredRequests.length}
+                                    </span>{" "}
+                                    results
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() =>
+                                            setCurrentPage((p) =>
+                                                Math.max(1, p - 1),
+                                            )
+                                        }
+                                        disabled={currentPage === 1}
+                                        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                                        title="Previous page"
+                                    >
+                                        <ChevronLeft size={18} />
+                                    </button>
+
+                                    <div className="flex gap-1">
+                                        {Array.from(
+                                            { length: totalPages },
+                                            (_, i) => i + 1,
+                                        ).map((page) => (
+                                            <button
+                                                key={page}
+                                                onClick={() =>
+                                                    setCurrentPage(page)
+                                                }
+                                                className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                                    currentPage === page
+                                                        ? "bg-sky-500 text-white"
+                                                        : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                                }`}
+                                            >
+                                                {page}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <button
+                                        onClick={() =>
+                                            setCurrentPage((p) =>
+                                                Math.min(totalPages, p + 1),
+                                            )
+                                        }
+                                        disabled={currentPage === totalPages}
+                                        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                                        title="Next page"
+                                    >
+                                        <ChevronRight size={18} />
+                                    </button>
+                                </div>
+                            </div>
                         )}
                     </section>
                 </main>
@@ -788,13 +968,23 @@ export default function AdminRequestsPage() {
                             <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
                                 Detail Pekerjaan
                             </h2>
-                            <button
-                                type="button"
-                                onClick={closeDetail}
-                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                            >
-                                <X size={18} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={deleteRequest}
+                                    className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                                    title="Hapus pekerjaan"
+                                >
+                                    <Trash2 size={18} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={closeDetail}
+                                    className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">

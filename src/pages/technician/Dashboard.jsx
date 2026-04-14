@@ -13,12 +13,14 @@ import {
     UserRound,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import PhotoUploadInput from "../../components/PhotoUploadInput";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import CustomSelect from "../../components/ui/CustomSelect";
 import supabase from "../../supabaseClient";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
+import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
 
 const STATUS_LABELS = {
     pending: "PENDING",
@@ -113,9 +115,9 @@ function TechnicianDashboard() {
         replacedParts: "",
         reconditionedParts: "",
     });
-    const [beforePhotoFile, setBeforePhotoFile] = useState(null);
-    const [progressPhotoFile, setProgressPhotoFile] = useState(null);
-    const [afterPhotoFile, setAfterPhotoFile] = useState(null);
+    const [beforePhotoUrl, setBeforePhotoUrl] = useState(null);
+    const [progressPhotoUrl, setProgressPhotoUrl] = useState(null);
+    const [afterPhotoUrl, setAfterPhotoUrl] = useState(null);
     const [serialNumber, setSerialNumber] = useState("");
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
@@ -178,10 +180,21 @@ function TechnicianDashboard() {
                 ? String(selectedTask.serial_number).trim()
                 : "",
         );
-        setBeforePhotoFile(null);
-        setProgressPhotoFile(null);
-        setAfterPhotoFile(null);
     }, [selectedTask]);
+
+    // Check if selected task still exists (not deleted by admin elsewhere)
+    useEffect(() => {
+        if (!selectedTaskId || !tasks) return;
+        const taskExists = tasks.some((task) => task.id === selectedTaskId);
+
+        if (!taskExists) {
+            // Task was deleted, close modal and clear selection
+            setSelectedTaskId(null);
+            setBeforePhotoUrl(null);
+            setProgressPhotoUrl(null);
+            setAfterPhotoUrl(null);
+        }
+    }, [tasks, selectedTaskId]);
 
     useEffect(() => {
         loadTasks();
@@ -206,7 +219,28 @@ function TechnicianDashboard() {
             .channel(`technician-tasks-${user.id}`)
             .on(
                 "postgres_changes",
-                { event: "*", schema: "public", table: "requests" },
+                { event: "DELETE", schema: "public", table: "requests" },
+                () => {
+                    // Immediately refresh on delete
+                    if (!deferRefreshRef.current) {
+                        loadTasks();
+                    }
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "INSERT", schema: "public", table: "requests" },
+                () => {
+                    if (deferRefreshRef.current) {
+                        setHasDeferredRefresh(true);
+                        return;
+                    }
+                    loadTasks();
+                },
+            )
+            .on(
+                "postgres_changes",
+                { event: "UPDATE", schema: "public", table: "requests" },
                 () => {
                     if (deferRefreshRef.current) {
                         setHasDeferredRefresh(true);
@@ -303,9 +337,7 @@ function TechnicianDashboard() {
             }
             return;
         }
-        if (cameraTarget === "before") setBeforePhotoFile(file);
-        if (cameraTarget === "progress") setProgressPhotoFile(file);
-        if (cameraTarget === "after") setAfterPhotoFile(file);
+
         closeCamera();
     }, [cameraTarget, closeCamera, scanSerialFromImage, showAlert]);
 
@@ -323,9 +355,9 @@ function TechnicianDashboard() {
         setPhotoPreview({ open: false, url: "", label: "" });
         setSelectedTaskId(null);
         setSaving(false);
-        setBeforePhotoFile(null);
-        setProgressPhotoFile(null);
-        setAfterPhotoFile(null);
+        setBeforePhotoUrl(null);
+        setProgressPhotoUrl(null);
+        setAfterPhotoUrl(null);
     };
 
     const openPhotoPreview = (url, label) => {
@@ -347,7 +379,7 @@ function TechnicianDashboard() {
             serialNumber.trim() !== (selectedTask.serial_number ?? "");
 
         const hasNewPhotos =
-            beforePhotoFile || progressPhotoFile || afterPhotoFile;
+            beforePhotoUrl || progressPhotoUrl || afterPhotoUrl;
 
         if (!hasRepairNoteChanges && !hasNewPhotos) {
             await showAlert("Tidak ada perubahan yang disimpan.", {
@@ -359,20 +391,7 @@ function TechnicianDashboard() {
         try {
             setSaving(true);
 
-            let beforeUrl = null;
-            let progressUrl = null;
-            let afterUrl = null;
-
-            // Upload new photos if any
-            if (hasNewPhotos) {
-                [beforeUrl, progressUrl, afterUrl] = await Promise.all([
-                    uploadPhoto(beforePhotoFile, "before"),
-                    uploadPhoto(progressPhotoFile, "progress"),
-                    uploadPhoto(afterPhotoFile, "after"),
-                ]);
-            }
-
-            const hasAfter = afterUrl || selectedTask.after_photo_url;
+            const hasAfter = afterPhotoUrl || selectedTask.after_photo_url;
             if (hasAfter && !hasValidSerialNumber(serialNumber)) {
                 await showAlert(
                     "harap isi serial number (scan atau ketik manual)",
@@ -394,14 +413,15 @@ function TechnicianDashboard() {
             };
 
             // Add photo URLs if uploaded
-            if (beforeUrl) payload.before_photo_url = beforeUrl;
-            if (progressUrl) payload.progress_photo_url = progressUrl;
-            if (afterUrl) payload.after_photo_url = afterUrl;
+            if (beforePhotoUrl) payload.before_photo_url = beforePhotoUrl;
+            if (progressPhotoUrl) payload.progress_photo_url = progressPhotoUrl;
+            if (afterPhotoUrl) payload.after_photo_url = afterPhotoUrl;
 
             // Determine status automatically based on photos
             // Check current photos + newly uploaded ones
-            const hasBefore = beforeUrl || selectedTask.before_photo_url;
-            const hasProgress = progressUrl || selectedTask.progress_photo_url;
+            const hasBefore = beforePhotoUrl || selectedTask.before_photo_url;
+            const hasProgress =
+                progressPhotoUrl || selectedTask.progress_photo_url;
 
             if (hasAfter) {
                 payload.status = "completed";
@@ -421,9 +441,9 @@ function TechnicianDashboard() {
             if (error) throw error;
 
             await loadTasks();
-            setBeforePhotoFile(null);
-            setProgressPhotoFile(null);
-            setAfterPhotoFile(null);
+            setBeforePhotoUrl(null);
+            setProgressPhotoUrl(null);
+            setAfterPhotoUrl(null);
 
             await showAlert("Perubahan berhasil disimpan.", {
                 title: "Sukses",
@@ -464,6 +484,22 @@ function TechnicianDashboard() {
                     <p className="mt-1 text-slate-600">
                         Daftar pekerjaan yang Anda kerjakan.
                     </p>
+
+                    {/* Attendance Section */}
+                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+                                <CalendarDays size={18} />
+                                Absensi Hari Ini
+                            </h2>
+                        </div>
+                        <AttendanceDashboardSimple
+                            technicianId={user?.id}
+                            onDataChange={() => {
+                                // Optional: refresh tasks or update UI
+                            }}
+                        />
+                    </section>
 
                     <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -569,10 +605,13 @@ function TechnicianDashboard() {
 
                                                 <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
                                                     <p className="inline-flex items-center gap-2">
-                                                        <Phone size={14} />
+                                                        <CalendarDays
+                                                            size={14}
+                                                        />
                                                         <span className="break-all">
-                                                            {item.customer_phone ??
-                                                                "-"}
+                                                            {formatDate(
+                                                                item.created_at,
+                                                            )}
                                                         </span>
                                                     </p>
                                                     <p className="inline-flex items-center gap-2">
@@ -590,12 +629,11 @@ function TechnicianDashboard() {
                                             <aside className="border-t border-slate-200 bg-slate-50 p-4 md:border-l md:border-t-0 md:p-5">
                                                 <div className="flex flex-col gap-3 md:gap-4">
                                                     <p className="inline-flex items-center gap-2 text-sm text-slate-600">
-                                                        <CalendarDays
-                                                            size={15}
-                                                        />
-                                                        {formatDate(
-                                                            item.created_at,
-                                                        )}
+                                                        <Phone size={15} />
+                                                        <span className="break-all">
+                                                            {item.customer_phone ??
+                                                                "-"}
+                                                        </span>
                                                     </p>
                                                     <p className="inline-flex items-center gap-2 wrap-break-word text-sm text-slate-600">
                                                         <UserRound size={15} />
@@ -872,30 +910,88 @@ function TechnicianDashboard() {
                                         <p className="text-xs text-slate-500 mb-3">
                                             Ambil foto baru:
                                         </p>
-                                        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                                            <FileCaptureCard
-                                                label="Ambil Before"
-                                                fileName={beforePhotoFile?.name}
-                                                onClick={() =>
-                                                    openCamera("before")
-                                                }
-                                            />
-                                            <FileCaptureCard
-                                                label="Ambil Progress"
-                                                fileName={
-                                                    progressPhotoFile?.name
-                                                }
-                                                onClick={() =>
-                                                    openCamera("progress")
-                                                }
-                                            />
-                                            <FileCaptureCard
-                                                label="Ambil After"
-                                                fileName={afterPhotoFile?.name}
-                                                onClick={() =>
-                                                    openCamera("after")
-                                                }
-                                            />
+                                        <div className="mt-3 grid grid-cols-1 gap-6 md:grid-cols-3">
+                                            <div>
+                                                <label className="mb-2 block text-xs font-medium text-slate-600">
+                                                    Foto Before
+                                                </label>
+                                                <PhotoUploadInput
+                                                    folderName="before"
+                                                    photoType="before"
+                                                    supabaseClient={supabase}
+                                                    onPhotoSelected={() => {}}
+                                                    onUploadSuccess={async (
+                                                        metadata,
+                                                        photoUrl,
+                                                    ) => {
+                                                        setBeforePhotoUrl(
+                                                            photoUrl,
+                                                        );
+                                                    }}
+                                                    showQueuedStatus={false}
+                                                />
+                                                {beforePhotoUrl && (
+                                                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                                        <p className="text-xs text-emerald-700">
+                                                            Foto terpilih
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs font-medium text-slate-600">
+                                                    Foto Progress
+                                                </label>
+                                                <PhotoUploadInput
+                                                    folderName="progress"
+                                                    photoType="progress"
+                                                    supabaseClient={supabase}
+                                                    onPhotoSelected={() => {}}
+                                                    onUploadSuccess={async (
+                                                        metadata,
+                                                        photoUrl,
+                                                    ) => {
+                                                        setProgressPhotoUrl(
+                                                            photoUrl,
+                                                        );
+                                                    }}
+                                                    showQueuedStatus={false}
+                                                />
+                                                {progressPhotoUrl && (
+                                                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                                        <p className="text-xs text-emerald-700">
+                                                            Foto terpilih
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs font-medium text-slate-600">
+                                                    Foto After
+                                                </label>
+                                                <PhotoUploadInput
+                                                    folderName="after"
+                                                    photoType="after"
+                                                    supabaseClient={supabase}
+                                                    onPhotoSelected={() => {}}
+                                                    onUploadSuccess={async (
+                                                        metadata,
+                                                        photoUrl,
+                                                    ) => {
+                                                        setAfterPhotoUrl(
+                                                            photoUrl,
+                                                        );
+                                                    }}
+                                                    showQueuedStatus={false}
+                                                />
+                                                {afterPhotoUrl && (
+                                                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                                        <p className="text-xs text-emerald-700">
+                                                            Foto terpilih
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </>
                                 )}
@@ -947,14 +1043,12 @@ function TechnicianDashboard() {
                 </div>
             )}
 
-            {cameraOpen && (
+            {cameraOpen && cameraTarget === "serial-scan" && (
                 <div className="fixed inset-0 z-60 flex items-end justify-center bg-slate-900/80 p-0 md:items-center md:p-4">
                     <div className="w-full rounded-t-3xl bg-white p-4 shadow-xl md:max-w-xl md:rounded-2xl">
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-slate-900">
-                                {cameraTarget === "serial-scan"
-                                    ? "Scan Barcode Serial"
-                                    : "Ambil Foto"}
+                                Scan Barcode Serial
                             </h3>
                             <button
                                 type="button"
@@ -987,9 +1081,7 @@ function TechnicianDashboard() {
                             disabled={Boolean(cameraError)}
                             className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            {cameraTarget === "serial-scan"
-                                ? "Scan Sekarang"
-                                : "Ambil Sekarang"}
+                            Scan Sekarang
                         </button>
                     </div>
                 </div>

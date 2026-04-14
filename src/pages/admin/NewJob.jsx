@@ -3,6 +3,7 @@ import { Camera, CheckCircle2, Send, ArrowLeft, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
+import PhotoUploadInput from "../../components/PhotoUploadInput";
 import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
@@ -66,7 +67,11 @@ const getSessionRole = (role, user) => {
     const metadataRole = String(user?.user_metadata?.role ?? "")
         .trim()
         .toLowerCase();
-    return String(role ?? "").trim().toLowerCase() || metadataRole;
+    return (
+        String(role ?? "")
+            .trim()
+            .toLowerCase() || metadataRole
+    );
 };
 
 export default function AdminNewJobPage() {
@@ -78,9 +83,9 @@ export default function AdminNewJobPage() {
     const [acBrands, setAcBrands] = useState([]);
     const [acTypes, setAcTypes] = useState([]);
     const [acPks, setAcPks] = useState([]);
-    const [beforePhoto, setBeforePhoto] = useState(null);
-    const [progressPhoto, setProgressPhoto] = useState(null);
-    const [afterPhoto, setAfterPhoto] = useState(null);
+    const [beforePhotoUrl, setBeforePhotoUrl] = useState(null);
+    const [progressPhotoUrl, setProgressPhotoUrl] = useState(null);
+    const [afterPhotoUrl, setAfterPhotoUrl] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
@@ -100,28 +105,29 @@ export default function AdminNewJobPage() {
 
     const loadMasterData = useCallback(async () => {
         try {
-            const [customersRes, projectsRes, brandsRes, typesRes, pksRes] = await Promise.all([
-                supabase
-                    .from("master_customers")
-                    .select("*")
-                    .order("name", { ascending: true }),
-                supabase
-                    .from("master_projects")
-                    .select("*")
-                    .order("project_name", { ascending: true }),
-                supabase
-                    .from("master_ac_brands")
-                    .select("*")
-                    .order("name", { ascending: true }),
-                supabase
-                    .from("master_ac_types")
-                    .select("*")
-                    .order("name", { ascending: true }),
-                supabase
-                    .from("master_ac_pks")
-                    .select("*")
-                    .order("label", { ascending: true }),
-            ]);
+            const [customersRes, projectsRes, brandsRes, typesRes, pksRes] =
+                await Promise.all([
+                    supabase
+                        .from("master_customers")
+                        .select("*")
+                        .order("name", { ascending: true }),
+                    supabase
+                        .from("master_projects")
+                        .select("*")
+                        .order("project_name", { ascending: true }),
+                    supabase
+                        .from("master_ac_brands")
+                        .select("*")
+                        .order("name", { ascending: true }),
+                    supabase
+                        .from("master_ac_types")
+                        .select("*")
+                        .order("name", { ascending: true }),
+                    supabase
+                        .from("master_ac_pks")
+                        .select("*")
+                        .order("label", { ascending: true }),
+                ]);
 
             if (customersRes.error) throw customersRes.error;
             if (projectsRes.error) throw projectsRes.error;
@@ -161,7 +167,9 @@ export default function AdminNewJobPage() {
     }, [form.customerId, projects]);
 
     const selectedProject = useMemo(
-        () => availableProjects.find((item) => item.id === form.projectId) ?? null,
+        () =>
+            availableProjects.find((item) => item.id === form.projectId) ??
+            null,
         [availableProjects, form.projectId],
     );
 
@@ -174,26 +182,16 @@ export default function AdminNewJobPage() {
             setForm((prev) => ({ ...prev, projectId: "" }));
             return;
         }
-        const isStillValid = availableProjects.some((item) => item.id === form.projectId);
+        const isStillValid = availableProjects.some(
+            (item) => item.id === form.projectId,
+        );
         if (!isStillValid) {
-            setForm((prev) => ({ ...prev, projectId: availableProjects[0].id }));
+            setForm((prev) => ({
+                ...prev,
+                projectId: availableProjects[0].id,
+            }));
         }
     }, [availableProjects, form.customerId, form.projectId]);
-
-    const uploadPhoto = async (file, folderName) => {
-        if (!file) return null;
-        const ext = file.name.split(".").pop() || "jpg";
-        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const path = `${user?.id ?? "anonymous"}/${folderName}/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-            .from("job-photos")
-            .upload(path, file, { upsert: false });
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage.from("job-photos").getPublicUrl(path);
-        return data?.publicUrl ?? null;
-    };
 
     const stopCameraStream = useCallback(() => {
         if (streamRef.current) {
@@ -276,9 +274,6 @@ export default function AdminNewJobPage() {
             }
             return;
         }
-        if (cameraTarget === "before") setBeforePhoto(file);
-        if (cameraTarget === "progress") setProgressPhoto(file);
-        if (cameraTarget === "after") setAfterPhoto(file);
 
         closeCamera();
     };
@@ -308,24 +303,22 @@ export default function AdminNewJobPage() {
         setSubmitting(true);
 
         try {
-            const [beforeUrl, progressUrl, afterUrl] = await Promise.all([
-                uploadPhoto(beforePhoto, "before"),
-                uploadPhoto(progressPhoto, "progress"),
-                uploadPhoto(afterPhoto, "after"),
-            ]);
-
             const payload = {
                 title: selectedProject?.project_name ?? "",
-                status: afterUrl
+                status: afterPhotoUrl
                     ? "completed"
-                    : progressUrl
+                    : progressPhotoUrl
                       ? "in_progress"
                       : "pending",
-                location: selectedProject?.location ?? selectedCustomer?.location ?? "",
-                customer_name:
-                    selectedCustomer?.name ?? "",
-                customer_phone: selectedProject?.phone ?? selectedCustomer?.phone ?? "",
-                address: selectedProject?.address ?? selectedCustomer?.address ?? "",
+                location:
+                    selectedProject?.location ??
+                    selectedCustomer?.location ??
+                    "",
+                customer_name: selectedCustomer?.name ?? "",
+                customer_phone:
+                    selectedProject?.phone ?? selectedCustomer?.phone ?? "",
+                address:
+                    selectedProject?.address ?? selectedCustomer?.address ?? "",
                 customer_id: form.customerId,
                 project_id: form.projectId,
                 ac_brand: form.acBrand,
@@ -336,9 +329,9 @@ export default function AdminNewJobPage() {
                 trouble_description: form.troubleDescription,
                 replaced_parts: form.replacedParts,
                 reconditioned_parts: form.reconditionedParts,
-                before_photo_url: beforeUrl,
-                progress_photo_url: progressUrl,
-                after_photo_url: afterUrl,
+                before_photo_url: beforePhotoUrl,
+                progress_photo_url: progressPhotoUrl,
+                after_photo_url: afterPhotoUrl,
                 created_by: user?.id ?? null,
             };
             if (sessionRole === "technician") {
@@ -350,9 +343,7 @@ export default function AdminNewJobPage() {
             if (error) throw error;
 
             navigate(
-                sessionRole === "technician"
-                    ? "/technician/requests"
-                    : "/requests",
+                sessionRole === "technician" ? "/technician" : "/requests",
             );
         } catch (error) {
             console.error("Error submitting new job:", error);
@@ -410,6 +401,7 @@ export default function AdminNewJobPage() {
 
                     <form
                         onSubmit={handleSubmit}
+                        noValidate
                         className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:p-6"
                     >
                         <section>
@@ -454,11 +446,18 @@ export default function AdminNewJobPage() {
                                             }))
                                         }
                                         options={[
-                                            { value: "", label: "Pilih proyek" },
-                                            ...availableProjects.map((item) => ({
-                                                value: item.id,
-                                                label: item.project_name ?? "-",
-                                            })),
+                                            {
+                                                value: "",
+                                                label: "Pilih proyek",
+                                            },
+                                            ...availableProjects.map(
+                                                (item) => ({
+                                                    value: item.id,
+                                                    label:
+                                                        item.project_name ??
+                                                        "-",
+                                                }),
+                                            ),
                                         ]}
                                         placeholder="Pilih proyek"
                                     />
@@ -591,11 +590,13 @@ export default function AdminNewJobPage() {
                                     <input
                                         value={form.roomLocation}
                                         onChange={(e) =>
-                                            setField("roomLocation", e.target.value)
+                                            setField(
+                                                "roomLocation",
+                                                e.target.value,
+                                            )
                                         }
                                         placeholder="Contoh: Ruang Meeting A"
                                         className={inputClass}
-                                        required
                                     />
                                 </label>
                                 <div className="md:col-span-2">
@@ -647,22 +648,82 @@ export default function AdminNewJobPage() {
 
                         <section className="mt-8">
                             <SectionTitle>Dokumentasi Foto</SectionTitle>
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                <FileCaptureCard
-                                    label="Foto Before"
-                                    fileName={beforePhoto?.name}
-                                    onClick={() => openCamera("before")}
-                                />
-                                <FileCaptureCard
-                                    label="Foto Progress"
-                                    fileName={progressPhoto?.name}
-                                    onClick={() => openCamera("progress")}
-                                />
-                                <FileCaptureCard
-                                    label="Foto After"
-                                    fileName={afterPhoto?.name}
-                                    onClick={() => openCamera("after")}
-                                />
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                                        Foto Before
+                                    </label>
+                                    <PhotoUploadInput
+                                        folderName="before"
+                                        photoType="before"
+                                        supabaseClient={supabase}
+                                        onPhotoSelected={() => {}}
+                                        onUploadSuccess={async (
+                                            metadata,
+                                            photoUrl,
+                                        ) => {
+                                            setBeforePhotoUrl(photoUrl);
+                                        }}
+                                        showQueuedStatus={false}
+                                    />
+                                    {beforePhotoUrl && (
+                                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                            <p className="text-xs text-emerald-700">
+                                                Foto terpilih
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                                        Foto Progress
+                                    </label>
+                                    <PhotoUploadInput
+                                        folderName="progress"
+                                        photoType="progress"
+                                        supabaseClient={supabase}
+                                        onPhotoSelected={() => {}}
+                                        onUploadSuccess={async (
+                                            metadata,
+                                            photoUrl,
+                                        ) => {
+                                            setProgressPhotoUrl(photoUrl);
+                                        }}
+                                        showQueuedStatus={false}
+                                    />
+                                    {progressPhotoUrl && (
+                                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                            <p className="text-xs text-emerald-700">
+                                                Foto terpilih
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                                        Foto After
+                                    </label>
+                                    <PhotoUploadInput
+                                        folderName="after"
+                                        photoType="after"
+                                        supabaseClient={supabase}
+                                        onPhotoSelected={() => {}}
+                                        onUploadSuccess={async (
+                                            metadata,
+                                            photoUrl,
+                                        ) => {
+                                            setAfterPhotoUrl(photoUrl);
+                                        }}
+                                        showQueuedStatus={false}
+                                    />
+                                    {afterPhotoUrl && (
+                                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                            <p className="text-xs text-emerald-700">
+                                                Foto terpilih
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </section>
 
@@ -683,7 +744,6 @@ export default function AdminNewJobPage() {
                                         }
                                         placeholder="Jelaskan keluhan kerusakan"
                                         className={`${inputClass} min-h-24`}
-                                        required
                                     />
                                 </label>
                                 <label>
@@ -693,7 +753,10 @@ export default function AdminNewJobPage() {
                                     <textarea
                                         value={form.replacedParts}
                                         onChange={(e) =>
-                                            setField("replacedParts", e.target.value)
+                                            setField(
+                                                "replacedParts",
+                                                e.target.value,
+                                            )
                                         }
                                         placeholder="Daftar part baru"
                                         className={`${inputClass} min-h-20`}
@@ -736,14 +799,12 @@ export default function AdminNewJobPage() {
 
             <MobileBottomNav />
 
-            {cameraOpen && (
+            {cameraOpen && cameraTarget === "serial-scan" && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4">
                     <div className="w-full max-w-md rounded-2xl bg-white p-4">
                         <div className="mb-3 flex items-center justify-between">
                             <p className="text-sm font-semibold text-slate-800">
-                                {cameraTarget === "serial-scan"
-                                    ? "Scan Barcode Serial"
-                                    : "Ambil Foto"}
+                                Scan Barcode Serial
                             </p>
                             <button
                                 type="button"
@@ -768,9 +829,7 @@ export default function AdminNewJobPage() {
                             className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600"
                         >
                             <Camera size={16} />
-                            {cameraTarget === "serial-scan"
-                                ? "Scan Sekarang"
-                                : "Ambil Foto"}
+                            Scan Sekarang
                         </button>
                     </div>
                 </div>

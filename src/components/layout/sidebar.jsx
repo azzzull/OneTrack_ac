@@ -11,7 +11,9 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     Menu,
+    MoreHorizontal,
     X,
+    CalendarDays,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
@@ -25,11 +27,17 @@ const menuByRole = {
         { label: "New Job", path: "/jobs/new", icon: Plus },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Reports", path: "/reports", icon: PieChart },
+        { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
         { label: "Requests", path: "/technician/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
+        {
+            label: "History Absensi",
+            path: "/technician/attendance",
+            icon: CalendarDays,
+        },
     ],
     customer: [
         { label: "My Service", path: "/services", icon: List },
@@ -102,10 +110,13 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                     ? `ada ${addedCount} pekerjaan baru yang di request`
                     : "ada pekerjaan baru yang di request";
 
-            setNewRequestToast(message);
             if (toastTimerRef.current) {
                 clearTimeout(toastTimerRef.current);
             }
+            // Defer setState to avoid triggering cascading renders
+            Promise.resolve().then(() => {
+                setNewRequestToast(message);
+            });
             toastTimerRef.current = setTimeout(() => {
                 setNewRequestToast("");
             }, 4500);
@@ -152,7 +163,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             <img
                                 src="/saplogo.svg"
                                 alt="SAP Logo"
-                                className={collapsed ? "h-10 w-10 object-contain" : "h-12 w-12 object-contain"}
+                                className={
+                                    collapsed
+                                        ? "h-10 w-10 object-contain"
+                                        : "h-12 w-12 object-contain"
+                                }
                             />
                             {!collapsed && (
                                 <h1 className="text-2xl font-bold text-sky-500">
@@ -187,8 +202,9 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             <li key={label}>
                                 <NavLink
                                     to={path}
+                                    end
                                     className={({ isActive }) =>
-                                        ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
+                                        `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
                                     ${
                                         isActive
                                             ? "bg-sky-100 text-sky-500"
@@ -196,7 +212,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                     }
                                     ${
                                         collapsed
-                                            ? "flex flex-col items-center px-2 py-2 text-[11px] font-medium"
+                                            ? "flex flex-col items-center justify-center px-2 py-2 text-[11px] font-medium text-center"
                                             : "flex items-center gap-4 px-5 py-3 text-md"
                                     }
                                 `
@@ -266,7 +282,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 </nav>
             </aside>
             {newRequestToast && (
-                <div className="fixed right-4 top-4 z-[80] rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700 shadow-lg">
+                <div className="fixed right-4 top-4 z-80 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700 shadow-lg">
                     {newRequestToast}
                 </div>
             )}
@@ -279,6 +295,7 @@ export function MobileBottomNav() {
     const navigate = useNavigate();
     const stats = useRequestStats();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [moreOpen, setMoreOpen] = useState(false);
     const [showTopNav, setShowTopNav] = useState(true);
     const lastScrollRef = useRef(0);
     const MOBILE_TOP_NAV_HEIGHT = 72;
@@ -296,6 +313,9 @@ export function MobileBottomNav() {
             badge: count > 0 ? count : null,
         };
     });
+    const primaryCount = 4;
+    const primaryMenus = menus.slice(0, primaryCount);
+    const extraMenus = menus.slice(primaryCount);
     const canOpenProfile = role === "customer" || role === "technician";
     const identityLabel =
         `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() ||
@@ -354,7 +374,7 @@ export function MobileBottomNav() {
                     showTopNav ? "translate-y-0" : "-translate-y-full"
                 }`}
             >
-                <div className="flex min-h-[72px] items-center justify-between px-3 py-3">
+                <div className="flex min-h-18 items-center justify-between px-3 py-3">
                     <div className="inline-flex items-center gap-2">
                         <img
                             src="/saplogo.svg"
@@ -402,36 +422,105 @@ export function MobileBottomNav() {
                 )}
             </header>
 
-            <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-2 py-2 md:hidden">
-                <ul className="flex items-center justify-between gap-1">
-                    {menus.map(({ label, path, icon, badge }) => (
+            <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white md:hidden">
+                <ul className="flex items-center justify-around gap-0">
+                    {primaryMenus.map(({ label, path, icon, badge }) => (
                         <li key={label} className="flex-1">
                             <NavLink
+                                end
                                 to={path}
                                 className={({ isActive }) =>
-                                    ` no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-xs font-medium transition relative
-                                    ${
+                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! block px-2 py-2.5 transition-colors duration-200 ${
                                         isActive
-                                            ? "bg-sky-100 text-sky-500"
-                                            : "text-slate-500 hover:bg-slate-100"
-                                    }
-                                `
+                                            ? "text-sky-500 border-b-2 border-sky-500 font-semibold"
+                                            : "text-slate-500 border-b-2 border-transparent hover:text-slate-700"
+                                    }`
                                 }
                                 style={{ textDecoration: "none" }}
                             >
-                                {createElement(icon, { size: 18 })}
-                                <span className="mt-1">{label}</span>
-
-                                {badge && (
-                                    <span className="absolute top-1 right-4 rounded-full bg-red-500 px-1.5 text-[10px] text-white">
-                                        {badge}
+                                <div className="flex flex-col items-center gap-1">
+                                    {createElement(icon, { size: 20 })}
+                                    <span className="text-xs font-medium truncate">
+                                        {label}
                                     </span>
-                                )}
+                                    {badge && (
+                                        <span className="absolute right-2 top-2 rounded-full bg-red-500 px-1 text-[10px] text-white">
+                                            {badge}
+                                        </span>
+                                    )}
+                                </div>
                             </NavLink>
                         </li>
                     ))}
+                    {extraMenus.length > 0 && (
+                        <li className="flex-1">
+                            <button
+                                type="button"
+                                onClick={() => setMoreOpen(true)}
+                                className="no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! block w-full px-2 py-2.5 text-slate-500 transition-colors duration-200 hover:text-slate-700"
+                            >
+                                <div className="flex flex-col items-center gap-1">
+                                    <MoreHorizontal size={20} />
+                                    <span className="text-xs font-medium truncate">
+                                        Lainnya
+                                    </span>
+                                </div>
+                            </button>
+                        </li>
+                    )}
                 </ul>
             </nav>
+
+            {moreOpen && (
+                <div className="fixed inset-0 z-50 md:hidden">
+                    <button
+                        type="button"
+                        onClick={() => setMoreOpen(false)}
+                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+                        aria-label="Tutup menu lainnya"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white p-4 shadow-2xl">
+                        <div className="mb-3 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-slate-700">
+                                Menu Lainnya
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setMoreOpen(false)}
+                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            {extraMenus.map(({ label, path, icon, badge }) => (
+                                <NavLink
+                                    key={label}
+                                    end
+                                    to={path}
+                                    onClick={() => setMoreOpen(false)}
+                                    className={({ isActive }) =>
+                                        `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex items-center gap-2 rounded-2xl border px-3 py-3 text-sm font-medium transition ${
+                                            isActive
+                                                ? "border-sky-200 bg-sky-50 text-sky-600"
+                                                : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                                        }`
+                                    }
+                                    style={{ textDecoration: "none" }}
+                                >
+                                    {createElement(icon, { size: 18 })}
+                                    <span className="flex-1">{label}</span>
+                                    {badge && (
+                                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] text-white">
+                                            {badge}
+                                        </span>
+                                    )}
+                                </NavLink>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

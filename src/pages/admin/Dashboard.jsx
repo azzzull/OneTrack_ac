@@ -7,13 +7,17 @@ import {
     Search,
     Wrench,
     X,
+    CalendarDays,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import Card from "../../components/card";
 import useRequestStats from "../../hooks/useRequestStats";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
+import { useAuth } from "../../context/useAuth";
+import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
 import supabase from "../../supabaseClient";
+import { formatDateUniversal } from "../../utils/dateFormatter";
 
 const statusLabelByKey = {
     pending: "PENDING",
@@ -45,7 +49,13 @@ const normalizeJob = (row) => {
 
     const trouble = pickFirst(
         row,
-        ["trouble_description", "description", "notes", "issue_detail", "problem"],
+        [
+            "trouble_description",
+            "description",
+            "notes",
+            "issue_detail",
+            "problem",
+        ],
         "",
     );
     const replacedParts = pickFirst(row, ["replaced_parts"], "");
@@ -78,15 +88,7 @@ const normalizeJob = (row) => {
 };
 
 const formatDate = (value) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-
-    return new Intl.DateTimeFormat("en-US", {
-        month: "numeric",
-        day: "numeric",
-        year: "numeric",
-    }).format(date);
+    return formatDateUniversal(value);
 };
 
 const formatOrderId = (value) => {
@@ -106,6 +108,7 @@ const previewText = (value, max = 90) => {
 function AdminDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
+    const { user } = useAuth();
     const [latestJobs, setLatestJobs] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
     const [loadingJobs, setLoadingJobs] = useState(true);
@@ -211,6 +214,22 @@ function AdminDashboard() {
                         ))}
                     </section>
 
+                    {/* Attendance Section */}
+                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+                                <CalendarDays size={18} />
+                                Absensi Hari Ini
+                            </h2>
+                        </div>
+                        <AttendanceDashboardSimple
+                            technicianId={user?.id}
+                            onDataChange={() => {
+                                // Optional: refresh tasks or update UI
+                            }}
+                        />
+                    </section>
+
                     <section className="mt-9">
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <h3 className="text-2xl font-semibold text-slate-900 md:text-2xl">
@@ -261,7 +280,8 @@ function AdminDashboard() {
                         ) : filteredJobs.length === 0 ? (
                             <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white p-6">
                                 <p className="text-sm text-slate-500">
-                                    Tidak ada pekerjaan yang cocok dengan pencarian.
+                                    Tidak ada pekerjaan yang cocok dengan
+                                    pencarian.
                                 </p>
                             </div>
                         ) : (
@@ -284,7 +304,12 @@ function AdminDashboard() {
                                                         </p>
                                                         <p className="mt-1 break-all text-xs text-slate-500">
                                                             Order ID:{" "}
-                                                            <span title={job.id ?? "-"}>
+                                                            <span
+                                                                title={
+                                                                    job.id ??
+                                                                    "-"
+                                                                }
+                                                            >
                                                                 {formatOrderId(
                                                                     job.id,
                                                                 )}
@@ -339,8 +364,8 @@ function AdminDashboard() {
             <MobileBottomNav />
 
             {selectedJob && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-                    <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
+                <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 md:items-center md:p-4">
+                    <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl md:rounded-2xl md:p-6">
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <h4 className="text-xl font-semibold text-slate-900 md:text-2xl">
