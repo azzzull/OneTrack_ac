@@ -48,7 +48,7 @@ export default function useRequestStats() {
             });
         } catch (error) {
             console.error("Error loading request stats:", error);
-            setStats(INITIAL_STATS);
+            // Keep previous stats to avoid noisy resets (which can trigger repeated notifications)
         }
     }, [role]);
 

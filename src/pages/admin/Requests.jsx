@@ -202,6 +202,9 @@ export default function AdminRequestsPage() {
     const streamRef = useRef(null);
     const videoRef = useRef(null);
     const deferRefreshRef = useRef(false);
+    const beforeFileInputRef = useRef(null);
+    const progressFileInputRef = useRef(null);
+    const afterFileInputRef = useRef(null);
 
     const loadRequests = useCallback(async () => {
         try {
@@ -520,6 +523,21 @@ export default function AdminRequestsPage() {
         if (cameraTarget === "after") setAfterPhotoFile(file);
 
         closeCamera();
+    };
+
+    const handleGallerySelect = (target, event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        if (target === "before") setBeforePhotoFile(file);
+        if (target === "progress") setProgressPhotoFile(file);
+        if (target === "after") setAfterPhotoFile(file);
+        event.target.value = "";
+    };
+
+    const openGalleryPicker = (target) => {
+        if (target === "before") beforeFileInputRef.current?.click();
+        if (target === "progress") progressFileInputRef.current?.click();
+        if (target === "after") afterFileInputRef.current?.click();
     };
 
     const saveChanges = async () => {
@@ -969,14 +987,16 @@ export default function AdminRequestsPage() {
                                 Detail Pekerjaan
                             </h2>
                             <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={deleteRequest}
-                                    className="rounded-lg p-2 text-red-500 hover:bg-red-50"
-                                    title="Hapus pekerjaan"
-                                >
-                                    <Trash2 size={18} />
-                                </button>
+                                {role === "admin" && (
+                                    <button
+                                        type="button"
+                                        onClick={deleteRequest}
+                                        className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                                        title="Hapus pekerjaan"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={closeDetail}
@@ -1241,53 +1261,139 @@ export default function AdminRequestsPage() {
 
                             {selectedRequest.status !== "completed" && (
                                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => openCamera("before")}
-                                        className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
-                                    >
-                                        <span className="inline-flex items-center gap-2 font-medium">
-                                            <Camera size={15} />
-                                            Ambil Before
-                                        </span>
-                                        <span className="mt-1 block truncate text-xs text-slate-500">
+                                    <div className="rounded-xl border border-dashed border-slate-300 p-3 text-sm text-slate-600">
+                                        <input
+                                            ref={beforeFileInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(event) =>
+                                                handleGallerySelect(
+                                                    "before",
+                                                    event,
+                                                )
+                                            }
+                                            className="hidden"
+                                        />
+                                        <p className="font-medium">
+                                            Foto Before
+                                        </p>
+                                        <p className="mt-1 truncate text-xs text-slate-500">
                                             {beforePhotoFile
                                                 ? beforePhotoFile.name
-                                                : "Belum ambil foto"}
-                                        </span>
-                                    </button>
+                                                : "Belum pilih foto"}
+                                        </p>
+                                        <div className="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openCamera("before")
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                            >
+                                                <Camera size={14} />
+                                                Kamera
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openGalleryPicker("before")
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                            >
+                                                Pilih Galeri
+                                            </button>
+                                        </div>
+                                    </div>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => openCamera("progress")}
-                                        className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
-                                    >
-                                        <span className="inline-flex items-center gap-2 font-medium">
-                                            <Camera size={15} />
-                                            Ambil Progress
-                                        </span>
-                                        <span className="mt-1 block truncate text-xs text-slate-500">
+                                    <div className="rounded-xl border border-dashed border-slate-300 p-3 text-sm text-slate-600">
+                                        <input
+                                            ref={progressFileInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(event) =>
+                                                handleGallerySelect(
+                                                    "progress",
+                                                    event,
+                                                )
+                                            }
+                                            className="hidden"
+                                        />
+                                        <p className="font-medium">
+                                            Foto Progress
+                                        </p>
+                                        <p className="mt-1 truncate text-xs text-slate-500">
                                             {progressPhotoFile
                                                 ? progressPhotoFile.name
-                                                : "Belum ambil foto"}
-                                        </span>
-                                    </button>
+                                                : "Belum pilih foto"}
+                                        </p>
+                                        <div className="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openCamera("progress")
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                            >
+                                                <Camera size={14} />
+                                                Kamera
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openGalleryPicker(
+                                                        "progress",
+                                                    )
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                            >
+                                                Pilih Galeri
+                                            </button>
+                                        </div>
+                                    </div>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => openCamera("after")}
-                                        className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
-                                    >
-                                        <span className="inline-flex items-center gap-2 font-medium">
-                                            <Camera size={15} />
-                                            Ambil After
-                                        </span>
-                                        <span className="mt-1 block truncate text-xs text-slate-500">
+                                    <div className="rounded-xl border border-dashed border-slate-300 p-3 text-sm text-slate-600">
+                                        <input
+                                            ref={afterFileInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(event) =>
+                                                handleGallerySelect(
+                                                    "after",
+                                                    event,
+                                                )
+                                            }
+                                            className="hidden"
+                                        />
+                                        <p className="font-medium">
+                                            Foto After
+                                        </p>
+                                        <p className="mt-1 truncate text-xs text-slate-500">
                                             {afterPhotoFile
                                                 ? afterPhotoFile.name
-                                                : "Belum ambil foto"}
-                                        </span>
-                                    </button>
+                                                : "Belum pilih foto"}
+                                        </p>
+                                        <div className="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openCamera("after")
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                            >
+                                                <Camera size={14} />
+                                                Kamera
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openGalleryPicker("after")
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                            >
+                                                Pilih Galeri
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 

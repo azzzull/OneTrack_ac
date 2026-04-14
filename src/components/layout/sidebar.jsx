@@ -53,6 +53,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     const stats = useRequestStats();
     const [newRequestToast, setNewRequestToast] = useState("");
     const prevPendingRef = useRef(null);
+    const lastNotifiedPendingRef = useRef(null);
     const toastTimerRef = useRef(null);
     const menus = getMenus(role).map((menu) => {
         const badgeByPath = {
@@ -110,6 +111,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                     ? `ada ${addedCount} pekerjaan baru yang di request`
                     : "ada pekerjaan baru yang di request";
 
+            if (lastNotifiedPendingRef.current === currentPending) {
+                prevPendingRef.current = currentPending;
+                return;
+            }
+
             if (toastTimerRef.current) {
                 clearTimeout(toastTimerRef.current);
             }
@@ -136,6 +142,8 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                     });
                 }
             }
+
+            lastNotifiedPendingRef.current = currentPending;
         }
 
         prevPendingRef.current = currentPending;
@@ -430,7 +438,7 @@ export function MobileBottomNav() {
                                 end
                                 to={path}
                                 className={({ isActive }) =>
-                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! block px-2 py-2.5 transition-colors duration-200 ${
+                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! relative block px-2 py-2.5 transition-colors duration-200 ${
                                         isActive
                                             ? "text-sky-500 border-b-2 border-sky-500 font-semibold"
                                             : "text-slate-500 border-b-2 border-transparent hover:text-slate-700"
