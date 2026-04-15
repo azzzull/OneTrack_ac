@@ -171,14 +171,23 @@ const AttendanceLog = () => {
         : "";
 
     const handleOpenEditModal = (record) => {
+        const getTimeHHMM = (timeStr) => {
+            if (!timeStr) return "00:00";
+            // Extract HH:mm from ISO datetime string like "2024-12-05T07:56:00.000Z"
+            const date = new Date(timeStr);
+            const hours = String(date.getHours()).padStart(2, "0");
+            const minutes = String(date.getMinutes()).padStart(2, "0");
+            return `${hours}:${minutes}`;
+        };
+
         setEditModal({
             isOpen: true,
             record,
             checkInTime: record.check_in_time
-                ? record.check_in_time.substring(0, 16)
+                ? `${record.attendance_date}T${getTimeHHMM(record.check_in_time)}`
                 : "",
             checkOutTime: record.check_out_time
-                ? record.check_out_time.substring(0, 16)
+                ? `${record.attendance_date}T${getTimeHHMM(record.check_out_time)}`
                 : "",
             isSaving: false,
         });
