@@ -27,6 +27,7 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
         };
         loadData();
     }, [technicianId, getTodayAttendance]);
+
     const handleOpenModal = (type) => {
         setModalType(type);
         setModalOpen(true);
@@ -43,7 +44,6 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
 
             if (result.success) {
                 setModalOpen(false);
-                // Reload attendance data
                 const reloadResult = await getTodayAttendance(technicianId);
                 setTodayAttendance(reloadResult.data);
                 onDataChange?.();
@@ -64,10 +64,9 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
 
     return (
         <>
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
-                {/* Realtime Clock */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="mb-6 text-center">
-                    <div className="text-5xl font-bold text-slate-900 font-mono tracking-tight">
+                    <div className="font-mono text-5xl font-bold tracking-tight text-slate-900">
                         {formattedTime}
                     </div>
                     <p className="mt-3 text-sm text-slate-600">
@@ -75,11 +74,9 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                     </p>
                 </div>
 
-                {/* Time Boxes */}
                 <div className="mb-6 grid grid-cols-2 gap-4">
-                    {/* Check-in Box */}
-                    <div className="rounded-xl bg-linear-to-br from-blue-50 to-blue-100 p-4 border-2 border-blue-200">
-                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                    <div className="rounded-xl border-2 border-blue-200 bg-linear-to-br from-blue-50 to-blue-100 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
                             Jam Masuk
                         </p>
                         <p className="mt-3 text-2xl font-bold text-blue-900">
@@ -87,16 +84,15 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                                 ? formatTimeShort(todayAttendance.check_in_time)
                                 : "--:--"}
                         </p>
-                        {todayAttendance?.check_in_district && (
-                            <p className="mt-2 text-xs text-blue-700 truncate line-clamp-1">
-                                📍 {todayAttendance.check_in_district}
+                        {todayAttendance?.check_in_street_address && (
+                            <p className="mt-2 truncate text-xs text-blue-700">
+                                {todayAttendance.check_in_street_address}
                             </p>
                         )}
                     </div>
 
-                    {/* Check-out Box */}
-                    <div className="rounded-xl bg-linear-to-br from-amber-50 to-amber-100 p-4 border-2 border-amber-200">
-                        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
+                    <div className="rounded-xl border-2 border-amber-200 bg-linear-to-br from-amber-50 to-amber-100 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">
                             Jam Pulang
                         </p>
                         <p className="mt-3 text-2xl font-bold text-amber-900">
@@ -106,22 +102,21 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                                   )
                                 : "--:--"}
                         </p>
-                        {todayAttendance?.check_out_district && (
-                            <p className="mt-2 text-xs text-amber-700 truncate line-clamp-1">
-                                📍 {todayAttendance.check_out_district}
+                        {todayAttendance?.check_out_street_address && (
+                            <p className="mt-2 truncate text-xs text-amber-700">
+                                {todayAttendance.check_out_street_address}
                             </p>
                         )}
                     </div>
                 </div>
 
-                {/* Action Buttons or Status */}
                 {!isComplete && (
                     <div className="space-y-2">
                         {canCheckIn && (
                             <button
                                 onClick={() => handleOpenModal("check-in")}
                                 disabled={loadingAttendance || loading}
-                                className="w-full rounded-xl bg-blue-500 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-70 flex items-center justify-center gap-2"
+                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-500 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-70"
                             >
                                 <Clock size={18} />
                                 Absen Masuk
@@ -131,7 +126,7 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                             <button
                                 onClick={() => handleOpenModal("check-out")}
                                 disabled={loadingAttendance || loading}
-                                className="w-full rounded-xl bg-amber-500 py-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:opacity-70 flex items-center justify-center gap-2"
+                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:opacity-70"
                             >
                                 <Clock size={18} />
                                 Absen Pulang
@@ -141,19 +136,18 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                 )}
 
                 {isComplete && (
-                    <div className="rounded-xl bg-green-50 p-4 flex items-center gap-3 border-2 border-green-200">
+                    <div className="flex items-center gap-3 rounded-xl border-2 border-green-200 bg-green-50 p-4">
                         <CheckCircle2
                             size={20}
-                            className="text-green-600 shrink-0"
+                            className="shrink-0 text-green-600"
                         />
-                        <p className="text-sm text-green-700 font-medium">
+                        <p className="text-sm font-medium text-green-700">
                             Anda sudah lengkap absen hari ini
                         </p>
                     </div>
                 )}
             </div>
 
-            {/* Check-in Modal */}
             <AttendanceCheckInModal
                 isOpen={modalOpen}
                 onClose={() => setModalOpen(false)}

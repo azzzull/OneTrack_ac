@@ -13,8 +13,6 @@ const NOMINATIM_API_URL = "https://nominatim.openstreetmap.org/reverse";
  */
 export const reverseGeocode = async (latitude, longitude) => {
     try {
-        // Rate limiting: 1 request per second for free tier
-        // Add a small delay to respect Nominatim's terms
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         const response = await fetch(
@@ -33,26 +31,19 @@ export const reverseGeocode = async (latitude, longitude) => {
 
         const data = await response.json();
         const address = data.address || {};
+        const district = getDistrictName(address);
+        const subDistrict = getSubDistrictName(address);
 
         return {
-            street: getStreetName(address),
-            district:
-                address.county ||
-                address.district ||
-                address.state_district ||
-                "",
-            subDistrict:
-                address.suburb ||
-                address.neighbourhood ||
-                address.village ||
-                "",
+            street: getStreetName(address, { district, subDistrict }),
+            district,
+            subDistrict,
             postalCode: address.postcode || "",
             country: address.country || "",
             city: address.city || address.town || "",
         };
     } catch (error) {
         console.error("Reverse geocoding error:", error);
-        // Return empty object on error - fields will be saved as NULL in DB
         return {
             street: "",
             district: "",
@@ -64,23 +55,73 @@ export const reverseGeocode = async (latitude, longitude) => {
     }
 };
 
-/**
- * Helper to extract street name from address object
- */
-function getStreetName(address) {
-    // Try common variants
-    if (address.road) return address.road;
-    if (address.street) return address.street;
-    if (address.pedestrian) return address.pedestrian;
-    if (address.cycleway) return address.cycleway;
-    if (address.footway) return address.footway;
+function getStreetName(address, context = {}) {
+    const directStreet = firstNonEmpty([
+        combineHouseNumber(address.house_number, address.road),
+        address.road,
+        address.street,
+        address.pedestrian,
+        address.residential,
+        address.cycleway,
+        address.footway,
+        address.path,
+        address.avenue,
+        address.boulevard,
+        address.lane,
+        address.square,
+        address.place,
+        address.block,
+    ]);
 
-    // Fallback: combine what we have
-    const parts = [];
-    if (address.house_number) parts.push(address.house_number);
-    if (address.road) parts.push(address.road);
+    if (directStreet) return directStreet;
 
-    return parts.join(" ") || "";
+    return firstNonEmpty([
+        address.neighbourhood,
+        address.suburb,
+        address.hamlet,
+        address.quarter,
+        address.village,
+        context.subDistrict,
+        context.district,
+    ]);
+}
+
+function getDistrictName(address) {
+    return firstNonEmpty([
+        address.city_district,
+        address.district,
+        address.borough,
+        address.county,
+        address.state_district,
+        address.municipality,
+        address.city,
+        address.town,
+        address.region,
+    ]);
+}
+
+function getSubDistrictName(address) {
+    return firstNonEmpty([
+        address.suburb,
+        address.neighbourhood,
+        address.village,
+        address.hamlet,
+        address.quarter,
+        address.residential,
+        address.city_block,
+    ]);
+}
+
+function combineHouseNumber(houseNumber, road) {
+    return [houseNumber, road].filter(Boolean).join(" ").trim();
+}
+
+function firstNonEmpty(values) {
+    const match = values.find(
+        (value) => typeof value === "string" && value.trim().length > 0,
+    );
+
+    return match ? match.trim() : "";
 }
 
 /**
@@ -100,13 +141,45 @@ export const formatAddress = (addressDetails) => {
 };
 
 /**
- * Format short address for display (street only)
+ * Format short address for display (street first, then administrative fallback)
  */
 export const formatAddressShort = (addressDetails) => {
     const parts = [];
 
     if (addressDetails.street) parts.push(addressDetails.street);
+    if (!addressDetails.street && addressDetails.subDistrict) {
+        parts.push(addressDetails.subDistrict);
+    }
     if (addressDetails.district) parts.push(addressDetails.district);
 
     return parts.filter(Boolean).join(", ") || "Lokasi tidak tersedia";
+};
+
+export const hasLocationData = (location) => {
+    if (!location) return false;
+
+    return Boolean(
+        location.latitude ||
+            location.longitude ||
+            location.street_address ||
+            location.street ||
+            location.sub_district ||
+            location.subDistrict ||
+            location.district ||
+            location.postal_code ||
+            location.postalCode,
+    );
+};
+
+export const getLocationLabel = (location) => {
+    if (!location) return "Lihat Peta";
+
+    return (
+        location.street_address ||
+        location.street ||
+        location.sub_district ||
+        location.subDistrict ||
+        location.district ||
+        "Lihat Peta"
+    );
 };

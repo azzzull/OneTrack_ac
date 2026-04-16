@@ -22,6 +22,7 @@ import {
 } from "../../hooks/useAttendance";
 import AttendanceMapModal from "../../components/AttendanceMapModal";
 import supabase from "../../supabaseClient";
+import { getLocationLabel, hasLocationData } from "../../utils/nominatim";
 
 const AttendanceLog = () => {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
@@ -1028,7 +1029,22 @@ const AttendanceLog = () => {
                                                                 )}
                                                             </td>
                                                             <td className="px-4 py-3">
-                                                                {record.check_in_street_address ? (
+                                                                {hasLocationData(
+                                                                    {
+                                                                        latitude:
+                                                                            record.check_in_latitude,
+                                                                        longitude:
+                                                                            record.check_in_longitude,
+                                                                        street_address:
+                                                                            record.check_in_street_address,
+                                                                        sub_district:
+                                                                            record.check_in_sub_district,
+                                                                        district:
+                                                                            record.check_in_district,
+                                                                        postal_code:
+                                                                            record.check_in_postal_code,
+                                                                    },
+                                                                ) ? (
                                                                     <button
                                                                         onClick={() =>
                                                                             handleShowMap(
@@ -1063,8 +1079,16 @@ const AttendanceLog = () => {
                                                                             }
                                                                         />
                                                                         <span className="text-xs line-clamp-1">
-                                                                            {record.check_in_district ||
-                                                                                "Lihat Peta"}
+                                                                            {getLocationLabel(
+                                                                                {
+                                                                                    street_address:
+                                                                                        record.check_in_street_address,
+                                                                                    sub_district:
+                                                                                        record.check_in_sub_district,
+                                                                                    district:
+                                                                                        record.check_in_district,
+                                                                                },
+                                                                            )}
                                                                         </span>
                                                                     </button>
                                                                 ) : (
@@ -1079,7 +1103,22 @@ const AttendanceLog = () => {
                                                                 )}
                                                             </td>
                                                             <td className="px-4 py-3">
-                                                                {record.check_out_street_address ? (
+                                                                {hasLocationData(
+                                                                    {
+                                                                        latitude:
+                                                                            record.check_out_latitude,
+                                                                        longitude:
+                                                                            record.check_out_longitude,
+                                                                        street_address:
+                                                                            record.check_out_street_address,
+                                                                        sub_district:
+                                                                            record.check_out_sub_district,
+                                                                        district:
+                                                                            record.check_out_district,
+                                                                        postal_code:
+                                                                            record.check_out_postal_code,
+                                                                    },
+                                                                ) ? (
                                                                     <button
                                                                         onClick={() =>
                                                                             handleShowMap(
@@ -1114,8 +1153,16 @@ const AttendanceLog = () => {
                                                                             }
                                                                         />
                                                                         <span className="text-xs line-clamp-1">
-                                                                            {record.check_out_district ||
-                                                                                "Lihat Peta"}
+                                                                            {getLocationLabel(
+                                                                                {
+                                                                                    street_address:
+                                                                                        record.check_out_street_address,
+                                                                                    sub_district:
+                                                                                        record.check_out_sub_district,
+                                                                                    district:
+                                                                                        record.check_out_district,
+                                                                                },
+                                                                            )}
                                                                         </span>
                                                                     </button>
                                                                 ) : (
