@@ -13,6 +13,7 @@ import AdminAttendanceLogPage from "@/pages/admin/AttendanceLog";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
 import TechnicianAttendanceHistoryPage from "@/pages/technician/AttendanceHistory";
 import CustomerDashboard from "@/pages/customer/Dashboard";
+import CustomerServicesPage from "@/pages/customer/Services";
 import CustomerRequestFormPage from "@/pages/customer/RequestForm";
 import ProfilePage from "@/pages/Profile";
 import Login from "@/pages/Login";
@@ -101,7 +102,7 @@ function App() {
                 path="/services"
                 element={
                     <ProtectedRoute allowedRoles={["customer"]}>
-                        <CustomerDashboard />
+                        <CustomerServicesPage />
                     </ProtectedRoute>
                 }
             />

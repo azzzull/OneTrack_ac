@@ -4,7 +4,6 @@ import { Link, useParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
-import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
 
@@ -36,7 +35,7 @@ const resolveErrorMessage = async (error) => {
         message.includes("FunctionsFetchError") ||
         message.includes("Failed to send a request")
     ) {
-        return "Gagal memanggil Edge Function. Pastikan function `admin-create-user` sudah di-deploy di Supabase.";
+        return "Gagal memanggil Edge Function. Pastikan function admin yang dibutuhkan seperti `admin-create-user`, `admin-update-user-password`, dan `admin-delete-user` sudah di-deploy di Supabase.";
     }
     return message || "Gagal menyimpan data.";
 };
@@ -66,7 +65,6 @@ const moduleConfig = {
 export default function AdminMasterDataModulePage() {
     const { moduleKey } = useParams();
     const cfg = moduleConfig[moduleKey];
-    const { user: currentUser } = useAuth();
     const { alert: showAlert, confirm } = useDialog();
 
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
@@ -264,43 +262,20 @@ export default function AdminMasterDataModulePage() {
 
     const updateUser = async () => {
         if (!editUserId) return;
-        const nextName =
-            `${userForm.firstName} ${userForm.lastName}`.trim() ||
-            userForm.email ||
-            null;
-        const payload = {
-            first_name: userForm.firstName,
-            last_name: userForm.lastName,
-            name: nextName,
-            email: userForm.email,
-            role: userForm.role,
-            phone: userForm.phone,
-        };
-        const { error } = await supabase
-            .from("profiles")
-            .update(payload)
-            .eq("id", editUserId);
-        if (error) throw error;
-
         const nextPassword = userForm.password.trim();
-        if (!nextPassword) return;
-
-        if (editUserId === currentUser?.id) {
-            const { error: passwordError } = await supabase.auth.updateUser({
-                password: nextPassword,
-            });
-            if (passwordError) throw passwordError;
-            return;
-        }
-
-        const { error: adminPasswordError } = await invokeAdminFunction(
+        const { error } = await invokeAdminFunction(
             "admin-update-user-password",
             {
                 user_id: editUserId,
-                password: nextPassword,
+                email: userForm.email,
+                role: userForm.role,
+                first_name: userForm.firstName,
+                last_name: userForm.lastName,
+                phone: userForm.phone,
+                password: nextPassword || undefined,
             },
         );
-        if (adminPasswordError) throw adminPasswordError;
+        if (error) throw error;
     };
 
     const addSimple = async () => {

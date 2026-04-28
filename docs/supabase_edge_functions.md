@@ -24,10 +24,10 @@ supabase functions deploy admin-delete-user
 
 ## Catatan
 
-- Kedua function butuh env bawaan Supabase Edge Runtime:
+- Semua function butuh env bawaan Supabase Edge Runtime:
   - `SUPABASE_URL`
   - `SUPABASE_ANON_KEY`
   - `SUPABASE_SERVICE_ROLE_KEY`
 - Function akan validasi caller harus `admin`.
 - `admin-delete-user` memblokir admin menghapus akun dirinya sendiri.
-- Untuk update password akun sendiri, front-end memakai `supabase.auth.updateUser()` langsung.
+- `admin-update-user-password` sekarang mengubah `auth.users` dan tabel `profiles` sekaligus, termasuk email, password opsional, role, dan metadata nama/phone.

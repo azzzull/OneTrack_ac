@@ -40,6 +40,7 @@ const menuByRole = {
         },
     ],
     customer: [
+        { label: "Dashboard", path: "/customer", icon: LayoutDashboard },
         { label: "My Service", path: "/services", icon: List },
         { label: "Request", path: "/customer/request", icon: Plus },
     ],
@@ -225,20 +226,21 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                     }
                                     style={{ textDecoration: "none" }}
                                 >
-                                    {createElement(icon, {
-                                        size: collapsed ? 18 : 20,
-                                    })}
+                                    <span className="relative inline-flex">
+                                        {createElement(icon, {
+                                            size: collapsed ? 18 : 20,
+                                        })}
+
+                                        {badge && (
+                                            <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                {badge}
+                                            </span>
+                                        )}
+                                    </span>
 
                                     <span className={collapsed ? "mt-1" : ""}>
                                         {label}
                                     </span>
-
-                                    {/* Notification Badge */}
-                                    {badge && (
-                                        <span className="absolute top-2 right-3 rounded-full bg-red-500 px-1.5 text-[10px] text-white">
-                                            {badge}
-                                        </span>
-                                    )}
                                 </NavLink>
                             </li>
                         ))}
@@ -445,15 +447,17 @@ export function MobileBottomNav() {
                                 style={{ textDecoration: "none" }}
                             >
                                 <div className="flex flex-col items-center gap-1">
-                                    {createElement(icon, { size: 20 })}
+                                    <span className="relative inline-flex">
+                                        {createElement(icon, { size: 20 })}
+                                        {badge && (
+                                            <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                {badge}
+                                            </span>
+                                        )}
+                                    </span>
                                     <span className="text-xs font-medium truncate">
                                         {label}
                                     </span>
-                                    {badge && (
-                                        <span className="absolute right-2 top-2 rounded-full bg-red-500 px-1 text-[10px] text-white">
-                                            {badge}
-                                        </span>
-                                    )}
                                 </div>
                             </NavLink>
                         </li>
@@ -514,13 +518,15 @@ export function MobileBottomNav() {
                                     }
                                     style={{ textDecoration: "none" }}
                                 >
-                                    {createElement(icon, { size: 18 })}
+                                    <span className="relative inline-flex">
+                                        {createElement(icon, { size: 18 })}
+                                        {badge && (
+                                            <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                {badge}
+                                            </span>
+                                        )}
+                                    </span>
                                     <span className="flex-1">{label}</span>
-                                    {badge && (
-                                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] text-white">
-                                            {badge}
-                                        </span>
-                                    )}
                                 </NavLink>
                             ))}
                         </div>
