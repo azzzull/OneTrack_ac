@@ -13,12 +13,23 @@ import Card from "../../components/card";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import useCustomerRequests from "../../hooks/useCustomerRequests";
+import { formatDateUniversal } from "../../utils/dateFormatter";
 
 const STATUS_META = {
     pending: { label: "Pending", color: "#0ea5e9" },
     in_progress: { label: "In Progress", color: "#67e8f9" },
     completed: { label: "Completed", color: "#0369a1" },
 };
+
+const STATUS_LABELS = {
+    pending: "PENDING",
+    in_progress: "IN PROGRESS",
+    completed: "COMPLETED",
+};
+
+const formatOrderId = (id) => `#${String(id).padStart(6, "0")}`;
+
+const formatDate = (dateValue) => formatDateUniversal(dateValue);
 
 const toDateKey = (value) => {
     if (!value) return "";
@@ -64,7 +75,7 @@ export default function CustomerDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const { user } = useAuth();
-    const { loading, requests } = useCustomerRequests(user);
+    const { requests } = useCustomerRequests(user);
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
 
@@ -76,7 +87,9 @@ export default function CustomerDashboard() {
         };
 
         for (const row of requests) {
-            const key = String(row.status ?? "pending").trim().toLowerCase();
+            const key = String(row.status ?? "pending")
+                .trim()
+                .toLowerCase();
             if (counts[key] !== undefined) {
                 counts[key] += 1;
             } else {
@@ -287,7 +300,11 @@ export default function CustomerDashboard() {
                             </div>
 
                             <div className="mt-4 flex flex-col items-center">
-                                <svg width="210" height="210" viewBox="0 0 180 180">
+                                <svg
+                                    width="210"
+                                    height="210"
+                                    viewBox="0 0 180 180"
+                                >
                                     <circle
                                         cx={center}
                                         cy={center}
@@ -473,7 +490,6 @@ export default function CustomerDashboard() {
                             Persentase pekerjaan Anda yang sudah selesai.
                         </p>
                     </section>
-
                 </main>
             </div>
 
