@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import supabase from "../supabaseClient";
 import { useAuth } from "../context/useAuth";
 
@@ -28,6 +28,8 @@ const countByStatus = async (status, { onlyUnassigned = false } = {}) => {
 export default function useRequestStats() {
     const { role } = useAuth();
     const [stats, setStats] = useState(INITIAL_STATS);
+    const channelRef = useRef(null);
+    const isMountedRef = useRef(true);
 
     const loadStats = useCallback(async () => {
         try {
@@ -40,12 +42,14 @@ export default function useRequestStats() {
                 countByStatus("completed"),
             ]);
 
-            setStats({
-                pending,
-                inProgress,
-                completed,
-                active: pending + inProgress,
-            });
+            if (isMountedRef.current) {
+                setStats({
+                    pending,
+                    inProgress,
+                    completed,
+                    active: pending + inProgress,
+                });
+            }
         } catch (error) {
             console.error("Error loading request stats:", error);
             // Keep previous stats to avoid noisy resets (which can trigger repeated notifications)
@@ -53,11 +57,19 @@ export default function useRequestStats() {
     }, [role]);
 
     useEffect(() => {
+        isMountedRef.current = true;
+
+        // Unsubscribe previous channel if exists
+        if (channelRef.current) {
+            channelRef.current.unsubscribe();
+        }
+
         const timerId = setTimeout(() => {
             loadStats();
         }, 0);
 
-        const channel = supabase
+        // Create and subscribe to channel
+        channelRef.current = supabase
             .channel("requests-stats")
             .on(
                 "postgres_changes",
@@ -82,6 +94,7 @@ export default function useRequestStats() {
         window.addEventListener("focus", onVisibilityOrFocus);
 
         return () => {
+            isMountedRef.current = false;
             clearTimeout(timerId);
             clearInterval(intervalId);
             document.removeEventListener(
@@ -89,7 +102,9 @@ export default function useRequestStats() {
                 onVisibilityOrFocus,
             );
             window.removeEventListener("focus", onVisibilityOrFocus);
-            channel.unsubscribe();
+            if (channelRef.current) {
+                channelRef.current.unsubscribe();
+            }
         };
     }, [loadStats]);
 
