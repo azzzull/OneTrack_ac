@@ -150,7 +150,7 @@ export const useAttendance = () => {
                         .select("*")
                         .eq("technician_id", technicianId)
                         .eq("attendance_date", today)
-                        .single();
+                        .maybeSingle();
 
                 if (selectError || !existingRecord) {
                     throw new Error(
@@ -226,10 +226,9 @@ export const useAttendance = () => {
                 .select("*")
                 .eq("technician_id", technicianId)
                 .eq("attendance_date", today)
-                .single();
+                .maybeSingle();
 
-            if (selectError && selectError.code !== "PGRST116") {
-                // PGRST116 = no rows found, which is OK
+            if (selectError) {
                 throw selectError;
             }
 

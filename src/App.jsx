@@ -7,7 +7,6 @@ import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminMasterDataPage from "@/pages/admin/MasterData";
 import AdminMasterDataModulePage from "@/pages/admin/MasterDataModule";
 import AdminNewJobPage from "@/pages/admin/NewJob";
-import AdminReportsPage from "@/pages/admin/Reports";
 import AdminRequestsPage from "@/pages/admin/Requests";
 import AdminAttendanceLogPage from "@/pages/admin/AttendanceLog";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
@@ -85,9 +84,7 @@ function App() {
             <Route
                 path="/reports"
                 element={
-                    <ProtectedRoute allowedRoles={["admin"]}>
-                        <AdminReportsPage />
-                    </ProtectedRoute>
+                    <Navigate to="/admin" replace />
                 }
             />
             <Route

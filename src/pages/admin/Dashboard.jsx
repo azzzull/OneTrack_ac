@@ -1,171 +1,122 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    ChevronRight,
+    BarChart3,
+    CalendarDays,
+    ChartPie,
     CircleCheckBig,
     Clock3,
-    MapPin,
-    Search,
+    Download,
     Wrench,
-    X,
-    CalendarDays,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
 import Card from "../../components/card";
-import useRequestStats from "../../hooks/useRequestStats";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
-import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
 import supabase from "../../supabaseClient";
-import { formatDateUniversal } from "../../utils/dateFormatter";
 
-const statusLabelByKey = {
+const STATUS_META = {
+    pending: { label: "Pending", color: "#0ea5e9" },
+    in_progress: { label: "In Progress", color: "#67e8f9" },
+    completed: { label: "Completed", color: "#0369a1" },
+};
+
+const STATUS_LABELS = {
     pending: "PENDING",
     in_progress: "IN PROGRESS",
     completed: "COMPLETED",
 };
 
-const statusClassByKey = {
-    pending: "bg-amber-100 text-amber-700",
-    in_progress: "bg-blue-100 text-blue-700",
-    completed: "bg-emerald-100 text-emerald-700",
+const normalizeStatusKey = (value) => {
+    const raw = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+    if (raw === "inprogress") return "in_progress";
+    if (raw === "in_progress") return "in_progress";
+    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "pending" || raw === "") return "pending";
+    return "pending";
 };
 
-const pickFirst = (obj, keys, fallback = "") => {
-    for (const key of keys) {
-        const value = obj?.[key];
-        if (value !== null && value !== undefined && value !== "") {
-            return value;
-        }
-    }
-    return fallback;
+const toDateKey = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
 };
 
-const normalizeJob = (row) => {
-    const statusRaw = String(
-        pickFirst(row, ["status"], "pending"),
-    ).toLowerCase();
-    const status = statusLabelByKey[statusRaw] ? statusRaw : "pending";
+const toCsvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
 
-    const trouble = pickFirst(
-        row,
-        [
-            "trouble_description",
-            "description",
-            "notes",
-            "issue_detail",
-            "problem",
-        ],
-        "",
-    );
-    const replacedParts = pickFirst(row, ["replaced_parts"], "");
-    const reconditionedParts = pickFirst(row, ["reconditioned_parts"], "");
-    const noteSections = [
-        trouble ? `Problem: ${trouble}` : "",
-        replacedParts ? `Part Diganti: ${replacedParts}` : "",
-        reconditionedParts ? `Part Rekondisi: ${reconditionedParts}` : "",
-    ].filter(Boolean);
-
+const polarToCartesian = (cx, cy, radius, angleInDegrees) => {
+    const radians = ((angleInDegrees - 90) * Math.PI) / 180;
     return {
-        id: pickFirst(row, ["id"], crypto.randomUUID()),
-        title: pickFirst(
-            row,
-            ["title", "job_title", "service_name", "name"],
-            "Pekerjaan Tanpa Judul",
-        ),
-        location: pickFirst(
-            row,
-            ["address", "location", "site_address", "customer_address"],
-            "-",
-        ),
-        room: pickFirst(row, ["room_location"], "-"),
-        status,
-        description: noteSections.length > 0 ? noteSections.join(" | ") : "-",
-        customer: pickFirst(row, ["customer_name", "customer"], "-"),
-        technician: pickFirst(row, ["technician_name", "technician"], "-"),
-        date: pickFirst(row, ["updated_at", "created_at"], null),
+        x: cx + radius * Math.cos(radians),
+        y: cy + radius * Math.sin(radians),
     };
 };
 
-const formatDate = (value) => {
-    return formatDateUniversal(value);
+const describePieSlice = (cx, cy, radius, startAngle, endAngle) => {
+    const start = polarToCartesian(cx, cy, radius, endAngle);
+    const end = polarToCartesian(cx, cy, radius, startAngle);
+    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+    return [
+        `M ${cx} ${cy}`,
+        `L ${start.x} ${start.y}`,
+        `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
+        "Z",
+    ].join(" ");
 };
 
-const formatOrderId = (value) => {
-    const raw = String(value ?? "").trim();
-    if (!raw) return "-";
-    if (raw.length <= 12) return raw.toUpperCase();
-    return `${raw.slice(0, 8).toUpperCase()}-${raw.slice(-4).toUpperCase()}`;
-};
+const describeFullCircle = (cx, cy, radius) =>
+    [
+        `M ${cx} ${cy - radius}`,
+        `A ${radius} ${radius} 0 1 1 ${cx} ${cy + radius}`,
+        `A ${radius} ${radius} 0 1 1 ${cx} ${cy - radius}`,
+        "Z",
+    ].join(" ");
 
-const previewText = (value, max = 90) => {
-    const raw = String(value ?? "").trim();
-    if (!raw) return "-";
-    if (raw.length <= max) return raw;
-    return `${raw.slice(0, max).trim()}...`;
-};
-
-function AdminDashboard() {
+export default function AdminDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const { user } = useAuth();
-    const [latestJobs, setLatestJobs] = useState([]);
-    const [selectedJob, setSelectedJob] = useState(null);
-    const [loadingJobs, setLoadingJobs] = useState(true);
-    const [search, setSearch] = useState("");
-    const stats = useRequestStats();
+    const [requests, setRequests] = useState([]);
+    const [hoveredStatus, setHoveredStatus] = useState(null);
+    const [hoveredDayKey, setHoveredDayKey] = useState(null);
 
-    const jobStatusCards = [
-        {
-            title: "Pending",
-            value: stats.pending,
-            icon: Clock3,
-            tone: "amber",
-        },
-        {
-            title: "In Progress",
-            value: stats.inProgress,
-            icon: Wrench,
-            tone: "sky",
-        },
-        {
-            title: "Completed",
-            value: stats.completed,
-            icon: CircleCheckBig,
-            tone: "emerald",
-        },
-    ];
-
-    const loadLatestJobs = useCallback(async () => {
+    const loadRequests = useCallback(async () => {
         try {
             const { data, error } = await supabase
                 .from("requests")
                 .select("*")
-                .order("created_at", { ascending: false })
-                .limit(5);
+                .order("created_at", { ascending: false });
 
             if (error) throw error;
-            setLatestJobs((data ?? []).map((item) => normalizeJob(item)));
+            setRequests(data ?? []);
         } catch (error) {
-            console.error("Error loading latest jobs:", error);
-            setLatestJobs([]);
-        } finally {
-            setLoadingJobs(false);
+            console.error("Error loading admin dashboard data:", error);
+            setRequests([]);
         }
     }, []);
 
     useEffect(() => {
         const timerId = setTimeout(() => {
-            loadLatestJobs();
+            loadRequests();
         }, 0);
 
         const channel = supabase
-            .channel("admin-latest-jobs")
+            .channel("admin-dashboard")
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "requests" },
                 () => {
-                    loadLatestJobs();
+                    loadRequests();
                 },
             )
             .subscribe();
@@ -174,17 +125,148 @@ function AdminDashboard() {
             clearTimeout(timerId);
             channel.unsubscribe();
         };
-    }, [loadLatestJobs]);
+    }, [loadRequests]);
 
-    const filteredJobs = useMemo(() => {
-        const keyword = search.trim().toLowerCase();
-        if (!keyword) return latestJobs;
-        return latestJobs.filter((job) =>
-            `${job.title} ${job.location} ${job.room} ${job.description} ${job.customer} ${job.technician} ${job.id} ${formatOrderId(job.id)}`
-                .toLowerCase()
-                .includes(keyword),
-        );
-    }, [latestJobs, search]);
+    const statusCounts = useMemo(() => {
+        const counts = {
+            pending: 0,
+            in_progress: 0,
+            completed: 0,
+        };
+
+        for (const row of requests) {
+            const key = normalizeStatusKey(row.status);
+            if (counts[key] !== undefined) {
+                counts[key] += 1;
+            }
+        }
+
+        return counts;
+    }, [requests]);
+
+    const jobStatusCards = [
+        {
+            title: "Pending",
+            value: statusCounts.pending,
+            icon: Clock3,
+            tone: "amber",
+            statusKey: "pending",
+        },
+        {
+            title: "In Progress",
+            value: statusCounts.in_progress,
+            icon: Wrench,
+            tone: "sky",
+            statusKey: "in_progress",
+        },
+        {
+            title: "Completed",
+            value: statusCounts.completed,
+            icon: CircleCheckBig,
+            tone: "emerald",
+            statusKey: "completed",
+        },
+    ];
+
+    const totalRequests = requests.length;
+    const completionRate = totalRequests
+        ? Math.round((statusCounts.completed / totalRequests) * 100)
+        : 0;
+
+    const donutSegments = useMemo(() => {
+        const keys = ["pending", "in_progress", "completed"];
+        const total = totalRequests || 1;
+        let offset = 0;
+
+        return keys.map((key) => {
+            const value = statusCounts[key];
+            const ratio = value / total;
+            const segment = {
+                key,
+                value,
+                ratio,
+                offset,
+                color: STATUS_META[key].color,
+                label: STATUS_META[key].label,
+            };
+            offset += ratio;
+            return segment;
+        });
+    }, [statusCounts, totalRequests]);
+
+    const last7Days = useMemo(() => {
+        const byDate = {};
+        for (let i = 6; i >= 0; i -= 1) {
+            const date = new Date();
+            date.setHours(0, 0, 0, 0);
+            date.setDate(date.getDate() - i);
+            const key = toDateKey(date);
+            byDate[key] = {
+                key,
+                label: date.toLocaleDateString("id-ID", { weekday: "short" }),
+                count: 0,
+            };
+        }
+
+        for (const row of requests) {
+            const key = toDateKey(row.updated_at ?? row.created_at);
+            if (byDate[key]) byDate[key].count += 1;
+        }
+
+        return Object.values(byDate);
+    }, [requests]);
+
+    const weeklyTotal = last7Days.reduce((sum, item) => sum + item.count, 0);
+    const weeklyMax = Math.max(...last7Days.map((item) => item.count), 1);
+
+    const hoveredSegment = donutSegments.find(
+        (item) => item.key === hoveredStatus,
+    );
+    const hoveredDay = last7Days.find((item) => item.key === hoveredDayKey);
+
+    const exportCsv = () => {
+        const headers = [
+            "ID",
+            "Title",
+            "Status",
+            "Customer",
+            "Phone",
+            "Location",
+            "Created At",
+        ];
+        const lines = [headers.map(toCsvCell).join(",")];
+
+        for (const row of requests) {
+            lines.push(
+                [
+                    row.id,
+                    row.title,
+                    STATUS_LABELS[normalizeStatusKey(row.status)] ?? "PENDING",
+                    row.customer_name,
+                    row.customer_phone,
+                    row.location,
+                    row.created_at,
+                ]
+                    .map(toCsvCell)
+                    .join(","),
+            );
+        }
+
+        const blob = new Blob([`\uFEFF${lines.join("\n")}`], {
+            type: "text/csv;charset=utf-8;",
+        });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `admin-dashboard-${new Date().toISOString().split("T")[0]}.csv`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+    };
+
+    const radius = 74;
+    const center = 90;
 
     return (
         <div className="min-h-screen bg-sky-50">
@@ -194,29 +276,47 @@ function AdminDashboard() {
                     onToggle={toggleSidebar}
                 />
 
-                <div className="flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <h2 className="text-2xl font-semibold text-slate-800 md:text-3xl">
-                        Service Hub
-                    </h2>
-                    <p className="mt-1 text-slate-600">
-                        Kelola efisiensi armada servis Anda secara real-time.
-                    </p>
+                <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                            <h1 className="text-3xl font-semibold text-slate-900">
+                                Dashboard Admin
+                            </h1>
+                            <p className="mt-1 text-slate-600">
+                                Ringkasan pekerjaan servis dan absensi tim
+                                secara real-time.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={exportCsv}
+                            className="inline-flex items-center gap-2 self-start rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                            <Download size={16} />
+                            Export CSV
+                        </button>
+                    </div>
 
                     <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                         {jobStatusCards.map((item) => (
-                            <Card
+                            <Link
                                 key={item.title}
-                                title={item.title}
-                                value={item.value}
-                                icon={item.icon}
-                                tone={item.tone}
-                            />
+                                to={`/requests?status=${item.statusKey}`}
+                                className="no-underline"
+                                style={{ textDecoration: "none" }}
+                            >
+                                <Card
+                                    title={item.title}
+                                    value={item.value}
+                                    icon={item.icon}
+                                    tone={item.tone}
+                                />
+                            </Link>
                         ))}
                     </section>
 
-                    {/* Attendance Section */}
-                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
-                        <div className="flex items-center justify-between mb-4">
+                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 md:py-8">
+                        <div className="mb-4 flex items-center justify-between">
                             <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
                                 <CalendarDays size={18} />
                                 Absensi Hari Ini
@@ -224,233 +324,213 @@ function AdminDashboard() {
                         </div>
                         <AttendanceDashboardSimple
                             technicianId={user?.id}
-                            onDataChange={() => {
-                                // Optional: refresh tasks or update UI
-                            }}
+                            onDataChange={() => {}}
                         />
                     </section>
 
-                    <section className="mt-9">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <h3 className="text-2xl font-semibold text-slate-900 md:text-2xl">
-                                Pekerjaan Terbaru
-                            </h3>
-                            <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
-                                <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:w-72">
-                                    <Search size={16} />
-                                    <input
-                                        type="text"
-                                        value={search}
-                                        onChange={(event) =>
-                                            setSearch(event.target.value)
-                                        }
-                                        placeholder="Cari pekerjaan..."
-                                        className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                    <section className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <div className="rounded-2xl bg-white p-5 shadow-sm">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-semibold text-slate-900">
+                                    Distribusi Status
+                                </h2>
+                                <ChartPie
+                                    size={18}
+                                    className="text-slate-400"
+                                />
+                            </div>
+
+                            <div className="mt-4 flex flex-col items-center">
+                                <svg width="210" height="210" viewBox="0 0 180 180">
+                                    <circle
+                                        cx={center}
+                                        cy={center}
+                                        r={radius}
+                                        fill="#e2e8f0"
                                     />
-                                </label>
-                                <Link
-                                    to="/requests"
-                                    className="inline-flex items-center gap-1 text-md font-medium text-sky-500 no-underline hover:text-sky-600"
-                                    style={{ textDecoration: "none" }}
-                                >
-                                    Lihat semua <ChevronRight size={18} />
-                                </Link>
+                                    {donutSegments.map((segment) => {
+                                        if (!segment.value) return null;
+                                        if (segment.ratio >= 0.999) {
+                                            return (
+                                                <path
+                                                    key={segment.key}
+                                                    d={describeFullCircle(
+                                                        center,
+                                                        center,
+                                                        radius,
+                                                    )}
+                                                    fill={segment.color}
+                                                    onMouseEnter={() =>
+                                                        setHoveredStatus(
+                                                            segment.key,
+                                                        )
+                                                    }
+                                                    onMouseLeave={() =>
+                                                        setHoveredStatus(null)
+                                                    }
+                                                />
+                                            );
+                                        }
+
+                                        const startAngle = segment.offset * 360;
+                                        const endAngle =
+                                            (segment.offset + segment.ratio) *
+                                            360;
+                                        return (
+                                            <path
+                                                key={segment.key}
+                                                d={describePieSlice(
+                                                    center,
+                                                    center,
+                                                    radius,
+                                                    startAngle,
+                                                    endAngle,
+                                                )}
+                                                fill={segment.color}
+                                                onMouseEnter={() =>
+                                                    setHoveredStatus(
+                                                        segment.key,
+                                                    )
+                                                }
+                                                onMouseLeave={() =>
+                                                    setHoveredStatus(null)
+                                                }
+                                            />
+                                        );
+                                    })}
+                                    <circle
+                                        cx={center}
+                                        cy={center}
+                                        r="45"
+                                        fill="white"
+                                    />
+                                    <text
+                                        x={center}
+                                        y={center - 2}
+                                        textAnchor="middle"
+                                        className="fill-slate-900 text-xl font-semibold"
+                                    >
+                                        {totalRequests}
+                                    </text>
+                                    <text
+                                        x={center}
+                                        y={center + 18}
+                                        textAnchor="middle"
+                                        className="fill-slate-400 text-[11px]"
+                                    >
+                                        Total Job
+                                    </text>
+                                </svg>
+
+                                <p className="mt-2 text-sm text-slate-600">
+                                    {hoveredSegment
+                                        ? `${hoveredSegment.label}: ${hoveredSegment.value} (${Math.round(
+                                              hoveredSegment.ratio * 100,
+                                          )}%)`
+                                        : `Total pekerjaan: ${totalRequests}`}
+                                </p>
+
+                                <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm text-slate-600">
+                                    {donutSegments.map((segment) => (
+                                        <div
+                                            key={segment.key}
+                                            className="inline-flex items-center gap-2"
+                                        >
+                                            <span
+                                                className="h-3 w-3 rounded-full"
+                                                style={{
+                                                    backgroundColor:
+                                                        segment.color,
+                                                }}
+                                            />
+                                            <span>{segment.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
 
-                        {loadingJobs ? (
-                            <div className="mt-4 rounded-2xl bg-white p-6 shadow-sm">
-                                <p className="text-base text-slate-500">
-                                    Memuat pekerjaan terbaru...
-                                </p>
+                        <div className="rounded-2xl bg-white p-5 shadow-sm">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-semibold text-slate-900">
+                                    Aktivitas Harian (7 Hari Terakhir)
+                                </h2>
+                                <BarChart3
+                                    size={18}
+                                    className="text-slate-400"
+                                />
                             </div>
-                        ) : latestJobs.length === 0 ? (
-                            <div className="mt-4 rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50 p-8">
-                                <p className="text-base text-sky-700 md:text-lg">
-                                    Belum ada pekerjaan yang di lakukan
-                                </p>
-                                <Link
-                                    to="/jobs/new"
-                                    className="mt-4 inline-flex rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white no-underline hover:bg-sky-600"
-                                    style={{ textDecoration: "none" }}
-                                >
-                                    Buat New Job
-                                </Link>
-                            </div>
-                        ) : filteredJobs.length === 0 ? (
-                            <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white p-6">
-                                <p className="text-sm text-slate-500">
-                                    Tidak ada pekerjaan yang cocok dengan
-                                    pencarian.
-                                </p>
-                            </div>
-                        ) : (
-                            <ul className="mt-4 space-y-3">
-                                {filteredJobs.map((job) => (
-                                    <li key={job.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedJob(job)}
-                                            className="w-full cursor-pointer rounded-2xl bg-white p-4 text-left shadow-sm transition hover:shadow-md"
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="flex items-start gap-3">
-                                                    <span className="inline-flex rounded-full bg-slate-100 p-3 text-slate-400">
-                                                        <Wrench size={20} />
-                                                    </span>
-                                                    <div className="min-w-0">
-                                                        <p className="text-base font-medium text-slate-900 md:text-lg">
-                                                            {job.title}
-                                                        </p>
-                                                        <p className="mt-1 break-all text-xs text-slate-500">
-                                                            Order ID:{" "}
-                                                            <span
-                                                                title={
-                                                                    job.id ??
-                                                                    "-"
-                                                                }
-                                                            >
-                                                                {formatOrderId(
-                                                                    job.id,
-                                                                )}
-                                                            </span>
-                                                        </p>
-                                                        <p className="mt-1 text-sm text-slate-500 md:text-base">
-                                                            {job.location}
-                                                        </p>
-                                                        <p className="mt-1 text-xs text-slate-500">
-                                                            Ruangan:{" "}
-                                                            {previewText(
-                                                                job.room,
-                                                                48,
-                                                            )}
-                                                        </p>
-                                                        <p className="mt-1 text-xs text-slate-500">
-                                                            Deskripsi:{" "}
-                                                            {previewText(
-                                                                job.description,
-                                                            )}
-                                                        </p>
-                                                    </div>
-                                                </div>
 
-                                                <div className="text-right">
-                                                    <span
-                                                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                                            statusClassByKey[
-                                                                job.status
-                                                            ] ??
-                                                            statusClassByKey.pending
-                                                        }`}
-                                                    >
-                                                        {statusLabelByKey[
-                                                            job.status
-                                                        ] ?? "PENDING"}
-                                                    </span>
-                                                    <p className="mt-2 text-sm text-slate-500">
-                                                        {formatDate(job.date)}
-                                                    </p>
+                            <div className="mt-8">
+                                <div className="flex h-64 items-end gap-3">
+                                    {last7Days.map((item) => {
+                                        const barHeight = Math.max(
+                                            (item.count / weeklyMax) * 200,
+                                            item.count ? 14 : 2,
+                                        );
+                                        const percent = weeklyTotal
+                                            ? Math.round(
+                                                  (item.count / weeklyTotal) *
+                                                      100,
+                                              )
+                                            : 0;
+                                        return (
+                                            <div
+                                                key={item.key}
+                                                className="group flex flex-1 flex-col items-center"
+                                                onMouseEnter={() =>
+                                                    setHoveredDayKey(item.key)
+                                                }
+                                                onMouseLeave={() =>
+                                                    setHoveredDayKey(null)
+                                                }
+                                            >
+                                                <div className="mb-2 h-6 text-[11px] text-slate-600">
+                                                    {hoveredDayKey === item.key
+                                                        ? `${item.count} (${percent}%)`
+                                                        : ""}
                                                 </div>
+                                                <div
+                                                    className={`w-full max-w-10 rounded-t-lg transition ${
+                                                        item.count
+                                                            ? "bg-sky-400 group-hover:bg-sky-500"
+                                                            : "bg-slate-200 group-hover:bg-slate-300"
+                                                    }`}
+                                                    style={{
+                                                        height: `${barHeight}px`,
+                                                    }}
+                                                />
+                                                <span className="mt-2 text-sm text-slate-500">
+                                                    {item.label}
+                                                </span>
                                             </div>
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
+                                        );
+                                    })}
+                                </div>
+                                <p className="mt-5 text-sm text-slate-400">
+                                    {hoveredDay
+                                        ? `${hoveredDay.label}: ${hoveredDay.count} pekerjaan`
+                                        : "Arahkan kursor ke batang untuk melihat detail."}
+                                </p>
+                            </div>
+                        </div>
                     </section>
-                </div>
+
+                    <section className="mt-6 rounded-2xl bg-sky-500 p-6 text-white shadow-sm">
+                        <p className="text-sm font-semibold uppercase tracking-wide text-sky-100">
+                            Ringkasan Penyelesaian
+                        </p>
+                        <p className="mt-2 text-5xl font-bold">
+                            {completionRate}%
+                        </p>
+                        <p className="mt-2 text-lg text-sky-100">
+                            Persentase pekerjaan yang sudah selesai.
+                        </p>
+                    </section>
+                </main>
             </div>
 
             <MobileBottomNav />
-
-            {selectedJob && (
-                <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 md:items-center md:p-4">
-                    <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl md:rounded-2xl md:p-6">
-                        <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <h4 className="text-xl font-semibold text-slate-900 md:text-2xl">
-                                    {selectedJob.title}
-                                </h4>
-                                <p className="mt-1 text-base text-slate-500">
-                                    Detail pekerjaan terbaru
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedJob(null)}
-                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <div className="rounded-xl bg-slate-50 p-4">
-                                <p className="text-xs uppercase tracking-wide text-slate-500">
-                                    Status
-                                </p>
-                                <p className="mt-2 text-sm font-semibold text-slate-800">
-                                    {statusLabelByKey[selectedJob.status] ??
-                                        "PENDING"}
-                                </p>
-                            </div>
-                            <div className="rounded-xl bg-slate-50 p-4">
-                                <p className="text-xs uppercase tracking-wide text-slate-500">
-                                    Tanggal
-                                </p>
-                                <p className="mt-2 text-sm font-semibold text-slate-800">
-                                    {formatDate(selectedJob.date)}
-                                </p>
-                            </div>
-                            <div className="rounded-xl bg-slate-50 p-4 md:col-span-2">
-                                <p className="text-xs uppercase tracking-wide text-slate-500">
-                                    Order ID
-                                </p>
-                                <p className="mt-2 break-all text-sm font-semibold text-slate-800">
-                                    <span title={selectedJob.id ?? "-"}>
-                                        {formatOrderId(selectedJob.id)}
-                                    </span>
-                                </p>
-                            </div>
-                            <div className="rounded-xl bg-slate-50 p-4 md:col-span-2">
-                                <p className="text-xs uppercase tracking-wide text-slate-500">
-                                    Lokasi
-                                </p>
-                                <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
-                                    <MapPin size={14} />
-                                    {selectedJob.location}
-                                </p>
-                            </div>
-                            <div className="rounded-xl bg-slate-50 p-4">
-                                <p className="text-xs uppercase tracking-wide text-slate-500">
-                                    Customer
-                                </p>
-                                <p className="mt-2 text-sm font-semibold text-slate-800">
-                                    {selectedJob.customer}
-                                </p>
-                            </div>
-                            <div className="rounded-xl bg-slate-50 p-4">
-                                <p className="text-xs uppercase tracking-wide text-slate-500">
-                                    Teknisi
-                                </p>
-                                <p className="mt-2 text-sm font-semibold text-slate-800">
-                                    {selectedJob.technician}
-                                </p>
-                            </div>
-                            <div className="rounded-xl bg-slate-50 p-4 md:col-span-2">
-                                <p className="text-xs uppercase tracking-wide text-slate-500">
-                                    Catatan
-                                </p>
-                                <p className="mt-2 text-sm font-semibold text-slate-800">
-                                    {selectedJob.description}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
-
-export default AdminDashboard;

@@ -7,7 +7,7 @@ const fetchUserProfile = async (userId) => {
     .from("profiles")
     .select("role, first_name, last_name, email, phone")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
   return data ?? null;
@@ -35,7 +35,17 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     // cek user saat refresh
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getUser().then(async ({ data, error }) => {
+      if (error) {
+        console.error("Error restoring auth session:", error);
+        await supabase.auth.signOut();
+        setUser(null);
+        setProfile(null);
+        setRole(null);
+        setLoading(false);
+        return;
+      }
+
       if (data?.user) {
         setUser(data.user);
         syncUserProfile(data.user.id);

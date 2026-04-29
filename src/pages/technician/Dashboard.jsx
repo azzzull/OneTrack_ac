@@ -1,473 +1,226 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+    BarChart3,
     CalendarDays,
-    Camera,
-    CheckCircle2,
-    ClipboardList,
-    MapPinned,
-    Phone,
-    ShieldCheck,
-    Search,
+    ChartPie,
+    CircleCheckBig,
+    Clock3,
     Wrench,
-    X,
-    UserRound,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
-import PhotoUploadInput from "../../components/PhotoUploadInput";
+import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
+import Card from "../../components/card";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
-import { useDialog } from "../../context/useDialog";
-import CustomSelect from "../../components/ui/CustomSelect";
 import supabase from "../../supabaseClient";
-import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
-import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
 
-const STATUS_LABELS = {
-    pending: "PENDING",
-    in_progress: "IN PROGRESS",
-    completed: "COMPLETED",
+const STATUS_META = {
+    pending: { label: "Pending", color: "#0ea5e9" },
+    in_progress: { label: "In Progress", color: "#67e8f9" },
+    completed: { label: "Completed", color: "#0369a1" },
 };
 
-const STATUS_STYLES = {
-    pending: "bg-amber-100 text-amber-700",
-    in_progress: "bg-blue-100 text-blue-700",
-    completed: "bg-emerald-100 text-emerald-700",
+const normalizeStatusKey = (value) => {
+    const raw = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+    if (raw === "inprogress") return "in_progress";
+    if (raw === "in_progress") return "in_progress";
+    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "pending" || raw === "") return "pending";
+    return "pending";
 };
 
-const STATUS_OPTIONS = [
-    { value: "pending", label: "Pending" },
-    { value: "in_progress", label: "In Progress" },
-    { value: "completed", label: "Completed" },
-];
-
-const FileCaptureCard = ({ label, fileName, onClick }) => (
-    <button
-        type="button"
-        onClick={onClick}
-        className="rounded-xl border border-dashed border-slate-300 p-3 text-left text-sm text-slate-600 transition hover:border-sky-300 hover:bg-sky-50"
-    >
-        <span className="inline-flex items-center gap-2 font-medium">
-            <Camera size={15} />
-            {label}
-        </span>
-        <p className="mt-2 text-xs text-slate-500">
-            {fileName
-                ? `Tertangkap: ${fileName}`
-                : "Klik untuk ambil foto dari kamera"}
-        </p>
-    </button>
-);
-
-const getCurrentUserDisplayName = (user) => {
-    const composed =
-        `${user?.user_metadata?.first_name ?? ""} ${user?.user_metadata?.last_name ?? ""}`.trim();
-    return (
-        composed ||
-        String(user?.user_metadata?.full_name ?? "").trim() ||
-        String(user?.email ?? "").trim() ||
-        "Teknisi"
-    );
-};
-
-const formatDate = (value) => {
-    if (!value) return "-";
+const toDateKey = (value) => {
+    if (!value) return "";
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-    return new Intl.DateTimeFormat("id-ID", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-    }).format(date);
+    if (Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
 };
 
-const formatOrderId = (value) => {
-    const raw = String(value ?? "").trim();
-    if (!raw) return "-";
-    if (raw.length <= 12) return raw.toUpperCase();
-    return `${raw.slice(0, 8).toUpperCase()}-${raw.slice(-4).toUpperCase()}`;
+const polarToCartesian = (cx, cy, radius, angleInDegrees) => {
+    const radians = ((angleInDegrees - 90) * Math.PI) / 180;
+    return {
+        x: cx + radius * Math.cos(radians),
+        y: cy + radius * Math.sin(radians),
+    };
 };
 
-const previewText = (value, max = 90) => {
-    const raw = String(value ?? "").trim();
-    if (!raw) return "-";
-    if (raw.length <= max) return raw;
-    return `${raw.slice(0, max).trim()}...`;
+const describePieSlice = (cx, cy, radius, startAngle, endAngle) => {
+    const start = polarToCartesian(cx, cy, radius, endAngle);
+    const end = polarToCartesian(cx, cy, radius, startAngle);
+    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+    return [
+        `M ${cx} ${cy}`,
+        `L ${start.x} ${start.y}`,
+        `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
+        "Z",
+    ].join(" ");
 };
 
-const hasValidSerialNumber = (value) => {
-    const normalized = String(value ?? "").trim();
-    if (!normalized) return false;
-    return normalized !== "-" && normalized.toLowerCase() !== "null";
-};
+const describeFullCircle = (cx, cy, radius) =>
+    [
+        `M ${cx} ${cy - radius}`,
+        `A ${radius} ${radius} 0 1 1 ${cx} ${cy + radius}`,
+        `A ${radius} ${radius} 0 1 1 ${cx} ${cy - radius}`,
+        "Z",
+    ].join(" ");
 
-function TechnicianDashboard() {
+export default function TechnicianDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const { user } = useAuth();
-    const { alert: showAlert } = useDialog();
-    const [loading, setLoading] = useState(true);
     const [tasks, setTasks] = useState([]);
-    const [search, setSearch] = useState("");
-    const [selectedTaskId, setSelectedTaskId] = useState(null);
-    const [saving, setSaving] = useState(false);
-    const [repairNotes, setRepairNotes] = useState({
-        troubleDescription: "",
-        replacedParts: "",
-        reconditionedParts: "",
-    });
-    const [beforePhotoUrl, setBeforePhotoUrl] = useState(null);
-    const [progressPhotoUrl, setProgressPhotoUrl] = useState(null);
-    const [afterPhotoUrl, setAfterPhotoUrl] = useState(null);
-    const [serialNumber, setSerialNumber] = useState("");
-    const [cameraOpen, setCameraOpen] = useState(false);
-    const [cameraTarget, setCameraTarget] = useState(null);
-    const [cameraError, setCameraError] = useState("");
-    const [photoPreview, setPhotoPreview] = useState({
-        open: false,
-        url: "",
-        label: "",
-    });
-    const [hasDeferredRefresh, setHasDeferredRefresh] = useState(false);
-
-    const streamRef = useRef(null);
-    const videoRef = useRef(null);
-    const deferRefreshRef = useRef(false);
+    const [hoveredStatus, setHoveredStatus] = useState(null);
+    const [hoveredDayKey, setHoveredDayKey] = useState(null);
 
     const loadTasks = useCallback(async () => {
         if (!user?.id) return;
 
-        setLoading(true);
         try {
             const { data, error } = await supabase
                 .from("requests")
                 .select("*")
                 .eq("technician_id", user.id)
                 .order("created_at", { ascending: false });
+
             if (error) throw error;
             setTasks(data ?? []);
         } catch (error) {
-            console.error("Error loading technician tasks:", error);
+            console.error("Error loading technician dashboard data:", error);
             setTasks([]);
-        } finally {
-            setLoading(false);
         }
     }, [user?.id]);
-
-    const selectedTask = useMemo(
-        () => tasks.find((item) => item.id === selectedTaskId) ?? null,
-        [selectedTaskId, tasks],
-    );
-
-    const filteredTasks = useMemo(() => {
-        const keyword = search.trim().toLowerCase();
-        if (!keyword) return tasks;
-        return tasks.filter((item) =>
-            `${item.title ?? ""} ${item.address ?? item.location ?? ""} ${item.room_location ?? ""} ${item.trouble_description ?? ""} ${item.customer_name ?? ""} ${item.technician_name ?? ""} ${item.id ?? ""} ${formatOrderId(item.id)}`
-                .toLowerCase()
-                .includes(keyword),
-        );
-    }, [search, tasks]);
-
-    useEffect(() => {
-        if (!selectedTask) return;
-        setRepairNotes({
-            troubleDescription: selectedTask.trouble_description ?? "",
-            replacedParts: selectedTask.replaced_parts ?? "",
-            reconditionedParts: selectedTask.reconditioned_parts ?? "",
-        });
-        setSerialNumber(
-            hasValidSerialNumber(selectedTask.serial_number)
-                ? String(selectedTask.serial_number).trim()
-                : "",
-        );
-    }, [selectedTask]);
-
-    // Check if selected task still exists (not deleted by admin elsewhere)
-    useEffect(() => {
-        if (!selectedTaskId || !tasks) return;
-        const taskExists = tasks.some((task) => task.id === selectedTaskId);
-
-        if (!taskExists) {
-            // Task was deleted, close modal and clear selection
-            setSelectedTaskId(null);
-            setBeforePhotoUrl(null);
-            setProgressPhotoUrl(null);
-            setAfterPhotoUrl(null);
-        }
-    }, [tasks, selectedTaskId]);
-
-    useEffect(() => {
-        loadTasks();
-    }, [loadTasks]);
-
-    useEffect(() => {
-        deferRefreshRef.current = Boolean(
-            selectedTaskId || cameraOpen || saving,
-        );
-    }, [cameraOpen, saving, selectedTaskId]);
-
-    useEffect(() => {
-        if (deferRefreshRef.current || !hasDeferredRefresh) return;
-        setHasDeferredRefresh(false);
-        loadTasks();
-    }, [hasDeferredRefresh, loadTasks]);
 
     useEffect(() => {
         if (!user?.id) return undefined;
 
+        const timerId = setTimeout(() => {
+            loadTasks();
+        }, 0);
+
         const channel = supabase
-            .channel(`technician-tasks-${user.id}`)
+            .channel(`technician-dashboard-${user.id}`)
             .on(
                 "postgres_changes",
-                { event: "DELETE", schema: "public", table: "requests" },
+                { event: "*", schema: "public", table: "requests" },
                 () => {
-                    // Immediately refresh on delete
-                    if (!deferRefreshRef.current) {
-                        loadTasks();
-                    }
-                },
-            )
-            .on(
-                "postgres_changes",
-                { event: "INSERT", schema: "public", table: "requests" },
-                () => {
-                    if (deferRefreshRef.current) {
-                        setHasDeferredRefresh(true);
-                        return;
-                    }
-                    loadTasks();
-                },
-            )
-            .on(
-                "postgres_changes",
-                { event: "UPDATE", schema: "public", table: "requests" },
-                () => {
-                    if (deferRefreshRef.current) {
-                        setHasDeferredRefresh(true);
-                        return;
-                    }
                     loadTasks();
                 },
             )
             .subscribe();
 
         return () => {
+            clearTimeout(timerId);
             channel.unsubscribe();
         };
     }, [loadTasks, user?.id]);
 
-    const stopCameraStream = useCallback(() => {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach((track) => track.stop());
-            streamRef.current = null;
-        }
-        if (videoRef.current) {
-            videoRef.current.srcObject = null;
-        }
-    }, []);
+    const statusCounts = useMemo(() => {
+        const counts = {
+            pending: 0,
+            in_progress: 0,
+            completed: 0,
+        };
 
-    const closeCamera = useCallback(() => {
-        stopCameraStream();
-        setCameraOpen(false);
-        setCameraTarget(null);
-        setCameraError("");
-    }, [stopCameraStream]);
-
-    const openCamera = useCallback(async (target) => {
-        if (!navigator.mediaDevices?.getUserMedia) {
-            setCameraError("Browser tidak mendukung akses kamera.");
-            return;
-        }
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: "environment" } },
-                audio: false,
-            });
-            streamRef.current = stream;
-            setCameraTarget(target);
-            setCameraOpen(true);
-            setCameraError("");
-        } catch (error) {
-            console.error("Camera access failed:", error);
-            setCameraError(
-                "Akses kamera ditolak. Aktifkan izin kamera di browser.",
-            );
-        }
-    }, []);
-
-    const scanSerialFromImage = useCallback(async (file) => {
-        const value = await scanBarcodeFromFile(file);
-        if (!value) return false;
-        setSerialNumber(value);
-        return true;
-    }, []);
-
-    const captureFromCamera = useCallback(async () => {
-        const video = videoRef.current;
-        if (!video || !cameraTarget) return;
-
-        const width = video.videoWidth || 1280;
-        const height = video.videoHeight || 720;
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        ctx.drawImage(video, 0, 0, width, height);
-        const blob = await new Promise((resolve) => {
-            canvas.toBlob(resolve, "image/jpeg", 0.9);
-        });
-        if (!blob) return;
-
-        const file = new File([blob], `${cameraTarget}-${Date.now()}.jpg`, {
-            type: "image/jpeg",
-        });
-
-        if (cameraTarget === "serial-scan") {
-            const found = await scanSerialFromImage(file);
-            closeCamera();
-            if (!found) {
-                await showAlert(
-                    "Barcode belum terbaca, arahkan kamera lebih dekat lalu scan ulang.",
-                    {
-                        title: "Scan Gagal",
-                    },
-                );
+        for (const row of tasks) {
+            const key = normalizeStatusKey(row.status);
+            if (counts[key] !== undefined) {
+                counts[key] += 1;
             }
-            return;
         }
 
-        closeCamera();
-    }, [cameraTarget, closeCamera, scanSerialFromImage, showAlert]);
+        return counts;
+    }, [tasks]);
 
-    useEffect(() => {
-        if (cameraOpen && videoRef.current && streamRef.current) {
-            videoRef.current.srcObject = streamRef.current;
-            videoRef.current.play().catch(() => null);
-        }
-    }, [cameraOpen]);
+    const jobStatusCards = [
+        {
+            title: "Pending",
+            value: statusCounts.pending,
+            icon: Clock3,
+            tone: "amber",
+            statusKey: "pending",
+        },
+        {
+            title: "In Progress",
+            value: statusCounts.in_progress,
+            icon: Wrench,
+            tone: "sky",
+            statusKey: "in_progress",
+        },
+        {
+            title: "Completed",
+            value: statusCounts.completed,
+            icon: CircleCheckBig,
+            tone: "emerald",
+            statusKey: "completed",
+        },
+    ];
 
-    useEffect(() => () => stopCameraStream(), [stopCameraStream]);
+    const totalTasks = tasks.length;
+    const completionRate = totalTasks
+        ? Math.round((statusCounts.completed / totalTasks) * 100)
+        : 0;
 
-    const closeDetail = () => {
-        closeCamera();
-        setPhotoPreview({ open: false, url: "", label: "" });
-        setSelectedTaskId(null);
-        setSaving(false);
-        setBeforePhotoUrl(null);
-        setProgressPhotoUrl(null);
-        setAfterPhotoUrl(null);
-    };
+    const donutSegments = useMemo(() => {
+        const keys = ["pending", "in_progress", "completed"];
+        const total = totalTasks || 1;
+        let offset = 0;
 
-    const openPhotoPreview = (url, label) => {
-        if (!url) return;
-        setPhotoPreview({ open: true, url, label });
-    };
-
-    const saveChanges = async () => {
-        if (!selectedTask) return;
-
-        // Validasi: minimal ada satu perubahan atau satu foto baru
-        const hasRepairNoteChanges =
-            repairNotes.troubleDescription.trim() !==
-                (selectedTask.trouble_description ?? "") ||
-            repairNotes.replacedParts.trim() !==
-                (selectedTask.replaced_parts ?? "") ||
-            repairNotes.reconditionedParts.trim() !==
-                (selectedTask.reconditioned_parts ?? "") ||
-            serialNumber.trim() !== (selectedTask.serial_number ?? "");
-
-        const hasNewPhotos =
-            beforePhotoUrl || progressPhotoUrl || afterPhotoUrl;
-
-        if (!hasRepairNoteChanges && !hasNewPhotos) {
-            await showAlert("Tidak ada perubahan yang disimpan.", {
-                title: "Informasi",
-            });
-            return;
-        }
-
-        try {
-            setSaving(true);
-
-            const hasAfter = afterPhotoUrl || selectedTask.after_photo_url;
-            if (hasAfter && !hasValidSerialNumber(serialNumber)) {
-                await showAlert(
-                    "harap isi serial number (scan atau ketik manual)",
-                    {
-                    title: "Informasi",
-                    },
-                );
-                return;
-            }
-
-            const payload = {
-                trouble_description: repairNotes.troubleDescription.trim(),
-                replaced_parts: repairNotes.replacedParts.trim(),
-                reconditioned_parts: repairNotes.reconditionedParts.trim(),
-                technician_id: user?.id ?? null,
-                technician_name: getCurrentUserDisplayName(user),
-                serial_number: serialNumber.trim(),
-                updated_at: new Date().toISOString(),
+        return keys.map((key) => {
+            const value = statusCounts[key];
+            const ratio = value / total;
+            const segment = {
+                key,
+                value,
+                ratio,
+                offset,
+                color: STATUS_META[key].color,
+                label: STATUS_META[key].label,
             };
+            offset += ratio;
+            return segment;
+        });
+    }, [statusCounts, totalTasks]);
 
-            // Add photo URLs if uploaded
-            if (beforePhotoUrl) payload.before_photo_url = beforePhotoUrl;
-            if (progressPhotoUrl) payload.progress_photo_url = progressPhotoUrl;
-            if (afterPhotoUrl) payload.after_photo_url = afterPhotoUrl;
-
-            // Determine status automatically based on photos
-            // Check current photos + newly uploaded ones
-            const hasBefore = beforePhotoUrl || selectedTask.before_photo_url;
-            const hasProgress =
-                progressPhotoUrl || selectedTask.progress_photo_url;
-
-            if (hasAfter) {
-                payload.status = "completed";
-            } else if (hasProgress && hasBefore) {
-                payload.status = "in_progress";
-            } else if (hasBefore) {
-                payload.status = "pending";
-            } else {
-                payload.status = selectedTask.status;
-            }
-
-            const { error } = await supabase
-                .from("requests")
-                .update(payload)
-                .eq("id", selectedTask.id);
-
-            if (error) throw error;
-
-            await loadTasks();
-            setBeforePhotoUrl(null);
-            setProgressPhotoUrl(null);
-            setAfterPhotoUrl(null);
-
-            await showAlert("Perubahan berhasil disimpan.", {
-                title: "Sukses",
-            });
-        } catch (error) {
-            console.error("Error saving changes:", error);
-            await showAlert("Gagal menyimpan perubahan.", { title: "Error" });
-        } finally {
-            setSaving(false);
+    const last7Days = useMemo(() => {
+        const byDate = {};
+        for (let i = 6; i >= 0; i -= 1) {
+            const date = new Date();
+            date.setHours(0, 0, 0, 0);
+            date.setDate(date.getDate() - i);
+            const key = toDateKey(date);
+            byDate[key] = {
+                key,
+                label: date.toLocaleDateString("id-ID", { weekday: "short" }),
+                count: 0,
+            };
         }
-    };
 
-    const uploadPhoto = async (file, folderName) => {
-        if (!file) return null;
-        const ext = file.name.split(".").pop() || "jpg";
-        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const path = `${user?.id ?? "anonymous"}/requests/${folderName}/${fileName}`;
-        const { error: uploadError } = await supabase.storage
-            .from("job-photos")
-            .upload(path, file, { upsert: false });
-        if (uploadError) throw uploadError;
-        const { data } = supabase.storage.from("job-photos").getPublicUrl(path);
-        return data?.publicUrl ?? null;
-    };
+        for (const row of tasks) {
+            const key = toDateKey(row.updated_at ?? row.created_at);
+            if (byDate[key]) byDate[key].count += 1;
+        }
+
+        return Object.values(byDate);
+    }, [tasks]);
+
+    const weeklyTotal = last7Days.reduce((sum, item) => sum + item.count, 0);
+    const weeklyMax = Math.max(...last7Days.map((item) => item.count), 1);
+
+    const hoveredSegment = donutSegments.find(
+        (item) => item.key === hoveredStatus,
+    );
+    const hoveredDay = last7Days.find((item) => item.key === hoveredDayKey);
+    const radius = 74;
+    const center = 90;
 
     return (
         <div className="min-h-screen bg-sky-50">
@@ -478,16 +231,35 @@ function TechnicianDashboard() {
                 />
 
                 <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
-                        Dashboard Teknisi
-                    </h1>
-                    <p className="mt-1 text-slate-600">
-                        Daftar pekerjaan yang Anda kerjakan.
-                    </p>
+                    <div>
+                        <h1 className="text-3xl font-semibold text-slate-900">
+                            Dashboard Teknisi
+                        </h1>
+                        <p className="mt-1 text-slate-600">
+                            Ringkasan pekerjaan Anda dan absensi hari ini.
+                        </p>
+                    </div>
 
-                    {/* Attendance Section */}
-                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
-                        <div className="flex items-center justify-between mb-4">
+                    <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {jobStatusCards.map((item) => (
+                            <Link
+                                key={item.title}
+                                to={`/technician/requests?status=${item.statusKey}`}
+                                className="no-underline"
+                                style={{ textDecoration: "none" }}
+                            >
+                                <Card
+                                    title={item.title}
+                                    value={item.value}
+                                    icon={item.icon}
+                                    tone={item.tone}
+                                />
+                            </Link>
+                        ))}
+                    </section>
+
+                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 md:py-8">
+                        <div className="mb-4 flex items-center justify-between">
                             <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
                                 <CalendarDays size={18} />
                                 Absensi Hari Ini
@@ -495,599 +267,213 @@ function TechnicianDashboard() {
                         </div>
                         <AttendanceDashboardSimple
                             technicianId={user?.id}
-                            onDataChange={() => {
-                                // Optional: refresh tasks or update UI
-                            }}
+                            onDataChange={() => {}}
                         />
                     </section>
 
-                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
-                                <Wrench size={18} />
-                                Pekerjaan Saya
-                            </h2>
-                            <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:max-w-sm">
-                                <Search size={16} />
-                                <input
-                                    type="text"
-                                    value={search}
-                                    onChange={(event) =>
-                                        setSearch(event.target.value)
-                                    }
-                                    placeholder="Cari pekerjaan..."
-                                    className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                    <section className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <div className="rounded-2xl bg-white p-5 shadow-sm">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-semibold text-slate-900">
+                                    Distribusi Status
+                                </h2>
+                                <ChartPie
+                                    size={18}
+                                    className="text-slate-400"
                                 />
-                            </label>
+                            </div>
+
+                            <div className="mt-4 flex flex-col items-center">
+                                <svg width="210" height="210" viewBox="0 0 180 180">
+                                    <circle
+                                        cx={center}
+                                        cy={center}
+                                        r={radius}
+                                        fill="#e2e8f0"
+                                    />
+                                    {donutSegments.map((segment) => {
+                                        if (!segment.value) return null;
+                                        if (segment.ratio >= 0.999) {
+                                            return (
+                                                <path
+                                                    key={segment.key}
+                                                    d={describeFullCircle(
+                                                        center,
+                                                        center,
+                                                        radius,
+                                                    )}
+                                                    fill={segment.color}
+                                                    onMouseEnter={() =>
+                                                        setHoveredStatus(
+                                                            segment.key,
+                                                        )
+                                                    }
+                                                    onMouseLeave={() =>
+                                                        setHoveredStatus(null)
+                                                    }
+                                                />
+                                            );
+                                        }
+
+                                        const startAngle = segment.offset * 360;
+                                        const endAngle =
+                                            (segment.offset + segment.ratio) *
+                                            360;
+                                        return (
+                                            <path
+                                                key={segment.key}
+                                                d={describePieSlice(
+                                                    center,
+                                                    center,
+                                                    radius,
+                                                    startAngle,
+                                                    endAngle,
+                                                )}
+                                                fill={segment.color}
+                                                onMouseEnter={() =>
+                                                    setHoveredStatus(
+                                                        segment.key,
+                                                    )
+                                                }
+                                                onMouseLeave={() =>
+                                                    setHoveredStatus(null)
+                                                }
+                                            />
+                                        );
+                                    })}
+                                    <circle
+                                        cx={center}
+                                        cy={center}
+                                        r="45"
+                                        fill="white"
+                                    />
+                                    <text
+                                        x={center}
+                                        y={center - 2}
+                                        textAnchor="middle"
+                                        className="fill-slate-900 text-xl font-semibold"
+                                    >
+                                        {totalTasks}
+                                    </text>
+                                    <text
+                                        x={center}
+                                        y={center + 18}
+                                        textAnchor="middle"
+                                        className="fill-slate-400 text-[11px]"
+                                    >
+                                        Total Job
+                                    </text>
+                                </svg>
+
+                                <p className="mt-2 text-sm text-slate-600">
+                                    {hoveredSegment
+                                        ? `${hoveredSegment.label}: ${hoveredSegment.value} (${Math.round(
+                                              hoveredSegment.ratio * 100,
+                                          )}%)`
+                                        : `Total pekerjaan Anda: ${totalTasks}`}
+                                </p>
+
+                                <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm text-slate-600">
+                                    {donutSegments.map((segment) => (
+                                        <div
+                                            key={segment.key}
+                                            className="inline-flex items-center gap-2"
+                                        >
+                                            <span
+                                                className="h-3 w-3 rounded-full"
+                                                style={{
+                                                    backgroundColor:
+                                                        segment.color,
+                                                }}
+                                            />
+                                            <span>{segment.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
 
-                        {loading ? (
-                            <p className="mt-4 text-sm text-slate-500">
-                                Memuat pekerjaan...
-                            </p>
-                        ) : tasks.length === 0 ? (
-                            <p className="mt-4 rounded-xl border border-dashed border-sky-300 bg-sky-50 p-4 text-sm text-sky-700">
-                                Belum ada pekerjaan yang Anda kerjakan.
-                            </p>
-                        ) : filteredTasks.length === 0 ? (
-                            <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
-                                Tidak ada pekerjaan yang cocok dengan pencarian.
-                            </p>
-                        ) : (
-                            <div className="mt-4 space-y-3">
-                                {filteredTasks.map((item) => (
-                                    <article
-                                        key={item.id}
-                                        className="cursor-pointer overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md hover:scale-[1.01]"
-                                        onClick={() =>
-                                            setSelectedTaskId(item.id)
-                                        }
-                                    >
-                                        <div className="grid grid-cols-1 md:grid-cols-[1fr_190px]">
-                                            <div className="p-4 md:p-5">
-                                                <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
-                                                    <div className="min-w-0">
-                                                        <h2 className="wrap-break-word text-lg font-semibold text-slate-900 md:text-xl">
-                                                            {item.title ??
-                                                                "Pekerjaan Tanpa Judul"}
-                                                        </h2>
-                                                        <p className="mt-1 break-all text-xs text-slate-500">
-                                                            Order ID:{" "}
-                                                            <span
-                                                                title={
-                                                                    item.id ??
-                                                                    "-"
-                                                                }
-                                                            >
-                                                                {formatOrderId(
-                                                                    item.id,
-                                                                )}
-                                                            </span>
-                                                        </p>
-                                                        <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-slate-500 md:text-base">
-                                                            <MapPinned
-                                                                size={16}
-                                                            />
-                                                            <span>
-                                                                {item.address ??
-                                                                    item.location ??
-                                                                    "-"}
-                                                            </span>
-                                                        </p>
-                                                        <p className="mt-1 text-xs text-slate-500">
-                                                            Ruangan:{" "}
-                                                            {previewText(
-                                                                item.room_location,
-                                                                48,
-                                                            )}
-                                                        </p>
-                                                        <p className="mt-1 text-xs text-slate-500">
-                                                            Deskripsi:{" "}
-                                                            {previewText(
-                                                                item.trouble_description,
-                                                            )}
-                                                        </p>
-                                                    </div>
-
-                                                    <span
-                                                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                                            STATUS_STYLES[
-                                                                item.status
-                                                            ] ??
-                                                            STATUS_STYLES.pending
-                                                        }`}
-                                                    >
-                                                        {STATUS_LABELS[
-                                                            item.status
-                                                        ] ?? "PENDING"}
-                                                    </span>
-                                                </div>
-
-                                                <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
-                                                    <p className="inline-flex items-center gap-2">
-                                                        <CalendarDays
-                                                            size={14}
-                                                        />
-                                                        <span className="break-all">
-                                                            {formatDate(
-                                                                item.created_at,
-                                                            )}
-                                                        </span>
-                                                    </p>
-                                                    <p className="inline-flex items-center gap-2">
-                                                        <Wrench size={14} />
-                                                        <span className="wrap-break-word">
-                                                            {item.technician_name ??
-                                                                getCurrentUserDisplayName(
-                                                                    user,
-                                                                )}
-                                                        </span>
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <aside className="border-t border-slate-200 bg-slate-50 p-4 md:border-l md:border-t-0 md:p-5">
-                                                <div className="flex flex-col gap-3 md:gap-4">
-                                                    <p className="inline-flex items-center gap-2 text-sm text-slate-600">
-                                                        <Phone size={15} />
-                                                        <span className="break-all">
-                                                            {item.customer_phone ??
-                                                                "-"}
-                                                        </span>
-                                                    </p>
-                                                    <p className="inline-flex items-center gap-2 wrap-break-word text-sm text-slate-600">
-                                                        <UserRound size={15} />
-                                                        {item.customer_name ??
-                                                            "-"}
-                                                    </p>
-                                                </div>
-                                            </aside>
-                                        </div>
-                                    </article>
-                                ))}
+                        <div className="rounded-2xl bg-white p-5 shadow-sm">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-semibold text-slate-900">
+                                    Aktivitas Harian (7 Hari Terakhir)
+                                </h2>
+                                <BarChart3
+                                    size={18}
+                                    className="text-slate-400"
+                                />
                             </div>
-                        )}
+
+                            <div className="mt-8">
+                                <div className="flex h-64 items-end gap-3">
+                                    {last7Days.map((item) => {
+                                        const barHeight = Math.max(
+                                            (item.count / weeklyMax) * 200,
+                                            item.count ? 14 : 2,
+                                        );
+                                        const percent = weeklyTotal
+                                            ? Math.round(
+                                                  (item.count / weeklyTotal) *
+                                                      100,
+                                              )
+                                            : 0;
+                                        return (
+                                            <div
+                                                key={item.key}
+                                                className="group flex flex-1 flex-col items-center"
+                                                onMouseEnter={() =>
+                                                    setHoveredDayKey(item.key)
+                                                }
+                                                onMouseLeave={() =>
+                                                    setHoveredDayKey(null)
+                                                }
+                                            >
+                                                <div className="mb-2 h-6 text-[11px] text-slate-600">
+                                                    {hoveredDayKey === item.key
+                                                        ? `${item.count} (${percent}%)`
+                                                        : ""}
+                                                </div>
+                                                <div
+                                                    className={`w-full max-w-10 rounded-t-lg transition ${
+                                                        item.count
+                                                            ? "bg-sky-400 group-hover:bg-sky-500"
+                                                            : "bg-slate-200 group-hover:bg-slate-300"
+                                                    }`}
+                                                    style={{
+                                                        height: `${barHeight}px`,
+                                                    }}
+                                                />
+                                                <span className="mt-2 text-sm text-slate-500">
+                                                    {item.label}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <p className="mt-5 text-sm text-slate-400">
+                                    {hoveredDay
+                                        ? `${hoveredDay.label}: ${hoveredDay.count} pekerjaan`
+                                        : "Arahkan kursor ke batang untuk melihat detail."}
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="mt-6 rounded-2xl bg-sky-500 p-6 text-white shadow-sm">
+                        <p className="text-sm font-semibold uppercase tracking-wide text-sky-100">
+                            Ringkasan Penyelesaian
+                        </p>
+                        <p className="mt-2 text-5xl font-bold">
+                            {completionRate}%
+                        </p>
+                        <p className="mt-2 text-lg text-sky-100">
+                            Persentase pekerjaan Anda yang sudah selesai.
+                        </p>
                     </section>
                 </main>
             </div>
 
             <MobileBottomNav />
-
-            {selectedTask && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-                    <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-xl">
-                        <div className="max-h-[85vh] overflow-y-auto overscroll-contain p-4 md:p-6">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
-                                    Detail Pekerjaan
-                                </h2>
-                                <button
-                                    type="button"
-                                    onClick={closeDetail}
-                                    className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                                >
-                                    <X size={18} />
-                                </button>
-                            </div>
-
-                            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div className="rounded-2xl border border-slate-200 p-4">
-                                    <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                        <ClipboardList size={14} />
-                                        Ringkasan
-                                    </p>
-                                    <h3 className="mt-2 text-xl font-semibold text-slate-900">
-                                        {selectedTask.title}
-                                    </h3>
-                                    <p className="mt-1 break-all text-xs text-slate-500">
-                                        Order ID:{" "}
-                                        <span title={selectedTask.id ?? "-"}>
-                                            {formatOrderId(selectedTask.id)}
-                                        </span>
-                                    </p>
-                                    <p className="mt-2 inline-flex items-start gap-2 text-sm text-slate-600">
-                                        <MapPinned size={14} />
-                                        {selectedTask.location ??
-                                            selectedTask.address ??
-                                            "-"}
-                                    </p>
-                                    <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
-                                        <Phone size={14} />
-                                        {selectedTask.customer_phone ?? "-"}
-                                    </p>
-                                    <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
-                                        <UserRound size={14} />
-                                        {selectedTask.customer_name ?? "-"}
-                                    </p>
-                                    <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-600">
-                                        <CalendarDays size={14} />
-                                        {formatDate(selectedTask.created_at)}
-                                    </p>
-                                </div>
-
-                                <div className="rounded-2xl border border-slate-200 p-4 flex flex-col items-start gap-2">
-                                    <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                        <ShieldCheck size={14} />
-                                        Status
-                                    </p>
-                                    <div className="mt-2 inline-flex rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 bg-slate-50">
-                                        {STATUS_LABELS[selectedTask.status] ??
-                                            "PENDING"}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    Detail Unit AC & Ruangan
-                                </p>
-                                <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-700 md:grid-cols-2">
-                                    <p>
-                                        <span className="font-medium">
-                                            Merk AC:
-                                        </span>{" "}
-                                        {selectedTask.ac_brand ?? "-"}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Tipe AC:
-                                        </span>{" "}
-                                        {selectedTask.ac_type ?? "-"}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Kapasitas AC:
-                                        </span>{" "}
-                                        {selectedTask.ac_capacity_pk ?? "-"}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Serial Number AC:
-                                        </span>{" "}
-                                        {serialNumber ||
-                                            selectedTask.serial_number ||
-                                            "-"}
-                                    </p>
-                                    <p className="md:col-span-2">
-                                        <span className="font-medium">
-                                            Ruangan Dikerjakan:
-                                        </span>{" "}
-                                        {selectedTask.room_location ?? "-"}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-                                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    <CheckCircle2 size={14} />
-                                    Detail Perbaikan
-                                </p>
-                                <div className="mt-3 space-y-3">
-                                    <label className="block">
-                                        <span className="text-xs font-medium text-slate-600">
-                                            Serial Number
-                                        </span>
-                                        <div className="mt-1 flex gap-2">
-                                            <input
-                                                value={serialNumber}
-                                                onChange={(event) =>
-                                                    setSerialNumber(
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none"
-                                                placeholder="Scan dari kamera atau ketik manual"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openCamera("serial-scan")
-                                                }
-                                                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                                            >
-                                                <Camera size={14} />
-                                                Scan
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setSerialNumber("")
-                                                }
-                                                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                                                title="Kosongkan serial number"
-                                            >
-                                                <X size={14} />
-                                                Hapus
-                                            </button>
-                                        </div>
-                                        <p className="mt-2 text-xs text-slate-500">
-                                            Jika unit tidak punya barcode, isi
-                                            manual nomor seri.
-                                        </p>
-                                    </label>
-                                    <label className="block">
-                                        <span className="text-xs font-medium text-slate-600">
-                                            Detail Perbaikan / Trouble
-                                        </span>
-                                        <textarea
-                                            value={
-                                                repairNotes.troubleDescription
-                                            }
-                                            onChange={(event) =>
-                                                setRepairNotes((prev) => ({
-                                                    ...prev,
-                                                    troubleDescription:
-                                                        event.target.value,
-                                                }))
-                                            }
-                                            rows={3}
-                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
-                                        />
-                                    </label>
-                                    <label className="block">
-                                        <span className="text-xs font-medium text-slate-600">
-                                            Suku Cadang Diganti
-                                        </span>
-                                        <textarea
-                                            value={repairNotes.replacedParts}
-                                            onChange={(event) =>
-                                                setRepairNotes((prev) => ({
-                                                    ...prev,
-                                                    replacedParts:
-                                                        event.target.value,
-                                                }))
-                                            }
-                                            rows={2}
-                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
-                                        />
-                                    </label>
-                                    <label className="block">
-                                        <span className="text-xs font-medium text-slate-600">
-                                            Suku Cadang Direkondisi
-                                        </span>
-                                        <textarea
-                                            value={
-                                                repairNotes.reconditionedParts
-                                            }
-                                            onChange={(event) =>
-                                                setRepairNotes((prev) => ({
-                                                    ...prev,
-                                                    reconditionedParts:
-                                                        event.target.value,
-                                                }))
-                                            }
-                                            rows={2}
-                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
-                                        />
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    Dokumentasi
-                                </p>
-                                <div className="mt-3 mb-4">
-                                    <p className="text-xs text-slate-500">
-                                        Foto yang sudah diambil:
-                                    </p>
-                                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
-                                        {[
-                                            {
-                                                label: "Preview Foto Before",
-                                                url: selectedTask?.before_photo_url,
-                                            },
-                                            {
-                                                label: "Preview Foto Proses",
-                                                url: selectedTask?.progress_photo_url,
-                                            },
-                                            {
-                                                label: "Preview Foto After",
-                                                url: selectedTask?.after_photo_url,
-                                            },
-                                        ].map((item) => (
-                                            <button
-                                                key={item.label}
-                                                type="button"
-                                                disabled={!item.url}
-                                                onClick={() =>
-                                                    openPhotoPreview(
-                                                        item.url,
-                                                        item.label,
-                                                    )
-                                                }
-                                                className="w-full rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:bg-slate-100"
-                                            >
-                                                {item.url
-                                                    ? item.label
-                                                    : "foto belum di ambil"}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                {selectedTask.status !== "completed" && (
-                                    <>
-                                        <p className="text-xs text-slate-500 mb-3">
-                                            Ambil foto baru:
-                                        </p>
-                                        <div className="mt-3 grid grid-cols-1 gap-6 md:grid-cols-3">
-                                            <div>
-                                                <label className="mb-2 block text-xs font-medium text-slate-600">
-                                                    Foto Before
-                                                </label>
-                                                <PhotoUploadInput
-                                                    folderName="before"
-                                                    photoType="before"
-                                                    supabaseClient={supabase}
-                                                    onPhotoSelected={() => {}}
-                                                    onUploadSuccess={async (
-                                                        metadata,
-                                                        photoUrl,
-                                                    ) => {
-                                                        setBeforePhotoUrl(
-                                                            photoUrl,
-                                                        );
-                                                    }}
-                                                    showQueuedStatus={false}
-                                                />
-                                                {beforePhotoUrl && (
-                                                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                                        <p className="text-xs text-emerald-700">
-                                                            Foto terpilih
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div>
-                                                <label className="mb-2 block text-xs font-medium text-slate-600">
-                                                    Foto Progress
-                                                </label>
-                                                <PhotoUploadInput
-                                                    folderName="progress"
-                                                    photoType="progress"
-                                                    supabaseClient={supabase}
-                                                    onPhotoSelected={() => {}}
-                                                    onUploadSuccess={async (
-                                                        metadata,
-                                                        photoUrl,
-                                                    ) => {
-                                                        setProgressPhotoUrl(
-                                                            photoUrl,
-                                                        );
-                                                    }}
-                                                    showQueuedStatus={false}
-                                                />
-                                                {progressPhotoUrl && (
-                                                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                                        <p className="text-xs text-emerald-700">
-                                                            Foto terpilih
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div>
-                                                <label className="mb-2 block text-xs font-medium text-slate-600">
-                                                    Foto After
-                                                </label>
-                                                <PhotoUploadInput
-                                                    folderName="after"
-                                                    photoType="after"
-                                                    supabaseClient={supabase}
-                                                    onPhotoSelected={() => {}}
-                                                    onUploadSuccess={async (
-                                                        metadata,
-                                                        photoUrl,
-                                                    ) => {
-                                                        setAfterPhotoUrl(
-                                                            photoUrl,
-                                                        );
-                                                    }}
-                                                    showQueuedStatus={false}
-                                                />
-                                                {afterPhotoUrl && (
-                                                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                                        <p className="text-xs text-emerald-700">
-                                                            Foto terpilih
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={saveChanges}
-                                    disabled={saving}
-                                    className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {saving
-                                        ? "Menyimpan Perubahan..."
-                                        : "Simpan Perubahan"}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {photoPreview.open && (
-                <div className="fixed inset-0 z-55 flex items-center justify-center bg-slate-900/70 p-4">
-                    <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-xl">
-                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                            <h3 className="text-sm font-semibold text-slate-900">
-                                Preview Foto {photoPreview.label}
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setPhotoPreview({
-                                        open: false,
-                                        url: "",
-                                        label: "",
-                                    })
-                                }
-                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <div className="bg-black">
-                            <img
-                                src={photoPreview.url}
-                                alt={`Foto ${photoPreview.label}`}
-                                className="max-h-[75vh] w-full object-contain"
-                            />
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {cameraOpen && cameraTarget === "serial-scan" && (
-                <div className="fixed inset-0 z-60 flex items-end justify-center bg-slate-900/80 p-0 md:items-center md:p-4">
-                    <div className="w-full rounded-t-3xl bg-white p-4 shadow-xl md:max-w-xl md:rounded-2xl">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-base font-semibold text-slate-900">
-                                Scan Barcode Serial
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={closeCamera}
-                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        <div className="mt-3 overflow-hidden rounded-xl bg-black">
-                            {cameraError ? (
-                                <p className="p-4 text-sm text-rose-600">
-                                    {cameraError}
-                                </p>
-                            ) : (
-                                <video
-                                    ref={videoRef}
-                                    autoPlay
-                                    playsInline
-                                    muted
-                                    className="h-64 w-full object-cover md:h-80"
-                                />
-                            )}
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={captureFromCamera}
-                            disabled={Boolean(cameraError)}
-                            className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            Scan Sekarang
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
-
-export default TechnicianDashboard;

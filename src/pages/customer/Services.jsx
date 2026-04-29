@@ -80,7 +80,7 @@ function CustomerServicesPage() {
         getValidFilter(searchParams.get("status") ?? "all"),
     );
     const [currentPage, setCurrentPage] = useState(1);
-    const [selectedRequest, setSelectedRequest] = useState(null);
+    const [selectedRequestId, setSelectedRequestId] = useState(null);
     const [photoPreview, setPhotoPreview] = useState({
         open: false,
         url: "",
@@ -88,6 +88,11 @@ function CustomerServicesPage() {
     });
     const ITEMS_PER_PAGE = 5;
     const { loading, requests } = useCustomerRequests(user);
+
+    const selectedRequest = useMemo(
+        () => requests.find((item) => item.id === selectedRequestId) ?? null,
+        [requests, selectedRequestId],
+    );
 
     // Check if selected request still exists (not deleted by admin elsewhere)
     useEffect(() => {
@@ -328,7 +333,9 @@ function CustomerServicesPage() {
                                     <article
                                         key={item.id}
                                         className="cursor-pointer rounded-xl border border-slate-200 p-4 transition hover:border-sky-300 hover:bg-sky-50/40"
-                                        onClick={() => setSelectedRequest(item)}
+                                        onClick={() =>
+                                            setSelectedRequestId(item.id)
+                                        }
                                     >
                                         <div className="flex flex-wrap items-start justify-between gap-3">
                                             <div>
@@ -491,7 +498,7 @@ function CustomerServicesPage() {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setSelectedRequest(null);
+                                    setSelectedRequestId(null);
                                     setPhotoPreview({
                                         open: false,
                                         url: "",

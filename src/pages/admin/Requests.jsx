@@ -19,6 +19,7 @@ import {
     ChevronRight,
     Trash2,
 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import PhotoUploadInput from "../../components/PhotoUploadInput";
 import CustomSelect from "../../components/ui/CustomSelect";
@@ -35,6 +36,9 @@ const FILTERS = [
     { key: "in_progress", label: "In Progress" },
     { key: "completed", label: "Completed" },
 ];
+
+const getValidFilter = (value) =>
+    FILTERS.some((filter) => filter.key === value) ? value : "all";
 
 const STATUS_LABELS = {
     pending: "PENDING",
@@ -168,12 +172,46 @@ const getCurrentUserDisplayName = (user) => {
     );
 };
 
+const sortRequestsByDateDesc = (items) =>
+    [...items].sort(
+        (a, b) => new Date(b?.date ?? 0) - new Date(a?.date ?? 0),
+    );
+
+const upsertNormalizedRequest = (items, nextItem) => {
+    const next = [...items];
+    const index = next.findIndex((item) => item.id === nextItem.id);
+
+    if (index >= 0) {
+        next[index] = nextItem;
+    } else {
+        next.push(nextItem);
+    }
+
+    return sortRequestsByDateDesc(next);
+};
+
+const shouldIncludeRequestForRole = (row, role, userId) => {
+    if (role !== "technician") return true;
+    if (!row) return false;
+
+    const status = String(row.status ?? "").trim().toLowerCase();
+    const technicianId = row.technician_id ?? "";
+
+    return (
+        (status === "pending" && !technicianId) ||
+        (Boolean(userId) && technicianId === userId)
+    );
+};
+
 export default function AdminRequestsPage() {
     const { user, role } = useAuth();
     const { alert: showAlert, confirm: showConfirm } = useDialog();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
-    const [activeFilter, setActiveFilter] = useState("all");
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [activeFilter, setActiveFilter] = useState(
+        getValidFilter(searchParams.get("status") ?? "all"),
+    );
     const [search, setSearch] = useState("");
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -206,10 +244,18 @@ export default function AdminRequestsPage() {
 
     const loadRequests = useCallback(async () => {
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from("requests")
                 .select("*")
                 .order("created_at", { ascending: false });
+
+            if (role === "technician" && user?.id) {
+                query = query.or(
+                    `and(status.eq.pending,technician_id.is.null),technician_id.eq.${user.id}`,
+                );
+            }
+
+            const { data, error } = await query;
 
             if (error) throw error;
             const requestRows = data ?? [];
@@ -258,7 +304,7 @@ export default function AdminRequestsPage() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [role, user?.id]);
 
     useEffect(() => {
         const timerId = setTimeout(() => {
@@ -270,31 +316,79 @@ export default function AdminRequestsPage() {
             .on(
                 "postgres_changes",
                 { event: "DELETE", schema: "public", table: "requests" },
-                () => {
-                    // Immediately refresh on delete
-                    loadRequests();
+                (payload) => {
+                    setRequests((current) =>
+                        current.filter((item) => item.id !== payload.old.id),
+                    );
                 },
             )
             .on(
                 "postgres_changes",
                 { event: "INSERT", schema: "public", table: "requests" },
-                () => {
+                (payload) => {
                     if (deferRefreshRef.current) {
                         setHasDeferredRefresh(true);
                         return;
                     }
-                    loadRequests();
+
+                    if (
+                        !shouldIncludeRequestForRole(
+                            payload.new,
+                            role,
+                            user?.id,
+                        )
+                    ) {
+                        return;
+                    }
+
+                    const creatorName = payload.new.created_by
+                        ? "User tidak ditemukan"
+                        : "-";
+                    setRequests((current) =>
+                        upsertNormalizedRequest(
+                            current,
+                            normalizeRequest(payload.new, creatorName),
+                        ),
+                    );
                 },
             )
             .on(
                 "postgres_changes",
                 { event: "UPDATE", schema: "public", table: "requests" },
-                () => {
+                (payload) => {
                     if (deferRefreshRef.current) {
                         setHasDeferredRefresh(true);
                         return;
                     }
-                    loadRequests();
+
+                    const shouldInclude = shouldIncludeRequestForRole(
+                        payload.new,
+                        role,
+                        user?.id,
+                    );
+
+                    if (!shouldInclude) {
+                        setRequests((current) =>
+                            current.filter((item) => item.id !== payload.new.id),
+                        );
+                        return;
+                    }
+
+                    setRequests((current) => {
+                        const existing = current.find(
+                            (item) => item.id === payload.new.id,
+                        );
+                        return upsertNormalizedRequest(
+                            current,
+                            normalizeRequest(
+                                payload.new,
+                                existing?.createdByName ??
+                                    (payload.new.created_by
+                                        ? "User tidak ditemukan"
+                                        : "-"),
+                            ),
+                        );
+                    });
                 },
             )
             .subscribe();
@@ -303,13 +397,11 @@ export default function AdminRequestsPage() {
             clearTimeout(timerId);
             channel.unsubscribe();
         };
-    }, [loadRequests]);
+    }, [loadRequests, role, user?.id]);
 
     useEffect(() => {
-        deferRefreshRef.current = Boolean(
-            selectedRequestId || cameraOpen || saving,
-        );
-    }, [cameraOpen, saving, selectedRequestId]);
+        deferRefreshRef.current = Boolean(cameraOpen || saving);
+    }, [cameraOpen, saving]);
 
     useEffect(() => {
         if (deferRefreshRef.current || !hasDeferredRefresh) return;
@@ -335,11 +427,6 @@ export default function AdminRequestsPage() {
     }, [requests, selectedRequestId]);
 
     useEffect(() => {
-        const intervalId = setInterval(() => {
-            if (deferRefreshRef.current) return;
-            loadRequests();
-        }, 5000);
-
         const onVisibilityChange = () => {
             if (document.visibilityState !== "visible") return;
             if (deferRefreshRef.current) {
@@ -351,7 +438,6 @@ export default function AdminRequestsPage() {
 
         document.addEventListener("visibilitychange", onVisibilityChange);
         return () => {
-            clearInterval(intervalId);
             document.removeEventListener(
                 "visibilitychange",
                 onVisibilityChange,
@@ -363,24 +449,35 @@ export default function AdminRequestsPage() {
         const keyword = search.trim().toLowerCase();
 
         return requests.filter((item) => {
-            const matchTechnicianQueue =
-                role === "technician"
-                    ? item.status === "pending" && !item.technicianId
-                    : true;
             const matchFilter =
-                role === "technician"
-                    ? true
-                    : activeFilter === "all"
-                      ? true
-                      : item.status === activeFilter;
+                activeFilter === "all" ? true : item.status === activeFilter;
             const matchSearch = keyword
                 ? `${item.title} ${item.address} ${item.roomLocation} ${item.troubleDescription} ${item.assignee} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
-            return matchTechnicianQueue && matchFilter && matchSearch;
+            return matchFilter && matchSearch;
         });
-    }, [activeFilter, requests, role, search]);
+    }, [activeFilter, requests, search]);
+
+    const requestCounts = useMemo(() => {
+        return requests.reduce(
+            (acc, item) => {
+                const status = String(item.status ?? "").trim().toLowerCase();
+                acc.all += 1;
+                if (status === "pending") acc.pending += 1;
+                if (status === "in_progress") acc.in_progress += 1;
+                if (status === "completed") acc.completed += 1;
+                return acc;
+            },
+            {
+                all: 0,
+                pending: 0,
+                in_progress: 0,
+                completed: 0,
+            },
+        );
+    }, [requests]);
 
     // Pagination calculations
     const totalPages = Math.ceil(filteredRequests.length / ITEMS_PER_PAGE);
@@ -394,6 +491,13 @@ export default function AdminRequestsPage() {
     useEffect(() => {
         setCurrentPage(1);
     }, [activeFilter, search]);
+
+    useEffect(() => {
+        const nextFilter = getValidFilter(searchParams.get("status") ?? "all");
+        if (nextFilter !== activeFilter) {
+            setActiveFilter(nextFilter);
+        }
+    }, [activeFilter, searchParams]);
 
     const selectedRequest = useMemo(
         () => requests.find((item) => item.id === selectedRequestId) ?? null,
@@ -728,24 +832,42 @@ export default function AdminRequestsPage() {
                         </label>
                     </div>
 
-                    {role !== "technician" && (
-                        <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:mt-6 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
-                            {FILTERS.map((filter) => (
-                                <button
-                                    key={filter.key}
-                                    type="button"
-                                    onClick={() => setActiveFilter(filter.key)}
-                                    className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-6 md:text-sm ${
-                                        activeFilter === filter.key
-                                            ? "bg-sky-500 font-semibold text-white"
-                                            : "font-medium text-slate-600 hover:bg-slate-100"
-                                    }`}
-                                >
-                                    {filter.label}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                    <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:mt-6 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
+                        {FILTERS.map((filter) => (
+                            <button
+                                key={filter.key}
+                                type="button"
+                                onClick={() => {
+                                    setActiveFilter(filter.key);
+                                    if (filter.key === "all") {
+                                        setSearchParams({});
+                                        return;
+                                    }
+                                    setSearchParams({
+                                        status: filter.key,
+                                    });
+                                }}
+                                className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-6 md:text-sm ${
+                                    activeFilter === filter.key
+                                        ? "bg-sky-500 font-semibold text-white"
+                                        : "font-medium text-slate-600 hover:bg-slate-100"
+                                }`}
+                            >
+                                <span className="inline-flex items-center gap-2">
+                                    <span>{filter.label}</span>
+                                    <span
+                                        className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                            activeFilter === filter.key
+                                                ? "bg-white/20 text-white"
+                                                : "bg-slate-200 text-slate-700"
+                                        }`}
+                                    >
+                                        {requestCounts[filter.key] ?? 0}
+                                    </span>
+                                </span>
+                            </button>
+                        ))}
+                    </div>
 
                     <section className="mt-6 space-y-3">
                         {loading ? (

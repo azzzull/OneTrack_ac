@@ -5,7 +5,6 @@ import {
     List,
     Plus,
     Database,
-    PieChart,
     CircleUserRound,
     LogOut,
     PanelLeftClose,
@@ -26,7 +25,6 @@ const menuByRole = {
         { label: "Daftar Pekerjaan", path: "/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
         { label: "Master Data", path: "/master-data", icon: Database },
-        { label: "Reports", path: "/reports", icon: PieChart },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
     ],
     technician: [
