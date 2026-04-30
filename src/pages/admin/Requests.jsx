@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     CheckCircle2,
     Camera,
@@ -29,6 +29,10 @@ import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
 import { formatDateUniversal } from "../../utils/dateFormatter";
+import {
+    cleanupAllChannels,
+    createUniqueChannelName,
+} from "../../utils/realtimeChannelManager";
 
 const FILTERS = [
     { key: "all", label: "All" },
@@ -204,7 +208,7 @@ const shouldIncludeRequestForRole = (row, role, userId) => {
 };
 
 export default function AdminRequestsPage() {
-    const { user, role } = useAuth();
+    const { user, role, loading: authLoading } = useAuth();
     const { alert: showAlert, confirm: showConfirm } = useDialog();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -245,15 +249,17 @@ export default function AdminRequestsPage() {
     const isMountedRef = useRef(true);
     const roleRef = useRef(role);
     const userIdRef = useRef(user?.id);
+    const authLoadingRef = useRef(authLoading);
 
     useEffect(() => {
         isMountedRef.current = true;
         roleRef.current = role;
         userIdRef.current = user?.id;
+        authLoadingRef.current = authLoading;
         return () => {
             isMountedRef.current = false;
         };
-    }, [role, user?.id]);
+    }, [role, user?.id, authLoading]);
 
     const loadRequests = async () => {
         try {
@@ -323,111 +329,184 @@ export default function AdminRequestsPage() {
         }
     };
 
-    // ✅ Setup channel once on mount - NO dependencies to prevent re-creation
+    // ✅ Setup channel with proper lifecycle management
     useEffect(() => {
+        // ⚠️ CRITICAL GUARD: Don't setup if still loading auth OR no user
+        // This prevents the "cannot add postgres_changes callbacks after subscribe()" error
+        if (authLoadingRef.current || !userIdRef.current) {
+            console.log(
+                "[AdminRequests] Skipping channel setup - auth loading or no user:",
+                {
+                    loading: authLoadingRef.current,
+                    userId: userIdRef.current,
+                },
+            );
+            return;
+        }
+
         const timerId = setTimeout(() => {
             loadRequests();
         }, 0);
 
-        // ✅ Create channel only once
-        if (!channelRef.current) {
-            channelRef.current = supabase
-                .channel("admin-requests-page")
-                .on(
-                    "postgres_changes",
-                    { event: "DELETE", schema: "public", table: "requests" },
-                    (payload) => {
-                        setRequests((current) =>
-                            current.filter(
-                                (item) => item.id !== payload.old.id,
-                            ),
-                        );
-                    },
-                )
-                .on(
-                    "postgres_changes",
-                    { event: "INSERT", schema: "public", table: "requests" },
-                    (payload) => {
-                        if (deferRefreshRef.current) {
-                            setHasDeferredRefresh(true);
-                            return;
-                        }
+        // Async channel setup with proper cleanup
+        const setupChannel = async () => {
+            try {
+                // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
+                // This prevents "cannot add postgres_changes callbacks after subscribe()" error
+                await cleanupAllChannels();
 
-                        if (
-                            !shouldIncludeRequestForRole(
+                // ✅ CRITICAL FIX: Use unique channel name with user ID
+                const channelName = createUniqueChannelName(
+                    "admin-requests",
+                    userIdRef.current,
+                );
+
+                // ✅ Skip if channel already exists
+                const existingChannels = supabase.getChannels();
+                const existing = existingChannels.find(
+                    (ch) => ch.topic === `realtime:${channelName}`,
+                );
+
+                if (existing) {
+                    console.log(
+                        "[AdminRequests] Channel already exists, reusing:",
+                        channelName,
+                    );
+                    channelRef.current = existing;
+                    return;
+                }
+
+                // ✅ Create new channel with user-specific name
+                channelRef.current = supabase
+                    .channel(channelName)
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "DELETE",
+                            schema: "public",
+                            table: "requests",
+                        },
+                        (payload) => {
+                            if (!isMountedRef.current) return;
+                            if (deferRefreshRef.current) {
+                                setHasDeferredRefresh(true);
+                                return;
+                            }
+                            setRequests((current) =>
+                                current.filter(
+                                    (item) => item.id !== payload.old.id,
+                                ),
+                            );
+                        },
+                    )
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "INSERT",
+                            schema: "public",
+                            table: "requests",
+                        },
+                        (payload) => {
+                            if (!isMountedRef.current) return;
+                            if (deferRefreshRef.current) {
+                                setHasDeferredRefresh(true);
+                                return;
+                            }
+
+                            if (
+                                !shouldIncludeRequestForRole(
+                                    payload.new,
+                                    roleRef.current,
+                                    userIdRef.current,
+                                )
+                            ) {
+                                return;
+                            }
+
+                            const creatorName = payload.new.created_by
+                                ? "User tidak ditemukan"
+                                : "-";
+                            setRequests((current) =>
+                                upsertNormalizedRequest(
+                                    current,
+                                    normalizeRequest(payload.new, creatorName),
+                                ),
+                            );
+                        },
+                    )
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "UPDATE",
+                            schema: "public",
+                            table: "requests",
+                        },
+                        (payload) => {
+                            if (!isMountedRef.current) return;
+                            if (deferRefreshRef.current) {
+                                setHasDeferredRefresh(true);
+                                return;
+                            }
+
+                            const shouldInclude = shouldIncludeRequestForRole(
                                 payload.new,
                                 roleRef.current,
                                 userIdRef.current,
-                            )
-                        ) {
-                            return;
-                        }
-
-                        const creatorName = payload.new.created_by
-                            ? "User tidak ditemukan"
-                            : "-";
-                        setRequests((current) =>
-                            upsertNormalizedRequest(
-                                current,
-                                normalizeRequest(payload.new, creatorName),
-                            ),
-                        );
-                    },
-                )
-                .on(
-                    "postgres_changes",
-                    { event: "UPDATE", schema: "public", table: "requests" },
-                    (payload) => {
-                        if (deferRefreshRef.current) {
-                            setHasDeferredRefresh(true);
-                            return;
-                        }
-
-                        const shouldInclude = shouldIncludeRequestForRole(
-                            payload.new,
-                            roleRef.current,
-                            userIdRef.current,
-                        );
-
-                        if (!shouldInclude) {
-                            setRequests((current) =>
-                                current.filter(
-                                    (item) => item.id !== payload.new.id,
-                                ),
                             );
-                            return;
-                        }
 
-                        setRequests((current) => {
-                            const existing = current.find(
-                                (item) => item.id === payload.new.id,
-                            );
-                            return upsertNormalizedRequest(
-                                current,
-                                normalizeRequest(
-                                    payload.new,
-                                    existing?.createdByName ??
-                                        (payload.new.created_by
-                                            ? "User tidak ditemukan"
-                                            : "-"),
-                                ),
-                            );
-                        });
-                    },
-                )
-                .subscribe();
-        }
+                            if (!shouldInclude) {
+                                setRequests((current) =>
+                                    current.filter(
+                                        (item) => item.id !== payload.new.id,
+                                    ),
+                                );
+                                return;
+                            }
+
+                            setRequests((current) => {
+                                const existing = current.find(
+                                    (item) => item.id === payload.new.id,
+                                );
+                                return upsertNormalizedRequest(
+                                    current,
+                                    normalizeRequest(
+                                        payload.new,
+                                        existing?.createdByName ??
+                                            (payload.new.created_by
+                                                ? "User tidak ditemukan"
+                                                : "-"),
+                                    ),
+                                );
+                            });
+                        },
+                    );
+
+                const { error } = await channelRef.current.subscribe();
+
+                if (error) {
+                    console.error("[AdminRequests] Subscribe error:", error);
+                    return;
+                }
+
+                console.log("[AdminRequests] Subscribed to:", channelName);
+            } catch (error) {
+                console.error("[AdminRequests] Channel setup error:", error);
+            }
+        };
+
+        setupChannel();
 
         return () => {
             clearTimeout(timerId);
-            // ✅ Proper cleanup: unsubscribe AND remove channel
+            // ✅ CRITICAL FIX: Proper cleanup using supabase.removeChannel()
+            // NOT .unsubscribe() - that only stops receiving events
             if (channelRef.current) {
-                channelRef.current.unsubscribe();
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
+                console.log("[AdminRequests] Channel cleaned up");
             }
         };
-    }, []); // ✅ Empty dependency array - only run once on mount
+    }, [user?.id]); // ✅ Only depends on user.id - recreates when user changes
 
     useEffect(() => {
         deferRefreshRef.current = Boolean(cameraOpen || saving);

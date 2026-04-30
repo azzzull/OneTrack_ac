@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import supabase from "../supabaseClient";
 import { useAuth } from "../context/useAuth";
+import {
+    cleanupAllChannels,
+    createUniqueChannelName,
+} from "../utils/realtimeChannelManager";
 
 const INITIAL_STATS = {
     pending: 0,
@@ -32,15 +36,30 @@ export default function useRequestStats() {
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
     const roleRef = useRef(role);
+    const loadingRef = useRef(loading);
+    const userIdRef = useRef(user?.id);
 
-    // ✅ Update role ref without triggering effects
+    // ✅ Update refs without triggering effects
     useEffect(() => {
         roleRef.current = role;
     }, [role]);
 
-    // ✅ Define loadStats function (will be called directly, not as dependency)
-    const loadStats = async () => {
+    useEffect(() => {
+        userIdRef.current = user?.id;
+    }, [user?.id]);
+
+    useEffect(() => {
+        loadingRef.current = loading;
+    }, [loading]);
+
+    // ✅ Define loadStats as a stable function
+    const loadStats = useCallback(async () => {
         try {
+            // Guard: Don't load if still loading or no user yet
+            if (loadingRef.current || !userIdRef.current) {
+                return;
+            }
+
             const onlyUnassignedPending = roleRef.current === "technician";
 
             const [pending, inProgress, completed] = await Promise.all([
@@ -62,22 +81,50 @@ export default function useRequestStats() {
         } catch (error) {
             console.error("Error loading request stats:", error);
         }
-    };
+    }, []);
 
-    // ✅ Setup channel once after authentication
+    // ✅ Setup channel with proper lifecycle management
     useEffect(() => {
-        if (loading || !user) return;
+        // Guard: Don't setup if still loading or no user
+        if (loading || !user?.id) {
+            return;
+        }
 
         isMountedRef.current = true;
 
-        // Load stats immediately
+        // Immediate stats load
         loadStats();
 
-        // ✅ Create channel only once per session
-        if (!channelRef.current) {
-            channelRef.current = supabase
-                .channel("requests-stats")
-                .on(
+        // Async channel setup with unique name
+        const setupChannel = async () => {
+            try {
+                // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
+                // This prevents "cannot add postgres_changes callbacks after subscribe()" error
+                await cleanupAllChannels();
+
+                // ✅ CRITICAL FIX: Use unique channel name with user ID
+                const channelName = createUniqueChannelName(
+                    "requests-stats",
+                    user.id,
+                );
+
+                // ✅ Skip if channel already exists
+                const existingChannels = supabase.getChannels();
+                const existing = existingChannels.find(
+                    (ch) => ch.topic === `realtime:${channelName}`,
+                );
+
+                if (existing) {
+                    console.log(
+                        "[useRequestStats] Channel already exists, reusing:",
+                        channelName,
+                    );
+                    channelRef.current = existing;
+                    return;
+                }
+
+                // Create new channel
+                const channel = supabase.channel(channelName).on(
                     "postgres_changes",
                     {
                         event: "*",
@@ -85,20 +132,42 @@ export default function useRequestStats() {
                         table: "requests",
                     },
                     () => {
-                        loadStats();
+                        // Only call loadStats if mounted
+                        if (isMountedRef.current) {
+                            loadStats();
+                        }
                     },
-                )
-                .subscribe();
-        }
+                );
 
-        // Polling backup every 5 seconds
+                const { error } = await channel.subscribe();
+
+                if (error) {
+                    console.error("[useRequestStats] Subscribe error:", error);
+                    return;
+                }
+
+                channelRef.current = channel;
+                console.log("[useRequestStats] Subscribed to:", channelName);
+            } catch (error) {
+                console.error("[useRequestStats] Channel setup error:", error);
+            }
+        };
+
+        setupChannel();
+
+        // Polling backup every 5 seconds (for reliability)
         const intervalId = setInterval(() => {
-            loadStats();
+            if (isMountedRef.current && !loadingRef.current) {
+                loadStats();
+            }
         }, 5000);
 
         // Reload when tab becomes visible
         const handleFocus = () => {
-            if (document.visibilityState === "visible") {
+            if (
+                document.visibilityState === "visible" &&
+                isMountedRef.current
+            ) {
                 loadStats();
             }
         };
@@ -106,21 +175,24 @@ export default function useRequestStats() {
         document.addEventListener("visibilitychange", handleFocus);
         window.addEventListener("focus", handleFocus);
 
+        // ✅ Cleanup function
         return () => {
             isMountedRef.current = false;
 
+            // Clear intervals and event listeners
             clearInterval(intervalId);
             document.removeEventListener("visibilitychange", handleFocus);
             window.removeEventListener("focus", handleFocus);
 
-            // ✅ Proper cleanup: unsubscribe AND remove channel
+            // ✅ CRITICAL FIX: Proper cleanup using supabase.removeChannel()
+            // NOT .unsubscribe() - that only stops receiving events
             if (channelRef.current) {
-                channelRef.current.unsubscribe();
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
+                console.log("[useRequestStats] Channel cleaned up");
             }
         };
-    }, [loading, user]); // ✅ Only depends on auth status
+    }, [loading, user?.id, loadStats]); // ✅ Only depends on auth
 
     return stats;
 }

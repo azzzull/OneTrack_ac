@@ -14,6 +14,10 @@ import Card from "../../components/card";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
+import {
+    cleanupAllChannels,
+    createUniqueChannelName,
+} from "../../utils/realtimeChannelManager";
 
 const STATUS_META = {
     pending: { label: "Pending", color: "#0ea5e9" },
@@ -76,13 +80,23 @@ const describeFullCircle = (cx, cy, radius) =>
 export default function TechnicianDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const [tasks, setTasks] = useState([]);
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
     const userIdRef = useRef(user?.id);
+    const authLoadingRef = useRef(authLoading);
+
+    // ✅ Update refs without triggering effect
+    useEffect(() => {
+        userIdRef.current = user?.id;
+    }, [user?.id]);
+
+    useEffect(() => {
+        authLoadingRef.current = authLoading;
+    }, [authLoading]);
 
     const loadTasks = async () => {
         if (!userIdRef.current) return;
@@ -106,43 +120,84 @@ export default function TechnicianDashboard() {
         }
     };
 
-    useEffect(() => {
-        isMountedRef.current = true;
-        userIdRef.current = user?.id;
-        return () => {
-            isMountedRef.current = false;
-        };
-    }, [user?.id]);
-
     // ✅ Setup channel once on mount - NO dependencies to prevent re-creation
     useEffect(() => {
-        if (!user?.id) return;
+        // ⚠️ CRITICAL GUARD: Don't setup if still loading auth OR no user
+        if (authLoadingRef.current || !userIdRef.current) {
+            console.log(
+                "[TechDashboard] Skipping channel setup - auth loading or no user:",
+                {
+                    loading: authLoadingRef.current,
+                    userId: userIdRef.current,
+                },
+            );
+            return;
+        }
+
+        if (!userIdRef.current) return;
 
         const timerId = setTimeout(() => {
             loadTasks();
         }, 0);
 
-        // ✅ Create channel only once per user.id
-        if (!channelRef.current) {
+        // Async channel setup with proper cleanup
+        const setupChannel = async () => {
+            // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
+            await cleanupAllChannels();
+
+            // ✅ CRITICAL FIX: Use unique channel name with user ID
+            const channelName = createUniqueChannelName(
+                "technician-dashboard",
+                userIdRef.current,
+            );
+
+            // ✅ Skip if channel already exists
+            const existingChannels = supabase.getChannels();
+            const existing = existingChannels.find(
+                (ch) => ch.topic === `realtime:${channelName}`,
+            );
+
+            if (existing) {
+                console.log(
+                    "[TechDashboard] Channel already exists, reusing:",
+                    channelName,
+                );
+                channelRef.current = existing;
+                return;
+            }
+
             channelRef.current = supabase
-                .channel(`technician-dashboard-${user.id}`)
+                .channel(channelName)
                 .on(
                     "postgres_changes",
                     { event: "*", schema: "public", table: "requests" },
                     () => {
-                        loadTasks();
+                        if (isMountedRef.current) {
+                            loadTasks();
+                        }
                     },
-                )
-                .subscribe();
-        }
+                );
+
+            const { error } = await channelRef.current.subscribe();
+
+            if (error) {
+                console.error("[TechDashboard] Subscribe error:", error);
+                return;
+            }
+
+            console.log("[TechDashboard] Subscribed to:", channelName);
+        };
+
+        setupChannel();
 
         return () => {
             clearTimeout(timerId);
-            // ✅ Proper cleanup: unsubscribe AND remove channel
+            // ✅ CRITICAL FIX: Proper cleanup using supabase.removeChannel()
+            // NOT .unsubscribe() - that only stops receiving events
             if (channelRef.current) {
-                channelRef.current.unsubscribe();
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
+                console.log("[TechDashboard] Channel cleaned up");
             }
         };
     }, [user?.id]); // ✅ Only recreate if user.id changes

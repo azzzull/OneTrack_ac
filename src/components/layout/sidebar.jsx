@@ -18,6 +18,10 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
 import useRequestStats from "../../hooks/useRequestStats";
+import {
+    cleanupAllChannels,
+    createUniqueChannelName,
+} from "../../utils/realtimeChannelManager";
 
 const menuByRole = {
     admin: [
@@ -95,10 +99,34 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     useEffect(() => {
         if (loading || role !== "technician" || !user?.id) return;
 
-        // ✅ Create channel only once
-        if (!channelRef.current) {
+        // Async channel setup with proper cleanup
+        const setupChannel = async () => {
+            // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
+            await cleanupAllChannels();
+
+            // ✅ CRITICAL FIX: Use unique channel name with user ID
+            const channelName = createUniqueChannelName(
+                "requests-new-notify",
+                user.id,
+            );
+
+            // ✅ Skip if channel already exists
+            const existingChannels = supabase.getChannels();
+            const existing = existingChannels.find(
+                (ch) => ch.topic === `realtime:${channelName}`,
+            );
+
+            if (existing) {
+                console.log(
+                    "[Sidebar] Channel already exists, reusing:",
+                    channelName,
+                );
+                channelRef.current = existing;
+                return;
+            }
+
             channelRef.current = supabase
-                .channel("requests-new-notify")
+                .channel(channelName)
                 .on(
                     "postgres_changes",
                     { event: "INSERT", schema: "public", table: "requests" },
@@ -150,15 +178,26 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             }
                         }
                     },
-                )
-                .subscribe();
-        }
+                );
+
+            const { error } = await channelRef.current.subscribe();
+
+            if (error) {
+                console.error("[Sidebar] Subscribe error:", error);
+                return;
+            }
+
+            console.log("[Sidebar] Subscribed to:", channelName);
+        };
+
+        setupChannel();
 
         return () => {
+            // ✅ CRITICAL FIX: Proper cleanup using supabase.removeChannel()
             if (channelRef.current) {
-                channelRef.current.unsubscribe();
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
+                console.log("[Sidebar] Channel cleaned up");
             }
         };
     }, [loading, role, user?.id]);

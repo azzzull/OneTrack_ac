@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
     BarChart3,
     CalendarDays,
@@ -15,6 +15,10 @@ import Card from "../../components/card";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
+import {
+    cleanupAllChannels,
+    createUniqueChannelName,
+} from "../../utils/realtimeChannelManager";
 
 const STATUS_META = {
     pending: { label: "Pending", color: "#0ea5e9" },
@@ -85,12 +89,18 @@ const describeFullCircle = (cx, cy, radius) =>
 export default function AdminDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const [requests, setRequests] = useState([]);
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
+    const authLoadingRef = useRef(authLoading);
+
+    // ✅ Update auth loading ref without triggering effect
+    useEffect(() => {
+        authLoadingRef.current = authLoading;
+    }, [authLoading]);
 
     const loadRequests = async () => {
         try {
@@ -120,34 +130,86 @@ export default function AdminDashboard() {
 
     // ✅ Setup channel once on mount - NO dependencies to prevent re-creation
     useEffect(() => {
+        // ⚠️ CRITICAL GUARD: Don't setup if still loading auth OR no user
+        if (authLoadingRef.current || !user?.id) {
+            console.log(
+                "[AdminDashboard] Skipping channel setup - auth loading or no user:",
+                {
+                    loading: authLoadingRef.current,
+                    userId: user?.id,
+                },
+            );
+            return;
+        }
+
         const timerId = setTimeout(() => {
             loadRequests();
         }, 0);
 
-        // ✅ Create channel only once
-        if (!channelRef.current) {
+        // Async channel setup with proper cleanup
+        const setupChannel = async () => {
+            // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
+            await cleanupAllChannels();
+
+            // ✅ CRITICAL FIX: Use unique channel name with user ID
+            const channelName = createUniqueChannelName(
+                "admin-dashboard",
+                user?.id,
+            );
+
+            // ✅ Skip if channel already exists
+            const existingChannels = supabase.getChannels();
+            const existing = existingChannels.find(
+                (ch) => ch.topic === `realtime:${channelName}`,
+            );
+
+            if (existing) {
+                console.log(
+                    "[AdminDashboard] Channel already exists, reusing:",
+                    channelName,
+                );
+                channelRef.current = existing;
+                return;
+            }
+
             channelRef.current = supabase
-                .channel("admin-dashboard")
+                .channel(channelName)
                 .on(
                     "postgres_changes",
                     { event: "*", schema: "public", table: "requests" },
                     () => {
-                        loadRequests();
+                        if (isMountedRef.current) {
+                            loadRequests();
+                        }
                     },
-                )
-                .subscribe();
+                );
+
+            const { error } = await channelRef.current.subscribe();
+
+            if (error) {
+                console.error("[AdminDashboard] Subscribe error:", error);
+                return;
+            }
+
+            console.log("[AdminDashboard] Subscribed to:", channelName);
+        };
+
+        // Setup channel (but only if user is authenticated)
+        if (user?.id) {
+            setupChannel();
         }
 
         return () => {
             clearTimeout(timerId);
-            // ✅ Proper cleanup: unsubscribe AND remove channel
+            // ✅ CRITICAL FIX: Proper cleanup using supabase.removeChannel()
+            // NOT .unsubscribe() - that only stops receiving events
             if (channelRef.current) {
-                channelRef.current.unsubscribe();
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
+                console.log("[AdminDashboard] Channel cleaned up");
             }
         };
-    }, []); // ✅ Empty dependency array - only run on mount
+    }, [user?.id]); // ✅ Recreate only when user changes
 
     const statusCounts = useMemo(() => {
         const counts = {

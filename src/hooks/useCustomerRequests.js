@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import supabase from "../supabaseClient";
+import { cleanupAllChannels } from "../utils/realtimeChannelManager";
 
 const sortByCreatedAtDesc = (items) =>
     [...items].sort(
@@ -126,66 +127,127 @@ export default function useCustomerRequests(user) {
         };
     }, []);
 
-    // ✅ Setup realtime subscription - only once per user.id
+    // ✅ Setup realtime subscription with proper lifecycle management
     useEffect(() => {
         if (!userRef.current?.id) return;
 
         const isRelevantCustomerRequest = (row) =>
             customerIdsRef.current.includes(row?.customer_id);
 
-        if (!channelRef.current) {
-            channelRef.current = supabase
-                .channel(`customer-requests-${userRef.current.id}`)
-                .on(
-                    "postgres_changes",
-                    { event: "DELETE", schema: "public", table: "requests" },
-                    (payload) => {
-                        if (!isRelevantCustomerRequest(payload.old)) return;
-                        setRequests((current) =>
-                            current.filter(
-                                (item) => item.id !== payload.old.id,
-                            ),
-                        );
-                    },
-                )
-                .on(
-                    "postgres_changes",
-                    { event: "INSERT", schema: "public", table: "requests" },
-                    (payload) => {
-                        if (!isRelevantCustomerRequest(payload.new)) return;
-                        setRequests((current) =>
-                            upsertRequest(current, payload.new),
-                        );
-                    },
-                )
-                .on(
-                    "postgres_changes",
-                    { event: "UPDATE", schema: "public", table: "requests" },
-                    (payload) => {
-                        const isRelevant = isRelevantCustomerRequest(
-                            payload.new,
-                        );
-                        if (!isRelevant) {
+        // Async channel setup with proper cleanup
+        const setupChannel = async () => {
+            try {
+                // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
+                await cleanupAllChannels();
+
+                // ✅ CRITICAL FIX: Use unique channel name with user ID
+                const channelName = `customer-requests-${userRef.current.id}`;
+
+                // ✅ Skip if channel already exists
+                const existingChannels = supabase.getChannels();
+                const existing = existingChannels.find(
+                    (ch) => ch.topic === `realtime:${channelName}`,
+                );
+
+                if (existing) {
+                    console.log(
+                        "[useCustomerRequests] Channel already exists, reusing:",
+                        channelName,
+                    );
+                    channelRef.current = existing;
+                    return;
+                }
+
+                channelRef.current = supabase
+                    .channel(channelName)
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "DELETE",
+                            schema: "public",
+                            table: "requests",
+                        },
+                        (payload) => {
+                            if (!isMountedRef.current) return;
+                            if (!isRelevantCustomerRequest(payload.old)) return;
                             setRequests((current) =>
                                 current.filter(
-                                    (item) => item.id !== payload.new.id,
+                                    (item) => item.id !== payload.old.id,
                                 ),
                             );
-                            return;
-                        }
-                        setRequests((current) =>
-                            upsertRequest(current, payload.new),
-                        );
-                    },
-                )
-                .subscribe();
-        }
+                        },
+                    )
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "INSERT",
+                            schema: "public",
+                            table: "requests",
+                        },
+                        (payload) => {
+                            if (!isMountedRef.current) return;
+                            if (!isRelevantCustomerRequest(payload.new)) return;
+                            setRequests((current) =>
+                                upsertRequest(current, payload.new),
+                            );
+                        },
+                    )
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "UPDATE",
+                            schema: "public",
+                            table: "requests",
+                        },
+                        (payload) => {
+                            if (!isMountedRef.current) return;
+                            const isRelevant = isRelevantCustomerRequest(
+                                payload.new,
+                            );
+                            if (!isRelevant) {
+                                setRequests((current) =>
+                                    current.filter(
+                                        (item) => item.id !== payload.new.id,
+                                    ),
+                                );
+                                return;
+                            }
+                            setRequests((current) =>
+                                upsertRequest(current, payload.new),
+                            );
+                        },
+                    );
+
+                const { error } = await channelRef.current.subscribe();
+
+                if (error) {
+                    console.error(
+                        "[useCustomerRequests] Subscribe error:",
+                        error,
+                    );
+                    return;
+                }
+
+                console.log(
+                    "[useCustomerRequests] Subscribed to:",
+                    channelName,
+                );
+            } catch (error) {
+                console.error(
+                    "[useCustomerRequests] Channel setup error:",
+                    error,
+                );
+            }
+        };
+
+        setupChannel();
 
         return () => {
+            // ✅ CRITICAL FIX: Proper cleanup using supabase.removeChannel()
             if (channelRef.current) {
-                channelRef.current.unsubscribe();
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
+                console.log("[useCustomerRequests] Channel cleaned up");
             }
         };
     }, [user?.id]);
