@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import supabase from "../supabaseClient";
 import { useAuth } from "../context/useAuth";
 
@@ -26,59 +26,67 @@ const countByStatus = async (status, { onlyUnassigned = false } = {}) => {
 };
 
 export default function useRequestStats() {
-    const { role } = useAuth();
+    const { role, user, loading } = useAuth();
     const [stats, setStats] = useState(INITIAL_STATS);
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
+    const roleRef = useRef(role);
 
-    const loadStats = useCallback(async () => {
-        try {
-            const onlyUnassignedPending = role === "technician";
-            const [pending, inProgress, completed] = await Promise.all([
-                countByStatus("pending", {
-                    onlyUnassigned: onlyUnassignedPending,
-                }),
-                countByStatus("in_progress"),
-                countByStatus("completed"),
-            ]);
-
-            if (isMountedRef.current) {
-                setStats({
-                    pending,
-                    inProgress,
-                    completed,
-                    active: pending + inProgress,
-                });
-            }
-        } catch (error) {
-            console.error("Error loading request stats:", error);
-            // Keep previous stats to avoid noisy resets (which can trigger repeated notifications)
-        }
+    // Update role ref whenever role changes (without triggering effect)
+    useEffect(() => {
+        roleRef.current = role;
     }, [role]);
 
+    // Setup channel only once on mount AND after user is authenticated
     useEffect(() => {
+        // Don't setup channel if user is still loading or not authenticated
+        if (loading || !user) {
+            return;
+        }
+
         isMountedRef.current = true;
 
-        // Unsubscribe previous channel if exists
-        if (channelRef.current) {
-            channelRef.current.unsubscribe();
-        }
+        const loadStats = async () => {
+            try {
+                const onlyUnassignedPending = roleRef.current === "technician";
+                const [pending, inProgress, completed] = await Promise.all([
+                    countByStatus("pending", {
+                        onlyUnassigned: onlyUnassignedPending,
+                    }),
+                    countByStatus("in_progress"),
+                    countByStatus("completed"),
+                ]);
+
+                if (isMountedRef.current) {
+                    setStats({
+                        pending,
+                        inProgress,
+                        completed,
+                        active: pending + inProgress,
+                    });
+                }
+            } catch (error) {
+                console.error("Error loading request stats:", error);
+            }
+        };
 
         const timerId = setTimeout(() => {
             loadStats();
         }, 0);
 
-        // Create and subscribe to channel
-        channelRef.current = supabase
-            .channel("requests-stats")
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "requests" },
-                () => {
-                    loadStats();
-                },
-            )
-            .subscribe();
+        // Create and subscribe to channel - only once
+        if (!channelRef.current) {
+            channelRef.current = supabase
+                .channel("requests-stats")
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "requests" },
+                    () => {
+                        loadStats();
+                    },
+                )
+                .subscribe();
+        }
 
         const intervalId = setInterval(() => {
             loadStats();
@@ -102,11 +110,13 @@ export default function useRequestStats() {
                 onVisibilityOrFocus,
             );
             window.removeEventListener("focus", onVisibilityOrFocus);
+            // Unsubscribe channel only on unmount
             if (channelRef.current) {
                 channelRef.current.unsubscribe();
+                channelRef.current = null;
             }
         };
-    }, [loadStats]);
+    }, [loading, user]); // Re-run only when user authentication status changes
 
     return stats;
 }
