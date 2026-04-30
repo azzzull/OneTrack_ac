@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import supabase from "../supabaseClient";
 import { useAuth } from "../context/useAuth";
 
@@ -28,59 +28,62 @@ const countByStatus = async (status, { onlyUnassigned = false } = {}) => {
 export default function useRequestStats() {
     const { role, user, loading } = useAuth();
     const [stats, setStats] = useState(INITIAL_STATS);
+
     const channelRef = useRef(null);
-    const isMountedRef = useRef(true);
+    const isMountedRef = useRef(false);
     const roleRef = useRef(role);
 
-    // Update role ref whenever role changes (without triggering effect)
+    // 🔹 selalu update role tanpa re-trigger effect
     useEffect(() => {
         roleRef.current = role;
     }, [role]);
 
-    // Setup channel only once on mount AND after user is authenticated
-    useEffect(() => {
-        // Don't setup channel if user is still loading or not authenticated
-        if (loading || !user) {
-            return;
+    // 🔥 function load stats (dibungkus biar stabil)
+    const loadStats = useCallback(async () => {
+        try {
+            const onlyUnassignedPending = roleRef.current === "technician";
+
+            const [pending, inProgress, completed] = await Promise.all([
+                countByStatus("pending", {
+                    onlyUnassigned: onlyUnassignedPending,
+                }),
+                countByStatus("in_progress"),
+                countByStatus("completed"),
+            ]);
+
+            if (isMountedRef.current) {
+                setStats({
+                    pending,
+                    inProgress,
+                    completed,
+                    active: pending + inProgress,
+                });
+            }
+        } catch (error) {
+            console.error("Error loading request stats:", error);
         }
+    }, []);
+
+    // 🔥 effect utama (auth + realtime)
+    useEffect(() => {
+        if (loading || !user) return;
 
         isMountedRef.current = true;
 
-        const loadStats = async () => {
-            try {
-                const onlyUnassignedPending = roleRef.current === "technician";
-                const [pending, inProgress, completed] = await Promise.all([
-                    countByStatus("pending", {
-                        onlyUnassigned: onlyUnassignedPending,
-                    }),
-                    countByStatus("in_progress"),
-                    countByStatus("completed"),
-                ]);
+        // 🔥 load pertama
+        loadStats();
 
-                if (isMountedRef.current) {
-                    setStats({
-                        pending,
-                        inProgress,
-                        completed,
-                        active: pending + inProgress,
-                    });
-                }
-            } catch (error) {
-                console.error("Error loading request stats:", error);
-            }
-        };
-
-        const timerId = setTimeout(() => {
-            loadStats();
-        }, 0);
-
-        // Create and subscribe to channel - only once
+        // 🔥 cegah double subscribe
         if (!channelRef.current) {
             channelRef.current = supabase
                 .channel("requests-stats")
                 .on(
                     "postgres_changes",
-                    { event: "*", schema: "public", table: "requests" },
+                    {
+                        event: "*",
+                        schema: "public",
+                        table: "requests",
+                    },
                     () => {
                         loadStats();
                     },
@@ -88,35 +91,35 @@ export default function useRequestStats() {
                 .subscribe();
         }
 
+        // 🔹 polling backup (optional)
         const intervalId = setInterval(() => {
             loadStats();
         }, 5000);
 
-        const onVisibilityOrFocus = () => {
+        // 🔹 reload saat tab aktif lagi
+        const handleFocus = () => {
             if (document.visibilityState === "visible") {
                 loadStats();
             }
         };
 
-        document.addEventListener("visibilitychange", onVisibilityOrFocus);
-        window.addEventListener("focus", onVisibilityOrFocus);
+        document.addEventListener("visibilitychange", handleFocus);
+        window.addEventListener("focus", handleFocus);
 
         return () => {
             isMountedRef.current = false;
-            clearTimeout(timerId);
+
             clearInterval(intervalId);
-            document.removeEventListener(
-                "visibilitychange",
-                onVisibilityOrFocus,
-            );
-            window.removeEventListener("focus", onVisibilityOrFocus);
-            // Unsubscribe channel only on unmount
+            document.removeEventListener("visibilitychange", handleFocus);
+            window.removeEventListener("focus", handleFocus);
+
+            // 🔥 cleanup channel dengan benar
             if (channelRef.current) {
-                channelRef.current.unsubscribe();
+                supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
             }
         };
-    }, [loading, user]); // Re-run only when user authentication status changes
+    }, [loading, user, loadStats]);
 
     return stats;
 }
