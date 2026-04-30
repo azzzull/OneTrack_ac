@@ -47,12 +47,14 @@ const menuByRole = {
 const getMenus = (role) => menuByRole[role] ?? [];
 
 export default function Sidebar({ collapsed = false, onToggle }) {
-    const { user, role, profile } = useAuth();
+    const { user, role, profile, loading } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
     const [newRequestToast, setNewRequestToast] = useState("");
     const toastTimerRef = useRef(null);
     const notifiedRequestIdsRef = useRef(new Set());
+    const channelRef = useRef(null);
+    const isMountedRef = useRef(true);
     const menus = getMenus(role).map((menu) => {
         const badgeByPath = {
             "/requests": stats.pending,
@@ -81,7 +83,9 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     const canOpenProfile = role === "customer" || role === "technician";
 
     useEffect(() => {
+        isMountedRef.current = true;
         return () => {
+            isMountedRef.current = false;
             if (toastTimerRef.current) {
                 clearTimeout(toastTimerRef.current);
             }
@@ -89,62 +93,75 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     }, []);
 
     useEffect(() => {
-        if (role !== "technician") return;
+        if (loading || role !== "technician" || !user?.id) return;
 
-        const channel = supabase
-            .channel("requests-new-notify")
-            .on(
-                "postgres_changes",
-                { event: "INSERT", schema: "public", table: "requests" },
-                (payload) => {
-                    const row = payload?.new;
-                    if (!row) return;
-                    const status = String(row.status ?? "pending").toLowerCase();
-                    const isUnassigned = !row.technician_id;
-                    if (status !== "pending" || !isUnassigned) return;
+        // ✅ Create channel only once
+        if (!channelRef.current) {
+            channelRef.current = supabase
+                .channel("requests-new-notify")
+                .on(
+                    "postgres_changes",
+                    { event: "INSERT", schema: "public", table: "requests" },
+                    (payload) => {
+                        if (!isMountedRef.current) return;
 
-                    const requestId =
-                        row.id ?? `${row.created_at}-${row.customer_id ?? ""}`;
-                    if (notifiedRequestIdsRef.current.has(requestId)) return;
-                    notifiedRequestIdsRef.current.add(requestId);
+                        const row = payload?.new;
+                        if (!row) return;
+                        const status = String(
+                            row.status ?? "pending",
+                        ).toLowerCase();
+                        const isUnassigned = !row.technician_id;
+                        if (status !== "pending" || !isUnassigned) return;
 
-                    const message = "ada pekerjaan baru yang di request";
+                        const requestId =
+                            row.id ??
+                            `${row.created_at}-${row.customer_id ?? ""}`;
+                        if (notifiedRequestIdsRef.current.has(requestId))
+                            return;
+                        notifiedRequestIdsRef.current.add(requestId);
 
-                    if (toastTimerRef.current) {
-                        clearTimeout(toastTimerRef.current);
-                    }
-                    Promise.resolve().then(() => {
-                        setNewRequestToast(message);
-                    });
-                    toastTimerRef.current = setTimeout(() => {
-                        setNewRequestToast("");
-                    }, 4500);
+                        const message = "ada pekerjaan baru yang di request";
 
-                    if ("Notification" in window) {
-                        if (Notification.permission === "granted") {
-                            new Notification("OneTrack", {
-                                body: message,
-                            });
-                        } else if (Notification.permission === "default") {
-                            Notification.requestPermission().then(
-                                (permission) => {
-                                    if (permission === "granted") {
-                                        new Notification("OneTrack", {
-                                            body: message,
-                                        });
-                                    }
-                                },
-                            );
+                        if (toastTimerRef.current) {
+                            clearTimeout(toastTimerRef.current);
                         }
-                    }
-                },
-            )
-            .subscribe();
+                        setNewRequestToast(message);
+                        toastTimerRef.current = setTimeout(() => {
+                            if (isMountedRef.current) {
+                                setNewRequestToast("");
+                            }
+                        }, 4500);
+
+                        if ("Notification" in window) {
+                            if (Notification.permission === "granted") {
+                                new Notification("OneTrack", {
+                                    body: message,
+                                });
+                            } else if (Notification.permission === "default") {
+                                Notification.requestPermission().then(
+                                    (permission) => {
+                                        if (permission === "granted") {
+                                            new Notification("OneTrack", {
+                                                body: message,
+                                            });
+                                        }
+                                    },
+                                );
+                            }
+                        }
+                    },
+                )
+                .subscribe();
+        }
 
         return () => {
-            channel.unsubscribe();
+            if (channelRef.current) {
+                channelRef.current.unsubscribe();
+                supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+            }
         };
-    }, [role]);
+    }, [loading, role, user?.id]);
 
     return (
         <>

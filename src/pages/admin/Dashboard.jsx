@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     BarChart3,
     CalendarDays,
@@ -89,8 +89,10 @@ export default function AdminDashboard() {
     const [requests, setRequests] = useState([]);
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
+    const channelRef = useRef(null);
+    const isMountedRef = useRef(true);
 
-    const loadRequests = useCallback(async () => {
+    const loadRequests = async () => {
         try {
             const { data, error } = await supabase
                 .from("requests")
@@ -98,34 +100,54 @@ export default function AdminDashboard() {
                 .order("created_at", { ascending: false });
 
             if (error) throw error;
-            setRequests(data ?? []);
+            if (isMountedRef.current) {
+                setRequests(data ?? []);
+            }
         } catch (error) {
             console.error("Error loading admin dashboard data:", error);
-            setRequests([]);
+            if (isMountedRef.current) {
+                setRequests([]);
+            }
         }
+    };
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
     }, []);
 
+    // ✅ Setup channel once on mount - NO dependencies to prevent re-creation
     useEffect(() => {
         const timerId = setTimeout(() => {
             loadRequests();
         }, 0);
 
-        const channel = supabase
-            .channel("admin-dashboard")
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "requests" },
-                () => {
-                    loadRequests();
-                },
-            )
-            .subscribe();
+        // ✅ Create channel only once
+        if (!channelRef.current) {
+            channelRef.current = supabase
+                .channel("admin-dashboard")
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "requests" },
+                    () => {
+                        loadRequests();
+                    },
+                )
+                .subscribe();
+        }
 
         return () => {
             clearTimeout(timerId);
-            channel.unsubscribe();
+            // ✅ Proper cleanup: unsubscribe AND remove channel
+            if (channelRef.current) {
+                channelRef.current.unsubscribe();
+                supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+            }
         };
-    }, [loadRequests]);
+    }, []); // ✅ Empty dependency array - only run on mount
 
     const statusCounts = useMemo(() => {
         const counts = {
@@ -341,7 +363,11 @@ export default function AdminDashboard() {
                             </div>
 
                             <div className="mt-4 flex flex-col items-center">
-                                <svg width="210" height="210" viewBox="0 0 180 180">
+                                <svg
+                                    width="210"
+                                    height="210"
+                                    viewBox="0 0 180 180"
+                                >
                                     <circle
                                         cx={center}
                                         cy={center}

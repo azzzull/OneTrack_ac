@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import supabase from "../supabaseClient";
 import { useAuth } from "../context/useAuth";
 
@@ -30,16 +30,16 @@ export default function useRequestStats() {
     const [stats, setStats] = useState(INITIAL_STATS);
 
     const channelRef = useRef(null);
-    const isMountedRef = useRef(false);
+    const isMountedRef = useRef(true);
     const roleRef = useRef(role);
 
-    // 🔹 selalu update role tanpa re-trigger effect
+    // ✅ Update role ref without triggering effects
     useEffect(() => {
         roleRef.current = role;
     }, [role]);
 
-    // 🔥 function load stats (dibungkus biar stabil)
-    const loadStats = useCallback(async () => {
+    // ✅ Define loadStats function (will be called directly, not as dependency)
+    const loadStats = async () => {
         try {
             const onlyUnassignedPending = roleRef.current === "technician";
 
@@ -62,18 +62,18 @@ export default function useRequestStats() {
         } catch (error) {
             console.error("Error loading request stats:", error);
         }
-    }, []);
+    };
 
-    // 🔥 effect utama (auth + realtime)
+    // ✅ Setup channel once after authentication
     useEffect(() => {
         if (loading || !user) return;
 
         isMountedRef.current = true;
 
-        // 🔥 load pertama
+        // Load stats immediately
         loadStats();
 
-        // 🔥 cegah double subscribe
+        // ✅ Create channel only once per session
         if (!channelRef.current) {
             channelRef.current = supabase
                 .channel("requests-stats")
@@ -91,12 +91,12 @@ export default function useRequestStats() {
                 .subscribe();
         }
 
-        // 🔹 polling backup (optional)
+        // Polling backup every 5 seconds
         const intervalId = setInterval(() => {
             loadStats();
         }, 5000);
 
-        // 🔹 reload saat tab aktif lagi
+        // Reload when tab becomes visible
         const handleFocus = () => {
             if (document.visibilityState === "visible") {
                 loadStats();
@@ -113,13 +113,14 @@ export default function useRequestStats() {
             document.removeEventListener("visibilitychange", handleFocus);
             window.removeEventListener("focus", handleFocus);
 
-            // 🔥 cleanup channel dengan benar
+            // ✅ Proper cleanup: unsubscribe AND remove channel
             if (channelRef.current) {
+                channelRef.current.unsubscribe();
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
             }
         };
-    }, [loading, user, loadStats]);
+    }, [loading, user]); // ✅ Only depends on auth status
 
     return stats;
 }

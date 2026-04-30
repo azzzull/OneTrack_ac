@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import supabase from "../supabaseClient";
 
 const sortByCreatedAtDesc = (items) =>
@@ -23,24 +23,35 @@ export default function useCustomerRequests(user) {
     const [loading, setLoading] = useState(true);
     const [requests, setRequests] = useState([]);
     const customerIdsRef = useRef([]);
+    const channelRef = useRef(null);
+    const isMountedRef = useRef(true);
+    const userRef = useRef(user);
 
-    const fetchCustomerRequests = useCallback(async () => {
-        if (!user?.id) {
+    // ✅ Update user ref without triggering effects
+    useEffect(() => {
+        userRef.current = user;
+    }, [user]);
+
+    const fetchCustomerRequests = async () => {
+        if (!userRef.current?.id) {
             customerIdsRef.current = [];
-            setRequests([]);
-            setLoading(false);
+            if (isMountedRef.current) {
+                setRequests([]);
+                setLoading(false);
+            }
             return;
         }
 
-        setLoading(true);
+        if (isMountedRef.current) setLoading(true);
+
         try {
-            const email = String(user.email ?? "").trim();
+            const email = String(userRef.current.email ?? "").trim();
             const [customersByUserRes, customersByEmailRes] = await Promise.all(
                 [
                     supabase
                         .from("master_customers")
                         .select("id")
-                        .eq("user_id", user.id),
+                        .eq("user_id", userRef.current.id),
                     email
                         ? supabase
                               .from("master_customers")
@@ -61,7 +72,7 @@ export default function useCustomerRequests(user) {
             customerIdsRef.current = uniqueCustomerIds;
 
             if (uniqueCustomerIds.length === 0) {
-                setRequests([]);
+                if (isMountedRef.current) setRequests([]);
                 return;
             }
 
@@ -72,67 +83,33 @@ export default function useCustomerRequests(user) {
                 .order("created_at", { ascending: false });
 
             if (requestError) throw requestError;
-            setRequests(requestData ?? []);
+            if (isMountedRef.current) {
+                setRequests(requestData ?? []);
+            }
         } catch (error) {
             console.error("Error loading customer requests:", error);
-            setRequests([]);
+            if (isMountedRef.current) {
+                setRequests([]);
+            }
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
-    }, [user?.email, user?.id]);
+    };
 
+    // ✅ Mount/unmount tracking
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    // ✅ Initial load and visibility tracking
     useEffect(() => {
         fetchCustomerRequests();
-    }, [fetchCustomerRequests]);
 
-    useEffect(() => {
-        if (!user?.id) return undefined;
-
-        const isRelevantCustomerRequest = (row) =>
-            customerIdsRef.current.includes(row?.customer_id);
-
-        const channel = supabase
-            .channel(`customer-requests-${user.id}`)
-            .on(
-                "postgres_changes",
-                { event: "DELETE", schema: "public", table: "requests" },
-                (payload) => {
-                    if (!isRelevantCustomerRequest(payload.old)) return;
-                    setRequests((current) =>
-                        current.filter((item) => item.id !== payload.old.id),
-                    );
-                },
-            )
-            .on(
-                "postgres_changes",
-                { event: "INSERT", schema: "public", table: "requests" },
-                (payload) => {
-                    if (!isRelevantCustomerRequest(payload.new)) return;
-                    setRequests((current) => upsertRequest(current, payload.new));
-                },
-            )
-            .on(
-                "postgres_changes",
-                { event: "UPDATE", schema: "public", table: "requests" },
-                (payload) => {
-                    const isRelevant = isRelevantCustomerRequest(payload.new);
-                    if (!isRelevant) {
-                        setRequests((current) =>
-                            current.filter((item) => item.id !== payload.new.id),
-                        );
-                        return;
-                    }
-                    setRequests((current) => upsertRequest(current, payload.new));
-                },
-            )
-            .subscribe();
-
-        return () => {
-            channel.unsubscribe();
-        };
-    }, [fetchCustomerRequests, user?.id]);
-
-    useEffect(() => {
         const onVisibilityChange = () => {
             if (document.visibilityState === "visible") {
                 fetchCustomerRequests();
@@ -147,7 +124,71 @@ export default function useCustomerRequests(user) {
                 onVisibilityChange,
             );
         };
-    }, [fetchCustomerRequests]);
+    }, []);
+
+    // ✅ Setup realtime subscription - only once per user.id
+    useEffect(() => {
+        if (!userRef.current?.id) return;
+
+        const isRelevantCustomerRequest = (row) =>
+            customerIdsRef.current.includes(row?.customer_id);
+
+        if (!channelRef.current) {
+            channelRef.current = supabase
+                .channel(`customer-requests-${userRef.current.id}`)
+                .on(
+                    "postgres_changes",
+                    { event: "DELETE", schema: "public", table: "requests" },
+                    (payload) => {
+                        if (!isRelevantCustomerRequest(payload.old)) return;
+                        setRequests((current) =>
+                            current.filter(
+                                (item) => item.id !== payload.old.id,
+                            ),
+                        );
+                    },
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "INSERT", schema: "public", table: "requests" },
+                    (payload) => {
+                        if (!isRelevantCustomerRequest(payload.new)) return;
+                        setRequests((current) =>
+                            upsertRequest(current, payload.new),
+                        );
+                    },
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "UPDATE", schema: "public", table: "requests" },
+                    (payload) => {
+                        const isRelevant = isRelevantCustomerRequest(
+                            payload.new,
+                        );
+                        if (!isRelevant) {
+                            setRequests((current) =>
+                                current.filter(
+                                    (item) => item.id !== payload.new.id,
+                                ),
+                            );
+                            return;
+                        }
+                        setRequests((current) =>
+                            upsertRequest(current, payload.new),
+                        );
+                    },
+                )
+                .subscribe();
+        }
+
+        return () => {
+            if (channelRef.current) {
+                channelRef.current.unsubscribe();
+                supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+            }
+        };
+    }, [user?.id]);
 
     return {
         loading,

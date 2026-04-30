@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     BarChart3,
     CalendarDays,
@@ -80,48 +80,72 @@ export default function TechnicianDashboard() {
     const [tasks, setTasks] = useState([]);
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
+    const channelRef = useRef(null);
+    const isMountedRef = useRef(true);
+    const userIdRef = useRef(user?.id);
 
-    const loadTasks = useCallback(async () => {
-        if (!user?.id) return;
+    const loadTasks = async () => {
+        if (!userIdRef.current) return;
 
         try {
             const { data, error } = await supabase
                 .from("requests")
                 .select("*")
-                .eq("technician_id", user.id)
+                .eq("technician_id", userIdRef.current)
                 .order("created_at", { ascending: false });
 
             if (error) throw error;
-            setTasks(data ?? []);
+            if (isMountedRef.current) {
+                setTasks(data ?? []);
+            }
         } catch (error) {
             console.error("Error loading technician dashboard data:", error);
-            setTasks([]);
+            if (isMountedRef.current) {
+                setTasks([]);
+            }
         }
-    }, [user?.id]);
+    };
 
     useEffect(() => {
-        if (!user?.id) return undefined;
+        isMountedRef.current = true;
+        userIdRef.current = user?.id;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, [user?.id]);
+
+    // ✅ Setup channel once on mount - NO dependencies to prevent re-creation
+    useEffect(() => {
+        if (!user?.id) return;
 
         const timerId = setTimeout(() => {
             loadTasks();
         }, 0);
 
-        const channel = supabase
-            .channel(`technician-dashboard-${user.id}`)
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "requests" },
-                () => {
-                    loadTasks();
-                },
-            )
-            .subscribe();
+        // ✅ Create channel only once per user.id
+        if (!channelRef.current) {
+            channelRef.current = supabase
+                .channel(`technician-dashboard-${user.id}`)
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "requests" },
+                    () => {
+                        loadTasks();
+                    },
+                )
+                .subscribe();
+        }
 
         return () => {
             clearTimeout(timerId);
-            channel.unsubscribe();
+            // ✅ Proper cleanup: unsubscribe AND remove channel
+            if (channelRef.current) {
+                channelRef.current.unsubscribe();
+                supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+            }
         };
-    }, [loadTasks, user?.id]);
+    }, [user?.id]); // ✅ Only recreate if user.id changes
 
     const statusCounts = useMemo(() => {
         const counts = {
@@ -284,7 +308,11 @@ export default function TechnicianDashboard() {
                             </div>
 
                             <div className="mt-4 flex flex-col items-center">
-                                <svg width="210" height="210" viewBox="0 0 180 180">
+                                <svg
+                                    width="210"
+                                    height="210"
+                                    viewBox="0 0 180 180"
+                                >
                                     <circle
                                         cx={center}
                                         cy={center}

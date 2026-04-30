@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     CheckCircle2,
     Camera,
@@ -173,9 +173,7 @@ const getCurrentUserDisplayName = (user) => {
 };
 
 const sortRequestsByDateDesc = (items) =>
-    [...items].sort(
-        (a, b) => new Date(b?.date ?? 0) - new Date(a?.date ?? 0),
-    );
+    [...items].sort((a, b) => new Date(b?.date ?? 0) - new Date(a?.date ?? 0));
 
 const upsertNormalizedRequest = (items, nextItem) => {
     const next = [...items];
@@ -194,7 +192,9 @@ const shouldIncludeRequestForRole = (row, role, userId) => {
     if (role !== "technician") return true;
     if (!row) return false;
 
-    const status = String(row.status ?? "").trim().toLowerCase();
+    const status = String(row.status ?? "")
+        .trim()
+        .toLowerCase();
     const technicianId = row.technician_id ?? "";
 
     return (
@@ -241,17 +241,30 @@ export default function AdminRequestsPage() {
     const streamRef = useRef(null);
     const videoRef = useRef(null);
     const deferRefreshRef = useRef(false);
+    const channelRef = useRef(null);
+    const isMountedRef = useRef(true);
+    const roleRef = useRef(role);
+    const userIdRef = useRef(user?.id);
 
-    const loadRequests = useCallback(async () => {
+    useEffect(() => {
+        isMountedRef.current = true;
+        roleRef.current = role;
+        userIdRef.current = user?.id;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, [role, user?.id]);
+
+    const loadRequests = async () => {
         try {
             let query = supabase
                 .from("requests")
                 .select("*")
                 .order("created_at", { ascending: false });
 
-            if (role === "technician" && user?.id) {
+            if (roleRef.current === "technician" && userIdRef.current) {
                 query = query.or(
-                    `and(status.eq.pending,technician_id.is.null),technician_id.eq.${user.id}`,
+                    `and(status.eq.pending,technician_id.is.null),technician_id.eq.${userIdRef.current}`,
                 );
             }
 
@@ -275,8 +288,6 @@ export default function AdminRequestsPage() {
                     .select("id, first_name, last_name, name, email")
                     .in("id", creatorIds);
                 if (profilesError) {
-                    // Technician/customer may not have permission to read other profiles.
-                    // Keep requests visible and fallback to default creator labels.
                     console.warn(
                         "Profiles lookup skipped due to RLS:",
                         profilesError.message,
@@ -289,115 +300,134 @@ export default function AdminRequestsPage() {
                 }
             }
 
-            setRequests(
-                requestRows.map((row) =>
-                    normalizeRequest(
-                        row,
-                        creatorMap[row.created_by] ??
-                            (row.created_by ? "User tidak ditemukan" : "-"),
+            if (isMountedRef.current) {
+                setRequests(
+                    requestRows.map((row) =>
+                        normalizeRequest(
+                            row,
+                            creatorMap[row.created_by] ??
+                                (row.created_by ? "User tidak ditemukan" : "-"),
+                        ),
                     ),
-                ),
-            );
+                );
+            }
         } catch (error) {
             console.error("Error loading requests:", error);
-            setRequests([]);
+            if (isMountedRef.current) {
+                setRequests([]);
+            }
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
-    }, [role, user?.id]);
+    };
 
+    // ✅ Setup channel once on mount - NO dependencies to prevent re-creation
     useEffect(() => {
         const timerId = setTimeout(() => {
             loadRequests();
         }, 0);
 
-        const channel = supabase
-            .channel("admin-requests-page")
-            .on(
-                "postgres_changes",
-                { event: "DELETE", schema: "public", table: "requests" },
-                (payload) => {
-                    setRequests((current) =>
-                        current.filter((item) => item.id !== payload.old.id),
-                    );
-                },
-            )
-            .on(
-                "postgres_changes",
-                { event: "INSERT", schema: "public", table: "requests" },
-                (payload) => {
-                    if (deferRefreshRef.current) {
-                        setHasDeferredRefresh(true);
-                        return;
-                    }
-
-                    if (
-                        !shouldIncludeRequestForRole(
-                            payload.new,
-                            role,
-                            user?.id,
-                        )
-                    ) {
-                        return;
-                    }
-
-                    const creatorName = payload.new.created_by
-                        ? "User tidak ditemukan"
-                        : "-";
-                    setRequests((current) =>
-                        upsertNormalizedRequest(
-                            current,
-                            normalizeRequest(payload.new, creatorName),
-                        ),
-                    );
-                },
-            )
-            .on(
-                "postgres_changes",
-                { event: "UPDATE", schema: "public", table: "requests" },
-                (payload) => {
-                    if (deferRefreshRef.current) {
-                        setHasDeferredRefresh(true);
-                        return;
-                    }
-
-                    const shouldInclude = shouldIncludeRequestForRole(
-                        payload.new,
-                        role,
-                        user?.id,
-                    );
-
-                    if (!shouldInclude) {
+        // ✅ Create channel only once
+        if (!channelRef.current) {
+            channelRef.current = supabase
+                .channel("admin-requests-page")
+                .on(
+                    "postgres_changes",
+                    { event: "DELETE", schema: "public", table: "requests" },
+                    (payload) => {
                         setRequests((current) =>
-                            current.filter((item) => item.id !== payload.new.id),
-                        );
-                        return;
-                    }
-
-                    setRequests((current) => {
-                        const existing = current.find(
-                            (item) => item.id === payload.new.id,
-                        );
-                        return upsertNormalizedRequest(
-                            current,
-                            normalizeRequest(
-                                payload.new,
-                                existing?.createdByName ??
-                                    (payload.new.created_by
-                                        ? "User tidak ditemukan"
-                                        : "-"),
+                            current.filter(
+                                (item) => item.id !== payload.old.id,
                             ),
                         );
-                    });
-                },
-            )
-            .subscribe();
+                    },
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "INSERT", schema: "public", table: "requests" },
+                    (payload) => {
+                        if (deferRefreshRef.current) {
+                            setHasDeferredRefresh(true);
+                            return;
+                        }
+
+                        if (
+                            !shouldIncludeRequestForRole(
+                                payload.new,
+                                roleRef.current,
+                                userIdRef.current,
+                            )
+                        ) {
+                            return;
+                        }
+
+                        const creatorName = payload.new.created_by
+                            ? "User tidak ditemukan"
+                            : "-";
+                        setRequests((current) =>
+                            upsertNormalizedRequest(
+                                current,
+                                normalizeRequest(payload.new, creatorName),
+                            ),
+                        );
+                    },
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "UPDATE", schema: "public", table: "requests" },
+                    (payload) => {
+                        if (deferRefreshRef.current) {
+                            setHasDeferredRefresh(true);
+                            return;
+                        }
+
+                        const shouldInclude = shouldIncludeRequestForRole(
+                            payload.new,
+                            roleRef.current,
+                            userIdRef.current,
+                        );
+
+                        if (!shouldInclude) {
+                            setRequests((current) =>
+                                current.filter(
+                                    (item) => item.id !== payload.new.id,
+                                ),
+                            );
+                            return;
+                        }
+
+                        setRequests((current) => {
+                            const existing = current.find(
+                                (item) => item.id === payload.new.id,
+                            );
+                            return upsertNormalizedRequest(
+                                current,
+                                normalizeRequest(
+                                    payload.new,
+                                    existing?.createdByName ??
+                                        (payload.new.created_by
+                                            ? "User tidak ditemukan"
+                                            : "-"),
+                                ),
+                            );
+                        });
+                    },
+                )
+                .subscribe();
+        }
 
         return () => {
             clearTimeout(timerId);
-            channel.unsubscribe();
+            // ✅ Proper cleanup: unsubscribe AND remove channel
+            if (channelRef.current) {
+                channelRef.current.unsubscribe();
+                supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+            }
         };
-    }, [loadRequests, role, user?.id]);
+    }, []); // ✅ Empty dependency array - only run once on mount
 
     useEffect(() => {
         deferRefreshRef.current = Boolean(cameraOpen || saving);
@@ -463,7 +493,9 @@ export default function AdminRequestsPage() {
     const requestCounts = useMemo(() => {
         return requests.reduce(
             (acc, item) => {
-                const status = String(item.status ?? "").trim().toLowerCase();
+                const status = String(item.status ?? "")
+                    .trim()
+                    .toLowerCase();
                 acc.all += 1;
                 if (status === "pending") acc.pending += 1;
                 if (status === "in_progress") acc.in_progress += 1;
@@ -665,10 +697,8 @@ export default function AdminRequestsPage() {
             };
 
             // Add photo URLs if uploaded
-            if (beforePhotoUrl)
-                payload.before_photo_url = beforePhotoUrl;
-            if (progressPhotoUrl)
-                payload.progress_photo_url = progressPhotoUrl;
+            if (beforePhotoUrl) payload.before_photo_url = beforePhotoUrl;
+            if (progressPhotoUrl) payload.progress_photo_url = progressPhotoUrl;
             if (afterPhotoUrl) payload.after_photo_url = afterPhotoUrl;
 
             // Add technician info if technician
