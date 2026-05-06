@@ -23,6 +23,7 @@ import { useSearchParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import PhotoUploadInput from "../../components/PhotoUploadInput";
 import CustomSelect from "../../components/ui/CustomSelect";
+import ScopeDetailsCard from "../../components/ScopeDetailsCard";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
@@ -33,6 +34,7 @@ import {
     cleanupAllChannels,
     createUniqueChannelName,
 } from "../../utils/realtimeChannelManager";
+import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
 
 const FILTERS = [
     { key: "all", label: "All" },
@@ -62,6 +64,20 @@ const STATUS_OPTIONS = [
     { value: "completed", label: "Completed" },
 ];
 
+const normalizeStatusKey = (value) => {
+    const raw = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+    if (raw === "inprogress") return "in_progress";
+    if (raw === "in_progress") return "in_progress";
+    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "requested") return "pending";
+    if (raw === "pending" || raw === "") return "pending";
+    return "pending";
+};
+
 const pickFirst = (obj, keys, fallback = "") => {
     for (const key of keys) {
         const value = obj?.[key];
@@ -85,10 +101,7 @@ const getProfileDisplayName = (profile) => {
 };
 
 const normalizeRequest = (row, creatorName = "") => {
-    const rawStatus = String(
-        pickFirst(row, ["status"], "pending"),
-    ).toLowerCase();
-    const status = STATUS_LABELS[rawStatus] ? rawStatus : "pending";
+    const status = normalizeStatusKey(pickFirst(row, ["status"], "pending"));
 
     return {
         id: pickFirst(row, ["id"], `${Math.random()}`),
@@ -130,6 +143,11 @@ const normalizeRequest = (row, creatorName = "") => {
         acCapacityPk: pickFirst(row, ["ac_capacity_pk"], "-"),
         roomLocation: pickFirst(row, ["room_location"], "-"),
         serialNumber: pickFirst(row, ["serial_number"], "-"),
+        jobScope: pickFirst(row, ["job_scope"], "AC"),
+        dynamicData:
+            row?.dynamic_data && typeof row.dynamic_data === "object"
+                ? row.dynamic_data
+                : {},
         troubleDescription: pickFirst(row, ["trouble_description"], "-"),
         replacedParts: pickFirst(row, ["replaced_parts"], "-"),
         reconditionedParts: pickFirst(row, ["reconditioned_parts"], "-"),
@@ -196,9 +214,7 @@ const shouldIncludeRequestForRole = (row, role, userId) => {
     if (role !== "technician") return true;
     if (!row) return false;
 
-    const status = String(row.status ?? "")
-        .trim()
-        .toLowerCase();
+    const status = normalizeStatusKey(row.status);
     const technicianId = row.technician_id ?? "";
 
     return (
@@ -270,7 +286,7 @@ export default function AdminRequestsPage() {
 
             if (roleRef.current === "technician" && userIdRef.current) {
                 query = query.or(
-                    `and(status.eq.pending,technician_id.is.null),technician_id.eq.${userIdRef.current}`,
+                    `and(status.in.(pending,requested),technician_id.is.null),technician_id.eq.${userIdRef.current}`,
                 );
             }
 
@@ -558,10 +574,17 @@ export default function AdminRequestsPage() {
         const keyword = search.trim().toLowerCase();
 
         return requests.filter((item) => {
+            const scopeSummary = getScopeSummaryMeta(
+                item.jobScope,
+                item.dynamicData,
+                item.roomLocation,
+            );
             const matchFilter =
-                activeFilter === "all" ? true : item.status === activeFilter;
+                activeFilter === "all"
+                    ? true
+                    : normalizeStatusKey(item.status) === activeFilter;
             const matchSearch = keyword
-                ? `${item.title} ${item.address} ${item.roomLocation} ${item.troubleDescription} ${item.assignee} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
+                ? `${item.title} ${item.address} ${scopeSummary.value} ${item.troubleDescription} ${item.assignee} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
@@ -572,9 +595,7 @@ export default function AdminRequestsPage() {
     const requestCounts = useMemo(() => {
         return requests.reduce(
             (acc, item) => {
-                const status = String(item.status ?? "")
-                    .trim()
-                    .toLowerCase();
+                const status = normalizeStatusKey(item.status);
                 acc.all += 1;
                 if (status === "pending") acc.pending += 1;
                 if (status === "in_progress") acc.in_progress += 1;
@@ -812,7 +833,7 @@ export default function AdminRequestsPage() {
             } else if (hasProgress && hasBefore) {
                 payload.status = "in_progress";
             } else if (hasBefore) {
-                payload.status = "pending";
+                payload.status = "requested";
             } else {
                 // Keep current status if no photos
                 payload.status = selectedRequest.status;
@@ -1002,6 +1023,15 @@ export default function AdminRequestsPage() {
                                 >
                                     <div className="grid grid-cols-1 md:grid-cols-[1fr_190px]">
                                         <div className="p-4 md:p-5">
+                                            {(() => {
+                                                const scopeSummary =
+                                                    getScopeSummaryMeta(
+                                                        item.jobScope,
+                                                        item.dynamicData,
+                                                        item.roomLocation,
+                                                    );
+                                                return (
+                                                    <>
                                             <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
                                                 <div className="min-w-0">
                                                     <h2 className="wrap-break-word text-lg font-semibold text-slate-900  md:text-xl">
@@ -1026,9 +1056,9 @@ export default function AdminRequestsPage() {
                                                         </span>
                                                     </p>
                                                     <p className="mt-1 text-xs text-slate-500">
-                                                        Ruangan:{" "}
+                                                        {scopeSummary.label}:{" "}
                                                         {previewText(
-                                                            item.roomLocation,
+                                                            scopeSummary.value,
                                                             48,
                                                         )}
                                                     </p>
@@ -1043,16 +1073,23 @@ export default function AdminRequestsPage() {
                                                 <span
                                                     className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
                                                         STATUS_STYLES[
-                                                            item.status
+                                                            normalizeStatusKey(
+                                                                item.status,
+                                                            )
                                                         ] ??
                                                         STATUS_STYLES.pending
                                                     }`}
                                                 >
                                                     {STATUS_LABELS[
-                                                        item.status
+                                                        normalizeStatusKey(
+                                                            item.status,
+                                                        )
                                                     ] ?? "PENDING"}
                                                 </span>
                                             </div>
+                                                    </>
+                                                );
+                                            })()}
 
                                             <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
                                                 <p className="inline-flex items-center text-base gap-2">
@@ -1226,50 +1263,30 @@ export default function AdminRequestsPage() {
                                     Status
                                 </p>
                                 <div className="mt-3 inline-flex rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 bg-slate-50">
-                                    {STATUS_LABELS[selectedRequest.status] ??
-                                        "PENDING"}
+                                    {STATUS_LABELS[
+                                        normalizeStatusKey(
+                                            selectedRequest.status,
+                                        )
+                                    ] ?? "PENDING"}
                                 </div>
                             </div>
                         </div>
 
                         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="rounded-2xl border border-slate-200 p-4">
-                                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    <Clock3 size={14} />
-                                    Detail Unit AC
-                                </p>
-                                <div className="mt-3 space-y-2 text-sm text-slate-700">
-                                    <p>
-                                        <span className="font-medium">
-                                            Merk AC:
-                                        </span>{" "}
-                                        {selectedRequest.acBrand}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Tipe AC:
-                                        </span>{" "}
-                                        {selectedRequest.acType}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Kapasitas AC:
-                                        </span>{" "}
-                                        {selectedRequest.acCapacityPk}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Lokasi Ruangan:
-                                        </span>{" "}
-                                        {selectedRequest.roomLocation}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Serial Number AC:
-                                        </span>{" "}
-                                        {selectedRequest.serialNumber}
-                                    </p>
-                                </div>
+                                <ScopeDetailsCard
+                                    jobScope={selectedRequest.jobScope}
+                                    dynamicData={selectedRequest.dynamicData}
+                                    acDetails={{
+                                        brand: selectedRequest.acBrand,
+                                        type: selectedRequest.acType,
+                                        capacity: selectedRequest.acCapacityPk,
+                                        roomLocation:
+                                            selectedRequest.roomLocation,
+                                        serialNumber:
+                                            selectedRequest.serialNumber,
+                                    }}
+                                />
                             </div>
 
                             <div className="rounded-2xl border border-slate-200 p-4">

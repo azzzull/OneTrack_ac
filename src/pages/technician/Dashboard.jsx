@@ -34,6 +34,7 @@ const normalizeStatusKey = (value) => {
     if (raw === "inprogress") return "in_progress";
     if (raw === "in_progress") return "in_progress";
     if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "requested") return "pending";
     if (raw === "pending" || raw === "") return "pending";
     return "pending";
 };

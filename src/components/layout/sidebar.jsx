@@ -137,9 +137,17 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                         if (!row) return;
                         const status = String(
                             row.status ?? "pending",
-                        ).toLowerCase();
+                        )
+                            .toLowerCase()
+                            .replaceAll("-", "_")
+                            .replaceAll(" ", "_");
                         const isUnassigned = !row.technician_id;
-                        if (status !== "pending" || !isUnassigned) return;
+                        if (
+                            !["pending", "requested"].includes(status) ||
+                            !isUnassigned
+                        ) {
+                            return;
+                        }
 
                         const requestId =
                             row.id ??

@@ -1,9 +1,5 @@
-# Phase 2 Frontend Multi-Tenant + job_scope
+# TODO
 
-✅ **Phase 1 DB/RLS complete** - Run docs/phase1_final_production.sql
-
-## Phase 2 Code Changes Complete ✅
-
-### Updated:
-
-- `src/hooks
+- [ ] Buat commit message untuk branch `feature/multiscope` berdasarkan perubahan yang ada di working tree.
+- [ ] Konfigurasi `.gitignore`/filter commit agar folder `docs/` (termasuk semua `.md`) tidak ikut ke push/deploy.
+- [ ] Push branch `feature/multiscope` ke GitHub.

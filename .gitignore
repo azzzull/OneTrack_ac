@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Exclude deployment docs from build
+# Exclude deploy docs (SQL/MD)
+docs/*.sql
+docs/*.md
+docs/**/*.md
+docs/**/*.sql

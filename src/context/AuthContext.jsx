@@ -9,7 +9,9 @@ import {
 const fetchUserProfile = async (userId) => {
     const { data, error } = await supabase
         .from("profiles")
-        .select("role, first_name, last_name, email, phone")
+        .select(
+            "role, first_name, last_name, email, phone, technician_type, customer_id",
+        )
         .eq("id", userId)
         .maybeSingle();
 
