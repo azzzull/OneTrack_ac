@@ -23,7 +23,6 @@ const upsertRequest = (items, row) => {
 export default function useCustomerRequests(user) {
     const [loading, setLoading] = useState(true);
     const [requests, setRequests] = useState([]);
-    const customerIdsRef = useRef([]);
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
     const userRef = useRef(user);
@@ -35,7 +34,6 @@ export default function useCustomerRequests(user) {
 
     const fetchCustomerRequests = async () => {
         if (!userRef.current?.id) {
-            customerIdsRef.current = [];
             if (isMountedRef.current) {
                 setRequests([]);
                 setLoading(false);
@@ -46,41 +44,10 @@ export default function useCustomerRequests(user) {
         if (isMountedRef.current) setLoading(true);
 
         try {
-            const email = String(userRef.current.email ?? "").trim();
-            const [customersByUserRes, customersByEmailRes] = await Promise.all(
-                [
-                    supabase
-                        .from("master_customers")
-                        .select("id")
-                        .eq("user_id", userRef.current.id),
-                    email
-                        ? supabase
-                              .from("master_customers")
-                              .select("id")
-                              .eq("email", email)
-                        : Promise.resolve({ data: [], error: null }),
-                ],
-            );
-
-            if (customersByUserRes.error) throw customersByUserRes.error;
-            if (customersByEmailRes?.error) throw customersByEmailRes.error;
-
-            const customerIds = [
-                ...(customersByUserRes.data ?? []).map((item) => item.id),
-                ...(customersByEmailRes?.data ?? []).map((item) => item.id),
-            ];
-            const uniqueCustomerIds = [...new Set(customerIds)];
-            customerIdsRef.current = uniqueCustomerIds;
-
-            if (uniqueCustomerIds.length === 0) {
-                if (isMountedRef.current) setRequests([]);
-                return;
-            }
-
+            // RLS enforces tenant boundary (customer_id IN get_assigned_customers(auth.uid()))
             const { data: requestData, error: requestError } = await supabase
                 .from("requests")
                 .select("*")
-                .in("customer_id", uniqueCustomerIds)
                 .order("created_at", { ascending: false });
 
             if (requestError) throw requestError;
@@ -125,22 +92,18 @@ export default function useCustomerRequests(user) {
                 onVisibilityChange,
             );
         };
+        // Intentionally no deps to preserve original lifecycle
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // ✅ Setup realtime subscription with proper lifecycle management
     useEffect(() => {
         if (!userRef.current?.id) return;
 
-        const isRelevantCustomerRequest = (row) =>
-            customerIdsRef.current.includes(row?.customer_id);
-
-        // Async channel setup with proper cleanup
         const setupChannel = async () => {
             try {
-                // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
                 await cleanupAllChannels();
 
-                // ✅ CRITICAL FIX: Use unique channel name with user ID
                 const channelName = `customer-requests-${userRef.current.id}`;
 
                 // ✅ Skip if channel already exists
@@ -150,10 +113,6 @@ export default function useCustomerRequests(user) {
                 );
 
                 if (existing) {
-                    console.log(
-                        "[useCustomerRequests] Channel already exists, reusing:",
-                        channelName,
-                    );
                     channelRef.current = existing;
                     return;
                 }
@@ -169,7 +128,6 @@ export default function useCustomerRequests(user) {
                         },
                         (payload) => {
                             if (!isMountedRef.current) return;
-                            if (!isRelevantCustomerRequest(payload.old)) return;
                             setRequests((current) =>
                                 current.filter(
                                     (item) => item.id !== payload.old.id,
@@ -186,7 +144,6 @@ export default function useCustomerRequests(user) {
                         },
                         (payload) => {
                             if (!isMountedRef.current) return;
-                            if (!isRelevantCustomerRequest(payload.new)) return;
                             setRequests((current) =>
                                 upsertRequest(current, payload.new),
                             );
@@ -201,17 +158,6 @@ export default function useCustomerRequests(user) {
                         },
                         (payload) => {
                             if (!isMountedRef.current) return;
-                            const isRelevant = isRelevantCustomerRequest(
-                                payload.new,
-                            );
-                            if (!isRelevant) {
-                                setRequests((current) =>
-                                    current.filter(
-                                        (item) => item.id !== payload.new.id,
-                                    ),
-                                );
-                                return;
-                            }
                             setRequests((current) =>
                                 upsertRequest(current, payload.new),
                             );
@@ -243,11 +189,9 @@ export default function useCustomerRequests(user) {
         setupChannel();
 
         return () => {
-            // ✅ CRITICAL FIX: Proper cleanup using supabase.removeChannel()
             if (channelRef.current) {
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
-                console.log("[useCustomerRequests] Channel cleaned up");
             }
         };
     }, [user?.id]);
