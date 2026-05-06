@@ -4,6 +4,11 @@ import { Link, useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
 import PhotoUploadInput from "../../components/PhotoUploadInput";
+import {
+    JOB_SCOPE_LABELS,
+    JOB_SCOPES,
+    SCOPE_DETAIL_CONFIG,
+} from "../../utils/jobScopeCatalog";
 import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
@@ -11,6 +16,7 @@ import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
 
 const initialForm = {
+    jobScope: "AC",
     customerId: "",
     projectId: "",
     acBrand: "",
@@ -21,6 +27,7 @@ const initialForm = {
     troubleDescription: "",
     replacedParts: "",
     reconditionedParts: "",
+    scopeDetails: {},
 };
 
 const SectionTitle = ({ children }) => (
@@ -51,6 +58,9 @@ const FileCaptureCard = ({ label, fileName, onClick }) => (
 
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
+
+const isAcScope = (scope) => String(scope ?? "").trim().toUpperCase() === "AC";
+
 
 const getCurrentUserDisplayName = (user) => {
     const composed =
@@ -101,6 +111,34 @@ export default function AdminNewJobPage() {
 
     const setField = (key, value) => {
         setForm((prev) => ({ ...prev, [key]: value }));
+    };
+
+    const setScopeDetail = (key, value) => {
+        setForm((prev) => ({
+            ...prev,
+            scopeDetails: {
+                ...(prev.scopeDetails ?? {}),
+                [key]: value,
+            },
+        }));
+    };
+
+    const toggleScopeChecklist = (item) => {
+        setForm((prev) => {
+            const current = Array.isArray(prev.scopeDetails?.checklist)
+                ? prev.scopeDetails.checklist
+                : [];
+            const nextChecklist = current.includes(item)
+                ? current.filter((value) => value !== item)
+                : [...current, item];
+            return {
+                ...prev,
+                scopeDetails: {
+                    ...(prev.scopeDetails ?? {}),
+                    checklist: nextChecklist,
+                },
+            };
+        });
     };
 
     const loadMasterData = useCallback(async () => {
@@ -172,26 +210,36 @@ export default function AdminNewJobPage() {
             null,
         [availableProjects, form.projectId],
     );
+    const activeJobScope =
+        selectedProject?.job_scope ?? form.jobScope ?? JOB_SCOPES.AC;
+    const activeScopeConfig = SCOPE_DETAIL_CONFIG[activeJobScope] ?? null;
+    const activeScopeDetailFields = activeScopeConfig?.fields ?? [];
+    const activeScopeChecklist = activeScopeConfig?.checklist ?? [];
+    const hasSelectedProject = Boolean(form.projectId && selectedProject);
 
     useEffect(() => {
         if (!form.customerId) {
             setForm((prev) => ({ ...prev, projectId: "" }));
             return;
         }
-        if (availableProjects.length === 0) {
-            setForm((prev) => ({ ...prev, projectId: "" }));
-            return;
-        }
         const isStillValid = availableProjects.some(
             (item) => item.id === form.projectId,
         );
-        if (!isStillValid) {
+        if (!isStillValid && form.projectId) {
             setForm((prev) => ({
                 ...prev,
-                projectId: availableProjects[0].id,
+                projectId: "",
             }));
         }
     }, [availableProjects, form.customerId, form.projectId]);
+
+    useEffect(() => {
+        if (!selectedProject) return;
+        const nextScope = selectedProject.job_scope ?? "AC";
+        setForm((prev) =>
+            prev.jobScope === nextScope ? prev : { ...prev, jobScope: nextScope },
+        );
+    }, [selectedProject]);
 
     const stopCameraStream = useCallback(() => {
         if (streamRef.current) {
@@ -287,19 +335,27 @@ export default function AdminNewJobPage() {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
-        if (
-            !form.customerId ||
-            !form.projectId ||
-            !form.acBrand ||
-            !form.acType ||
-            !form.acCapacityPk
-        ) {
+        const acScopeSelected = isAcScope(activeJobScope);
+
+        if (!form.customerId || !form.projectId) {
             await showAlert(
-                "Lengkapi Customer, Merk AC, Tipe AC, dan Kapasitas AC terlebih dahulu.",
+                "Lengkapi customer dan proyek terlebih dahulu.",
                 { title: "Data Belum Lengkap" },
             );
             return;
         }
+
+        if (
+            acScopeSelected &&
+            (!form.acBrand || !form.acType || !form.acCapacityPk)
+        ) {
+            await showAlert(
+                "Lengkapi Merk AC, Tipe AC, dan Kapasitas AC terlebih dahulu.",
+                { title: "Data Belum Lengkap" },
+            );
+            return;
+        }
+
         setSubmitting(true);
 
         try {
@@ -309,7 +365,24 @@ export default function AdminNewJobPage() {
                     ? "completed"
                     : progressPhotoUrl
                       ? "in_progress"
-                      : "pending",
+                      : "requested",
+                job_scope: activeJobScope,
+                dynamic_data: acScopeSelected
+                    ? null
+                    : Object.fromEntries(
+                          Object.entries(form.scopeDetails ?? {}).filter(
+                              ([, value]) => {
+                                  if (Array.isArray(value)) {
+                                      return value.length > 0;
+                                  }
+                                  return (
+                                      value !== null &&
+                                      value !== undefined &&
+                                      String(value).trim() !== ""
+                                  );
+                              },
+                          ),
+                      ),
                 location:
                     selectedProject?.location ??
                     selectedCustomer?.location ??
@@ -321,9 +394,9 @@ export default function AdminNewJobPage() {
                     selectedProject?.address ?? selectedCustomer?.address ?? "",
                 customer_id: form.customerId,
                 project_id: form.projectId,
-                ac_brand: form.acBrand,
-                ac_type: form.acType,
-                ac_capacity_pk: form.acCapacityPk,
+                ac_brand: acScopeSelected ? form.acBrand : null,
+                ac_type: acScopeSelected ? form.acType : null,
+                ac_capacity_pk: acScopeSelected ? form.acCapacityPk : null,
                 room_location: form.roomLocation,
                 serial_number: form.serialNumber,
                 trouble_description: form.troubleDescription,
@@ -492,6 +565,20 @@ export default function AdminNewJobPage() {
                                 </label>
                                 <label>
                                     <span className="text-sm font-medium text-slate-700">
+                                        Scope Proyek
+                                    </span>
+                                    <input
+                                        value={
+                                            JOB_SCOPE_LABELS[activeJobScope] ??
+                                            activeJobScope
+                                        }
+                                        readOnly
+                                        placeholder="Diambil dari master project"
+                                        className={inputClass}
+                                    />
+                                </label>
+                                <label>
+                                    <span className="text-sm font-medium text-slate-700">
                                         Nomor Telepon
                                     </span>
                                     <input
@@ -523,129 +610,258 @@ export default function AdminNewJobPage() {
                             </div>
                         </section>
 
-                        <section className="mt-8">
-                            <SectionTitle>Detail Unit AC</SectionTitle>
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Merk AC
-                                    </span>
-                                    <CustomSelect
-                                        value={form.acBrand}
-                                        onChange={(nextValue) =>
-                                            setField("acBrand", nextValue)
-                                        }
-                                        options={[
-                                            { value: "", label: "Pilih Merk" },
-                                            ...acBrands.map((item) => ({
-                                                value: item.name,
-                                                label: item.name,
-                                            })),
-                                        ]}
-                                        placeholder="Pilih merk"
-                                    />
-                                </label>
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Tipe AC
-                                    </span>
-                                    <CustomSelect
-                                        value={form.acType}
-                                        onChange={(nextValue) =>
-                                            setField("acType", nextValue)
-                                        }
-                                        options={[
-                                            { value: "", label: "Pilih Tipe" },
-                                            ...acTypes.map((item) => ({
-                                                value: item.name,
-                                                label: item.name,
-                                            })),
-                                        ]}
-                                        placeholder="Pilih tipe"
-                                    />
-                                </label>
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Kapasitas AC (PK)
-                                    </span>
-                                    <CustomSelect
-                                        value={form.acCapacityPk}
-                                        onChange={(nextValue) =>
-                                            setField("acCapacityPk", nextValue)
-                                        }
-                                        options={[
-                                            { value: "", label: "Pilih PK" },
-                                            ...acPks.map((item) => ({
-                                                value: item.label,
-                                                label: item.label,
-                                            })),
-                                        ]}
-                                        placeholder="Pilih PK"
-                                    />
-                                </label>
-                                <label className="md:col-span-1">
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Lokasi Ruangan
-                                    </span>
-                                    <input
-                                        value={form.roomLocation}
-                                        onChange={(e) =>
-                                            setField(
-                                                "roomLocation",
-                                                e.target.value,
-                                            )
-                                        }
-                                        placeholder="Contoh: Ruang Meeting A"
-                                        className={inputClass}
-                                    />
-                                </label>
-                                <div className="md:col-span-2">
+                        {hasSelectedProject && isAcScope(activeJobScope) && (
+                            <section className="mt-8">
+                                <SectionTitle>Detail Unit AC</SectionTitle>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                     <label>
                                         <span className="text-sm font-medium text-slate-700">
-                                            Serial Number
+                                            Merk AC
                                         </span>
-                                        <div className="mt-1 flex gap-2">
-                                            <input
-                                                value={form.serialNumber}
-                                                onChange={(e) =>
-                                                    setField(
-                                                        "serialNumber",
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                placeholder="Scan dari kamera atau ketik manual"
-                                                className={inputClass}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openCamera("serial-scan")
-                                                }
-                                                className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-600 hover:bg-slate-200"
-                                                title="Scan serial dengan kamera"
-                                            >
-                                                <Camera size={16} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setField("serialNumber", "")
-                                                }
-                                                className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-600 hover:bg-slate-200"
-                                                title="Kosongkan serial number"
-                                            >
-                                                <X size={16} />
-                                            </button>
-                                        </div>
-                                        <p className="mt-2 text-xs text-slate-500">
-                                            Jika unit tidak punya barcode, isi
-                                            manual nomor seri.
-                                        </p>
+                                        <CustomSelect
+                                            value={form.acBrand}
+                                            onChange={(nextValue) =>
+                                                setField("acBrand", nextValue)
+                                            }
+                                            options={[
+                                                {
+                                                    value: "",
+                                                    label: "Pilih Merk",
+                                                },
+                                                ...acBrands.map((item) => ({
+                                                    value: item.name,
+                                                    label: item.name,
+                                                })),
+                                            ]}
+                                            placeholder="Pilih merk"
+                                        />
                                     </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Tipe AC
+                                        </span>
+                                        <CustomSelect
+                                            value={form.acType}
+                                            onChange={(nextValue) =>
+                                                setField("acType", nextValue)
+                                            }
+                                            options={[
+                                                {
+                                                    value: "",
+                                                    label: "Pilih Tipe",
+                                                },
+                                                ...acTypes.map((item) => ({
+                                                    value: item.name,
+                                                    label: item.name,
+                                                })),
+                                            ]}
+                                            placeholder="Pilih tipe"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Kapasitas AC (PK)
+                                        </span>
+                                        <CustomSelect
+                                            value={form.acCapacityPk}
+                                            onChange={(nextValue) =>
+                                                setField(
+                                                    "acCapacityPk",
+                                                    nextValue,
+                                                )
+                                            }
+                                            options={[
+                                                {
+                                                    value: "",
+                                                    label: "Pilih PK",
+                                                },
+                                                ...acPks.map((item) => ({
+                                                    value: item.label,
+                                                    label: item.label,
+                                                })),
+                                            ]}
+                                            placeholder="Pilih PK"
+                                        />
+                                    </label>
+                                    <label className="md:col-span-1">
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Lokasi Ruangan
+                                        </span>
+                                        <input
+                                            value={form.roomLocation}
+                                            onChange={(e) =>
+                                                setField(
+                                                    "roomLocation",
+                                                    e.target.value,
+                                                )
+                                            }
+                                            placeholder="Contoh: Ruang Meeting A"
+                                            className={inputClass}
+                                        />
+                                    </label>
+                                    <div className="md:col-span-2">
+                                        <label>
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Serial Number
+                                            </span>
+                                            <div className="mt-1 flex gap-2">
+                                                <input
+                                                    value={form.serialNumber}
+                                                    onChange={(e) =>
+                                                        setField(
+                                                            "serialNumber",
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    placeholder="Scan dari kamera atau ketik manual"
+                                                    className={inputClass}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        openCamera(
+                                                            "serial-scan",
+                                                        )
+                                                    }
+                                                    className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-600 hover:bg-slate-200"
+                                                    title="Scan serial dengan kamera"
+                                                >
+                                                    <Camera size={16} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setField(
+                                                            "serialNumber",
+                                                            "",
+                                                        )
+                                                    }
+                                                    className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-600 hover:bg-slate-200"
+                                                    title="Kosongkan serial number"
+                                                >
+                                                    <X size={16} />
+                                                </button>
+                                            </div>
+                                            <p className="mt-2 text-xs text-slate-500">
+                                                Jika unit tidak punya barcode,
+                                                isi manual nomor seri.
+                                            </p>
+                                        </label>
+                                    </div>
                                 </div>
-                            </div>
-                        </section>
+                            </section>
+                        )}
 
+                        {hasSelectedProject &&
+                            !isAcScope(activeJobScope) &&
+                            (activeScopeDetailFields.length > 0 ||
+                                activeScopeChecklist.length > 0) && (
+                                <section className="mt-8">
+                                    <SectionTitle>
+                                        Detail {JOB_SCOPE_LABELS[activeJobScope] ?? activeJobScope}
+                                    </SectionTitle>
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        {activeScopeDetailFields.map((field) => (
+                                            <label key={field.key}>
+                                                <span className="text-sm font-medium text-slate-700">
+                                                    {field.label}
+                                                </span>
+                                                {field.type === "select" ? (
+                                                    <CustomSelect
+                                                        value={
+                                                            form.scopeDetails?.[
+                                                                field.key
+                                                            ] ?? ""
+                                                        }
+                                                        onChange={(
+                                                            nextValue,
+                                                        ) =>
+                                                            setScopeDetail(
+                                                                field.key,
+                                                                nextValue,
+                                                            )
+                                                        }
+                                                        options={[
+                                                            {
+                                                                value: "",
+                                                                label: "Pilih opsi",
+                                                            },
+                                                            ...(field.options ??
+                                                                []),
+                                                        ]}
+                                                        placeholder="Pilih opsi"
+                                                    />
+                                                ) : (
+                                                    <input
+                                                        value={
+                                                            form.scopeDetails?.[
+                                                                field.key
+                                                            ] ?? ""
+                                                        }
+                                                        onChange={(e) =>
+                                                            setScopeDetail(
+                                                                field.key,
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        placeholder={
+                                                            field.placeholder
+                                                        }
+                                                        className={inputClass}
+                                                    />
+                                                )}
+                                            </label>
+                                        ))}
+                                    </div>
+                                    {activeScopeChecklist.length > 0 && (
+                                        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                            <p className="text-sm font-medium text-slate-700">
+                                                Checklist ARB
+                                            </p>
+                                            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                                {activeScopeChecklist.map(
+                                                    (item) => {
+                                                        const checked =
+                                                            Array.isArray(
+                                                                form
+                                                                    .scopeDetails
+                                                                    ?.checklist,
+                                                            ) &&
+                                                            form.scopeDetails.checklist.includes(
+                                                                item,
+                                                            );
+                                                        return (
+                                                            <label
+                                                                key={item}
+                                                                className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={
+                                                                        checked
+                                                                    }
+                                                                    onChange={() =>
+                                                                        toggleScopeChecklist(
+                                                                            item,
+                                                                        )
+                                                                    }
+                                                                    className="mt-1"
+                                                                />
+                                                                <span>
+                                                                    {item}
+                                                                </span>
+                                                            </label>
+                                                        );
+                                                    },
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </section>
+                            )}
+
+                        {hasSelectedProject ? (
+                        <>
                         <section className="mt-8">
                             <SectionTitle>Dokumentasi Foto</SectionTitle>
                             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
@@ -780,10 +996,20 @@ export default function AdminNewJobPage() {
                                 </label>
                             </div>
                         </section>
+                        </>
+                        ) : (
+                            <section className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                                <p className="text-sm text-slate-600">
+                                    Pilih proyek terlebih dahulu untuk menampilkan
+                                    detail scope, dokumentasi foto, dan deskripsi
+                                    pekerjaan.
+                                </p>
+                            </section>
+                        )}
 
                         <button
                             type="submit"
-                            disabled={submitting}
+                            disabled={submitting || !hasSelectedProject}
                             className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-sky-500 px-6 py-3 text-base font-semibold text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-70 md:text-lg"
                         >
                             <span>

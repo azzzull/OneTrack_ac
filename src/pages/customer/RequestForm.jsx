@@ -6,6 +6,11 @@ import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import CustomSelect from "../../components/ui/CustomSelect";
 import supabase from "../../supabaseClient";
+import {
+    JOB_SCOPE_LABELS,
+    JOB_SCOPES,
+    SCOPE_DETAIL_CONFIG,
+} from "../../utils/jobScopeCatalog";
 
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
@@ -31,6 +36,7 @@ export default function CustomerRequestFormPage() {
         acCapacityPk: "",
         roomLocation: "",
         troubleDescription: "",
+        scopeDetails: {},
     });
 
     const availableProjects = useMemo(() => {
@@ -43,6 +49,10 @@ export default function CustomerRequestFormPage() {
             null,
         [availableProjects, form.projectId],
     );
+    const activeJobScope = selectedProject?.job_scope ?? JOB_SCOPES.AC;
+    const activeScopeConfig = SCOPE_DETAIL_CONFIG[activeJobScope] ?? null;
+    const activeScopeDetailFields = activeScopeConfig?.fields ?? [];
+    const activeScopeChecklist = activeScopeConfig?.checklist ?? [];
 
     const selectedCustomer = useMemo(
         () =>
@@ -143,19 +153,44 @@ export default function CustomerRequestFormPage() {
     }, [fetchCustomerContext]);
 
     useEffect(() => {
-        if (availableProjects.length === 0) return;
         const isValid = availableProjects.some(
             (item) => item.id === form.projectId,
         );
-        if (!isValid) {
-            const firstProject = availableProjects[0];
+        if (!isValid && form.projectId) {
             setForm((prev) => ({
                 ...prev,
-                projectId: firstProject.id,
-                customerId: firstProject.customer_id ?? prev.customerId,
+                projectId: "",
             }));
         }
     }, [availableProjects, form.projectId]);
+
+    const setScopeDetail = useCallback((key, value) => {
+        setForm((prev) => ({
+            ...prev,
+            scopeDetails: {
+                ...(prev.scopeDetails ?? {}),
+                [key]: value,
+            },
+        }));
+    }, []);
+
+    const toggleScopeChecklist = useCallback((item) => {
+        setForm((prev) => {
+            const current = Array.isArray(prev.scopeDetails?.checklist)
+                ? prev.scopeDetails.checklist
+                : [];
+            const nextChecklist = current.includes(item)
+                ? current.filter((value) => value !== item)
+                : [...current, item];
+            return {
+                ...prev,
+                scopeDetails: {
+                    ...(prev.scopeDetails ?? {}),
+                    checklist: nextChecklist,
+                },
+            };
+        });
+    }, []);
 
     const submitRequest = async (event) => {
         event.preventDefault();
@@ -167,11 +202,14 @@ export default function CustomerRequestFormPage() {
             return;
         }
 
+        const isAcScope = activeJobScope === JOB_SCOPES.AC;
+
         if (
-            !form.acBrand ||
-            !form.acType ||
-            !form.acCapacityPk ||
-            !form.roomLocation
+            isAcScope &&
+            (!form.acBrand ||
+                !form.acType ||
+                !form.acCapacityPk ||
+                !form.roomLocation)
         ) {
             await showAlert("Lengkapi merk, tipe, PK, dan lokasi ruangan.", {
                 title: "Data Belum Lengkap",
@@ -183,7 +221,8 @@ export default function CustomerRequestFormPage() {
         try {
             const payload = {
                 title: selectedProject?.project_name ?? "",
-                status: "pending",
+                status: "requested",
+                job_scope: activeJobScope,
                 location:
                     selectedProject?.location ??
                     selectedCustomer?.location ??
@@ -196,11 +235,27 @@ export default function CustomerRequestFormPage() {
                     selectedProject?.address ?? selectedCustomer?.address ?? "",
                 customer_id: selectedCustomer.id,
                 project_id: selectedProject?.id ?? null,
-                ac_brand: form.acBrand,
-                ac_type: form.acType,
-                ac_capacity_pk: form.acCapacityPk,
-                room_location: form.roomLocation,
+                ac_brand: isAcScope ? form.acBrand : null,
+                ac_type: isAcScope ? form.acType : null,
+                ac_capacity_pk: isAcScope ? form.acCapacityPk : null,
+                room_location: isAcScope ? form.roomLocation : null,
                 trouble_description: form.troubleDescription,
+                dynamic_data: isAcScope
+                    ? null
+                    : Object.fromEntries(
+                          Object.entries(form.scopeDetails ?? {}).filter(
+                              ([, value]) => {
+                                  if (Array.isArray(value)) {
+                                      return value.length > 0;
+                                  }
+                                  return (
+                                      value !== null &&
+                                      value !== undefined &&
+                                      String(value).trim() !== ""
+                                  );
+                              },
+                          ),
+                      ),
                 created_by: user?.id ?? null,
             };
 
@@ -214,6 +269,7 @@ export default function CustomerRequestFormPage() {
                 acCapacityPk: "",
                 roomLocation: "",
                 troubleDescription: "",
+                scopeDetails: {},
             }));
 
             await showAlert("Request pekerjaan berhasil dikirim.", {
@@ -293,90 +349,215 @@ export default function CustomerRequestFormPage() {
                                         placeholder="Pilih proyek customer"
                                     />
                                 </label>
-
-                                <label>
+                                <label className="md:col-span-2">
                                     <span className="text-sm font-medium text-slate-700">
-                                        Merk AC
-                                    </span>
-                                    <CustomSelect
-                                        value={form.acBrand}
-                                        onChange={(nextValue) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                acBrand: nextValue,
-                                            }))
-                                        }
-                                        options={[
-                                            { value: "", label: "Pilih Merk" },
-                                            ...acBrands.map((item) => ({
-                                                value: item.name,
-                                                label: item.name,
-                                            })),
-                                        ]}
-                                    />
-                                </label>
-
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Tipe AC
-                                    </span>
-                                    <CustomSelect
-                                        value={form.acType}
-                                        onChange={(nextValue) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                acType: nextValue,
-                                            }))
-                                        }
-                                        options={[
-                                            { value: "", label: "Pilih Tipe" },
-                                            ...acTypes.map((item) => ({
-                                                value: item.name,
-                                                label: item.name,
-                                            })),
-                                        ]}
-                                    />
-                                </label>
-
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Kapasitas AC (PK)
-                                    </span>
-                                    <CustomSelect
-                                        value={form.acCapacityPk}
-                                        onChange={(nextValue) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                acCapacityPk: nextValue,
-                                            }))
-                                        }
-                                        options={[
-                                            { value: "", label: "Pilih PK" },
-                                            ...acPks.map((item) => ({
-                                                value: item.label,
-                                                label: item.label,
-                                            })),
-                                        ]}
-                                    />
-                                </label>
-
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Lokasi Ruangan
+                                        Scope Proyek
                                     </span>
                                     <input
-                                        value={form.roomLocation}
-                                        onChange={(e) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                roomLocation: e.target.value,
-                                            }))
+                                        value={
+                                            JOB_SCOPE_LABELS[activeJobScope] ??
+                                            activeJobScope
                                         }
+                                        readOnly
                                         className={inputClass}
-                                        placeholder="Contoh: Ruang Meeting A"
-                                        required
                                     />
                                 </label>
+
+                                {activeJobScope === JOB_SCOPES.AC ? (
+                                    <>
+                                        <label>
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Merk AC
+                                            </span>
+                                            <CustomSelect
+                                                value={form.acBrand}
+                                                onChange={(nextValue) =>
+                                                    setForm((prev) => ({
+                                                        ...prev,
+                                                        acBrand: nextValue,
+                                                    }))
+                                                }
+                                                options={[
+                                                    {
+                                                        value: "",
+                                                        label: "Pilih Merk",
+                                                    },
+                                                    ...acBrands.map((item) => ({
+                                                        value: item.name,
+                                                        label: item.name,
+                                                    })),
+                                                ]}
+                                            />
+                                        </label>
+
+                                        <label>
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Tipe AC
+                                            </span>
+                                            <CustomSelect
+                                                value={form.acType}
+                                                onChange={(nextValue) =>
+                                                    setForm((prev) => ({
+                                                        ...prev,
+                                                        acType: nextValue,
+                                                    }))
+                                                }
+                                                options={[
+                                                    {
+                                                        value: "",
+                                                        label: "Pilih Tipe",
+                                                    },
+                                                    ...acTypes.map((item) => ({
+                                                        value: item.name,
+                                                        label: item.name,
+                                                    })),
+                                                ]}
+                                            />
+                                        </label>
+
+                                        <label>
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Kapasitas AC (PK)
+                                            </span>
+                                            <CustomSelect
+                                                value={form.acCapacityPk}
+                                                onChange={(nextValue) =>
+                                                    setForm((prev) => ({
+                                                        ...prev,
+                                                        acCapacityPk:
+                                                            nextValue,
+                                                    }))
+                                                }
+                                                options={[
+                                                    {
+                                                        value: "",
+                                                        label: "Pilih PK",
+                                                    },
+                                                    ...acPks.map((item) => ({
+                                                        value: item.label,
+                                                        label: item.label,
+                                                    })),
+                                                ]}
+                                            />
+                                        </label>
+
+                                        <label>
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Lokasi Ruangan
+                                            </span>
+                                            <input
+                                                value={form.roomLocation}
+                                                onChange={(e) =>
+                                                    setForm((prev) => ({
+                                                        ...prev,
+                                                        roomLocation:
+                                                            e.target.value,
+                                                    }))
+                                                }
+                                                className={inputClass}
+                                                placeholder="Contoh: Ruang Meeting A"
+                                                required
+                                            />
+                                        </label>
+                                    </>
+                                ) : (
+                                    <>
+                                        {activeScopeDetailFields.map((field) => (
+                                            <label key={field.key}>
+                                                <span className="text-sm font-medium text-slate-700">
+                                                    {field.label}
+                                                </span>
+                                                {field.type === "select" ? (
+                                                    <CustomSelect
+                                                        value={
+                                                            form.scopeDetails?.[
+                                                                field.key
+                                                            ] ?? ""
+                                                        }
+                                                        onChange={(
+                                                            nextValue,
+                                                        ) =>
+                                                            setScopeDetail(
+                                                                field.key,
+                                                                nextValue,
+                                                            )
+                                                        }
+                                                        options={[
+                                                            {
+                                                                value: "",
+                                                                label: "Pilih opsi",
+                                                            },
+                                                            ...(field.options ??
+                                                                []),
+                                                        ]}
+                                                    />
+                                                ) : (
+                                                    <input
+                                                        value={
+                                                            form.scopeDetails?.[
+                                                                field.key
+                                                            ] ?? ""
+                                                        }
+                                                        onChange={(e) =>
+                                                            setScopeDetail(
+                                                                field.key,
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        className={inputClass}
+                                                        placeholder={
+                                                            field.placeholder
+                                                        }
+                                                    />
+                                                )}
+                                            </label>
+                                        ))}
+                                        {activeScopeChecklist.length > 0 && (
+                                            <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                                <p className="text-sm font-medium text-slate-700">
+                                                    Checklist ARB
+                                                </p>
+                                                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                                    {activeScopeChecklist.map(
+                                                        (item) => {
+                                                            const checked =
+                                                                Array.isArray(
+                                                                    form
+                                                                        .scopeDetails
+                                                                        ?.checklist,
+                                                                ) &&
+                                                                form.scopeDetails.checklist.includes(
+                                                                    item,
+                                                                );
+                                                            return (
+                                                                <label
+                                                                    key={item}
+                                                                    className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={
+                                                                            checked
+                                                                        }
+                                                                        onChange={() =>
+                                                                            toggleScopeChecklist(
+                                                                                item,
+                                                                            )
+                                                                        }
+                                                                        className="mt-1"
+                                                                    />
+                                                                    <span>
+                                                                        {item}
+                                                                    </span>
+                                                                </label>
+                                                            );
+                                                        },
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
 
                                 <label className="md:col-span-2">
                                     <span className="text-sm font-medium text-slate-700">
