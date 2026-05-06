@@ -59,8 +59,10 @@ const FileCaptureCard = ({ label, fileName, onClick }) => (
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
 
-const isAcScope = (scope) => String(scope ?? "").trim().toUpperCase() === "AC";
-
+const isAcScope = (scope) =>
+    String(scope ?? "")
+        .trim()
+        .toUpperCase() === "AC";
 
 const getCurrentUserDisplayName = (user) => {
     const composed =
@@ -237,7 +239,9 @@ export default function AdminNewJobPage() {
         if (!selectedProject) return;
         const nextScope = selectedProject.job_scope ?? "AC";
         setForm((prev) =>
-            prev.jobScope === nextScope ? prev : { ...prev, jobScope: nextScope },
+            prev.jobScope === nextScope
+                ? prev
+                : { ...prev, jobScope: nextScope },
         );
     }, [selectedProject]);
 
@@ -338,10 +342,9 @@ export default function AdminNewJobPage() {
         const acScopeSelected = isAcScope(activeJobScope);
 
         if (!form.customerId || !form.projectId) {
-            await showAlert(
-                "Lengkapi customer dan proyek terlebih dahulu.",
-                { title: "Data Belum Lengkap" },
-            );
+            await showAlert("Lengkapi customer dan proyek terlebih dahulu.", {
+                title: "Data Belum Lengkap",
+            });
             return;
         }
 
@@ -758,65 +761,74 @@ export default function AdminNewJobPage() {
                                 activeScopeChecklist.length > 0) && (
                                 <section className="mt-8">
                                     <SectionTitle>
-                                        Detail {JOB_SCOPE_LABELS[activeJobScope] ?? activeJobScope}
+                                        Detail{" "}
+                                        {JOB_SCOPE_LABELS[activeJobScope] ??
+                                            activeJobScope}
                                     </SectionTitle>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        {activeScopeDetailFields.map((field) => (
-                                            <label key={field.key}>
-                                                <span className="text-sm font-medium text-slate-700">
-                                                    {field.label}
-                                                </span>
-                                                {field.type === "select" ? (
-                                                    <CustomSelect
-                                                        value={
-                                                            form.scopeDetails?.[
-                                                                field.key
-                                                            ] ?? ""
-                                                        }
-                                                        onChange={(
-                                                            nextValue,
-                                                        ) =>
-                                                            setScopeDetail(
-                                                                field.key,
+                                        {activeScopeDetailFields.map(
+                                            (field) => (
+                                                <label key={field.key}>
+                                                    <span className="text-sm font-medium text-slate-700">
+                                                        {field.label}
+                                                    </span>
+                                                    {field.type === "select" ? (
+                                                        <CustomSelect
+                                                            value={
+                                                                form
+                                                                    .scopeDetails?.[
+                                                                    field.key
+                                                                ] ?? ""
+                                                            }
+                                                            onChange={(
                                                                 nextValue,
-                                                            )
-                                                        }
-                                                        options={[
-                                                            {
-                                                                value: "",
-                                                                label: "Pilih opsi",
-                                                            },
-                                                            ...(field.options ??
-                                                                []),
-                                                        ]}
-                                                        placeholder="Pilih opsi"
-                                                    />
-                                                ) : (
-                                                    <input
-                                                        value={
-                                                            form.scopeDetails?.[
-                                                                field.key
-                                                            ] ?? ""
-                                                        }
-                                                        onChange={(e) =>
-                                                            setScopeDetail(
-                                                                field.key,
-                                                                e.target.value,
-                                                            )
-                                                        }
-                                                        placeholder={
-                                                            field.placeholder
-                                                        }
-                                                        className={inputClass}
-                                                    />
-                                                )}
-                                            </label>
-                                        ))}
+                                                            ) =>
+                                                                setScopeDetail(
+                                                                    field.key,
+                                                                    nextValue,
+                                                                )
+                                                            }
+                                                            options={[
+                                                                {
+                                                                    value: "",
+                                                                    label: "Pilih opsi",
+                                                                },
+                                                                ...(field.options ??
+                                                                    []),
+                                                            ]}
+                                                            placeholder="Pilih opsi"
+                                                        />
+                                                    ) : (
+                                                        <input
+                                                            value={
+                                                                form
+                                                                    .scopeDetails?.[
+                                                                    field.key
+                                                                ] ?? ""
+                                                            }
+                                                            onChange={(e) =>
+                                                                setScopeDetail(
+                                                                    field.key,
+                                                                    e.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            placeholder={
+                                                                field.placeholder
+                                                            }
+                                                            className={
+                                                                inputClass
+                                                            }
+                                                        />
+                                                    )}
+                                                </label>
+                                            ),
+                                        )}
                                     </div>
                                     {activeScopeChecklist.length > 0 && (
                                         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                             <p className="text-sm font-medium text-slate-700">
-                                                Checklist ARB
+                                                Checklist Pekerjaan
                                             </p>
                                             <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
                                                 {activeScopeChecklist.map(
@@ -861,148 +873,154 @@ export default function AdminNewJobPage() {
                             )}
 
                         {hasSelectedProject ? (
-                        <>
-                        <section className="mt-8">
-                            <SectionTitle>Dokumentasi Foto</SectionTitle>
-                            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-slate-700">
-                                        Foto Before
-                                    </label>
-                                    <PhotoUploadInput
-                                        folderName="before"
-                                        photoType="before"
-                                        supabaseClient={supabase}
-                                        onPhotoSelected={() => {}}
-                                        onUploadSuccess={async (
-                                            metadata,
-                                            photoUrl,
-                                        ) => {
-                                            setBeforePhotoUrl(photoUrl);
-                                        }}
-                                        showQueuedStatus={false}
-                                    />
-                                    {beforePhotoUrl && (
-                                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                            <p className="text-xs text-emerald-700">
-                                                Foto terpilih
-                                            </p>
+                            <>
+                                <section className="mt-8">
+                                    <SectionTitle>
+                                        Dokumentasi Foto
+                                    </SectionTitle>
+                                    <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-slate-700">
+                                                Foto Before
+                                            </label>
+                                            <PhotoUploadInput
+                                                folderName="before"
+                                                photoType="before"
+                                                supabaseClient={supabase}
+                                                onPhotoSelected={() => {}}
+                                                onUploadSuccess={async (
+                                                    metadata,
+                                                    photoUrl,
+                                                ) => {
+                                                    setBeforePhotoUrl(photoUrl);
+                                                }}
+                                                showQueuedStatus={false}
+                                            />
+                                            {beforePhotoUrl && (
+                                                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                                    <p className="text-xs text-emerald-700">
+                                                        Foto terpilih
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-slate-700">
-                                        Foto Progress
-                                    </label>
-                                    <PhotoUploadInput
-                                        folderName="progress"
-                                        photoType="progress"
-                                        supabaseClient={supabase}
-                                        onPhotoSelected={() => {}}
-                                        onUploadSuccess={async (
-                                            metadata,
-                                            photoUrl,
-                                        ) => {
-                                            setProgressPhotoUrl(photoUrl);
-                                        }}
-                                        showQueuedStatus={false}
-                                    />
-                                    {progressPhotoUrl && (
-                                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                            <p className="text-xs text-emerald-700">
-                                                Foto terpilih
-                                            </p>
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-slate-700">
+                                                Foto Progress
+                                            </label>
+                                            <PhotoUploadInput
+                                                folderName="progress"
+                                                photoType="progress"
+                                                supabaseClient={supabase}
+                                                onPhotoSelected={() => {}}
+                                                onUploadSuccess={async (
+                                                    metadata,
+                                                    photoUrl,
+                                                ) => {
+                                                    setProgressPhotoUrl(
+                                                        photoUrl,
+                                                    );
+                                                }}
+                                                showQueuedStatus={false}
+                                            />
+                                            {progressPhotoUrl && (
+                                                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                                    <p className="text-xs text-emerald-700">
+                                                        Foto terpilih
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-slate-700">
-                                        Foto After
-                                    </label>
-                                    <PhotoUploadInput
-                                        folderName="after"
-                                        photoType="after"
-                                        supabaseClient={supabase}
-                                        onPhotoSelected={() => {}}
-                                        onUploadSuccess={async (
-                                            metadata,
-                                            photoUrl,
-                                        ) => {
-                                            setAfterPhotoUrl(photoUrl);
-                                        }}
-                                        showQueuedStatus={false}
-                                    />
-                                    {afterPhotoUrl && (
-                                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                                            <p className="text-xs text-emerald-700">
-                                                Foto terpilih
-                                            </p>
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-slate-700">
+                                                Foto After
+                                            </label>
+                                            <PhotoUploadInput
+                                                folderName="after"
+                                                photoType="after"
+                                                supabaseClient={supabase}
+                                                onPhotoSelected={() => {}}
+                                                onUploadSuccess={async (
+                                                    metadata,
+                                                    photoUrl,
+                                                ) => {
+                                                    setAfterPhotoUrl(photoUrl);
+                                                }}
+                                                showQueuedStatus={false}
+                                            />
+                                            {afterPhotoUrl && (
+                                                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                                                    <p className="text-xs text-emerald-700">
+                                                        Foto terpilih
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                        </section>
+                                    </div>
+                                </section>
 
-                        <section className="mt-8">
-                            <SectionTitle>Detail Perbaikan</SectionTitle>
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <label className="md:col-span-2">
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Deskripsi Masalah / Trouble
-                                    </span>
-                                    <textarea
-                                        value={form.troubleDescription}
-                                        onChange={(e) =>
-                                            setField(
-                                                "troubleDescription",
-                                                e.target.value,
-                                            )
-                                        }
-                                        placeholder="Jelaskan keluhan kerusakan"
-                                        className={`${inputClass} min-h-24`}
-                                    />
-                                </label>
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Suku Cadang Diganti
-                                    </span>
-                                    <textarea
-                                        value={form.replacedParts}
-                                        onChange={(e) =>
-                                            setField(
-                                                "replacedParts",
-                                                e.target.value,
-                                            )
-                                        }
-                                        placeholder="Daftar part baru"
-                                        className={`${inputClass} min-h-20`}
-                                    />
-                                </label>
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Suku Cadang Direkondisi
-                                    </span>
-                                    <textarea
-                                        value={form.reconditionedParts}
-                                        onChange={(e) =>
-                                            setField(
-                                                "reconditionedParts",
-                                                e.target.value,
-                                            )
-                                        }
-                                        placeholder="Daftar part rekondisi"
-                                        className={`${inputClass} min-h-20`}
-                                    />
-                                </label>
-                            </div>
-                        </section>
-                        </>
+                                <section className="mt-8">
+                                    <SectionTitle>
+                                        Detail Perbaikan
+                                    </SectionTitle>
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <label className="md:col-span-2">
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Deskripsi Masalah / Trouble
+                                            </span>
+                                            <textarea
+                                                value={form.troubleDescription}
+                                                onChange={(e) =>
+                                                    setField(
+                                                        "troubleDescription",
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                placeholder="Jelaskan keluhan kerusakan"
+                                                className={`${inputClass} min-h-24`}
+                                            />
+                                        </label>
+                                        <label>
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Suku Cadang Diganti
+                                            </span>
+                                            <textarea
+                                                value={form.replacedParts}
+                                                onChange={(e) =>
+                                                    setField(
+                                                        "replacedParts",
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                placeholder="Daftar part baru"
+                                                className={`${inputClass} min-h-20`}
+                                            />
+                                        </label>
+                                        <label>
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Suku Cadang Direkondisi
+                                            </span>
+                                            <textarea
+                                                value={form.reconditionedParts}
+                                                onChange={(e) =>
+                                                    setField(
+                                                        "reconditionedParts",
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                placeholder="Daftar part rekondisi"
+                                                className={`${inputClass} min-h-20`}
+                                            />
+                                        </label>
+                                    </div>
+                                </section>
+                            </>
                         ) : (
                             <section className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
                                 <p className="text-sm text-slate-600">
-                                    Pilih proyek terlebih dahulu untuk menampilkan
-                                    detail scope, dokumentasi foto, dan deskripsi
-                                    pekerjaan.
+                                    Pilih proyek terlebih dahulu untuk
+                                    menampilkan detail scope, dokumentasi foto,
+                                    dan deskripsi pekerjaan.
                                 </p>
                             </section>
                         )}

@@ -424,8 +424,7 @@ export default function CustomerRequestFormPage() {
                                                 onChange={(nextValue) =>
                                                     setForm((prev) => ({
                                                         ...prev,
-                                                        acCapacityPk:
-                                                            nextValue,
+                                                        acCapacityPk: nextValue,
                                                     }))
                                                 }
                                                 options={[
@@ -462,60 +461,67 @@ export default function CustomerRequestFormPage() {
                                     </>
                                 ) : (
                                     <>
-                                        {activeScopeDetailFields.map((field) => (
-                                            <label key={field.key}>
-                                                <span className="text-sm font-medium text-slate-700">
-                                                    {field.label}
-                                                </span>
-                                                {field.type === "select" ? (
-                                                    <CustomSelect
-                                                        value={
-                                                            form.scopeDetails?.[
-                                                                field.key
-                                                            ] ?? ""
-                                                        }
-                                                        onChange={(
-                                                            nextValue,
-                                                        ) =>
-                                                            setScopeDetail(
-                                                                field.key,
+                                        {activeScopeDetailFields.map(
+                                            (field) => (
+                                                <label key={field.key}>
+                                                    <span className="text-sm font-medium text-slate-700">
+                                                        {field.label}
+                                                    </span>
+                                                    {field.type === "select" ? (
+                                                        <CustomSelect
+                                                            value={
+                                                                form
+                                                                    .scopeDetails?.[
+                                                                    field.key
+                                                                ] ?? ""
+                                                            }
+                                                            onChange={(
                                                                 nextValue,
-                                                            )
-                                                        }
-                                                        options={[
-                                                            {
-                                                                value: "",
-                                                                label: "Pilih opsi",
-                                                            },
-                                                            ...(field.options ??
-                                                                []),
-                                                        ]}
-                                                    />
-                                                ) : (
-                                                    <input
-                                                        value={
-                                                            form.scopeDetails?.[
-                                                                field.key
-                                                            ] ?? ""
-                                                        }
-                                                        onChange={(e) =>
-                                                            setScopeDetail(
-                                                                field.key,
-                                                                e.target.value,
-                                                            )
-                                                        }
-                                                        className={inputClass}
-                                                        placeholder={
-                                                            field.placeholder
-                                                        }
-                                                    />
-                                                )}
-                                            </label>
-                                        ))}
+                                                            ) =>
+                                                                setScopeDetail(
+                                                                    field.key,
+                                                                    nextValue,
+                                                                )
+                                                            }
+                                                            options={[
+                                                                {
+                                                                    value: "",
+                                                                    label: "Pilih opsi",
+                                                                },
+                                                                ...(field.options ??
+                                                                    []),
+                                                            ]}
+                                                        />
+                                                    ) : (
+                                                        <input
+                                                            value={
+                                                                form
+                                                                    .scopeDetails?.[
+                                                                    field.key
+                                                                ] ?? ""
+                                                            }
+                                                            onChange={(e) =>
+                                                                setScopeDetail(
+                                                                    field.key,
+                                                                    e.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            className={
+                                                                inputClass
+                                                            }
+                                                            placeholder={
+                                                                field.placeholder
+                                                            }
+                                                        />
+                                                    )}
+                                                </label>
+                                            ),
+                                        )}
                                         {activeScopeChecklist.length > 0 && (
                                             <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                                 <p className="text-sm font-medium text-slate-700">
-                                                    Checklist ARB
+                                                    Checklist Pekerjaan
                                                 </p>
                                                 <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
                                                     {activeScopeChecklist.map(
