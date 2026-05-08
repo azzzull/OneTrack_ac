@@ -1,5 +1,6 @@
 import React from "react";
-import { JOB_SCOPE_LABELS, JOB_SCOPES } from "../utils/jobScopeCatalog";
+import useJobScopeOptions from "../hooks/useJobScopeOptions";
+import { JOB_SCOPES, buildJobScopeOptions } from "../utils/jobScopeCatalog";
 import "../styles/JobScopeSelector.css";
 
 /**
@@ -15,6 +16,9 @@ const JobScopeSelector = ({
     className = "",
     style = {},
 }) => {
+    const { options } = useJobScopeOptions();
+    const selectOptions = options.length ? options : buildJobScopeOptions();
+
     return (
         <div className={`job-scope-selector ${className}`} style={style}>
             {showLabel && (
@@ -29,9 +33,9 @@ const JobScopeSelector = ({
                 disabled={disabled}
                 className="job-scope-select"
             >
-                {Object.values(JOB_SCOPES).map((scope) => (
-                    <option key={scope} value={scope}>
-                        {JOB_SCOPE_LABELS[scope]}
+                {selectOptions.map((scope) => (
+                    <option key={scope.value} value={scope.value}>
+                        {scope.label}
                     </option>
                 ))}
             </select>

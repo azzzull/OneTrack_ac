@@ -4,6 +4,7 @@ import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
+import useJobScopeOptions from "../../hooks/useJobScopeOptions";
 import CustomSelect from "../../components/ui/CustomSelect";
 import supabase from "../../supabaseClient";
 import {
@@ -20,6 +21,7 @@ export default function CustomerRequestFormPage() {
         useSidebarCollapsed();
     const { user } = useAuth();
     const { alert: showAlert } = useDialog();
+    const { labels: jobScopeLabels } = useJobScopeOptions();
 
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -355,6 +357,7 @@ export default function CustomerRequestFormPage() {
                                     </span>
                                     <input
                                         value={
+                                            jobScopeLabels[activeJobScope] ??
                                             JOB_SCOPE_LABELS[activeJobScope] ??
                                             activeJobScope
                                         }

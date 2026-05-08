@@ -3,9 +3,11 @@ import { ArrowLeft, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
+import useJobScopeOptions from "../../hooks/useJobScopeOptions";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useDialog } from "../../context/useDialog";
-import { JOB_SCOPE_LABELS, JOB_SCOPES } from "../../hooks/useJobScope";
+import { JOB_SCOPES } from "../../hooks/useJobScope";
+import { normalizeJobScopeCode } from "../../utils/jobScopeCatalog";
 import supabase from "../../supabaseClient";
 
 const inputClass =
@@ -15,11 +17,6 @@ const TECHNICIAN_TYPE_OPTIONS = [
     { value: "internal", label: "Internal" },
     { value: "external", label: "External" },
 ];
-
-const PROJECT_SCOPE_OPTIONS = Object.values(JOB_SCOPES).map((scope) => ({
-    value: scope,
-    label: JOB_SCOPE_LABELS[scope] ?? scope,
-}));
 
 const resolveErrorMessage = async (error) => {
     if (error?.context && typeof error.context.json === "function") {
@@ -68,6 +65,7 @@ const moduleConfig = {
     roles: { title: "Role", table: "master_roles" },
     customers: { title: "Customer", table: "master_customers" },
     projects: { title: "Project", table: "master_projects" },
+    job_scopes: { title: "Scope Pekerjaan", table: "master_job_scopes" },
     ac_brands: { title: "Merk AC", table: "master_ac_brands" },
     ac_types: { title: "Tipe AC", table: "master_ac_types" },
     ac_pks: { title: "Jumlah PK", table: "master_ac_pks" },
@@ -77,6 +75,11 @@ export default function AdminMasterDataModulePage() {
     const { moduleKey } = useParams();
     const cfg = moduleConfig[moduleKey];
     const { alert: showAlert, confirm } = useDialog();
+    const {
+        options: projectScopeOptions,
+        labels: jobScopeLabels,
+        reload: reloadJobScopes,
+    } = useJobScopeOptions();
 
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -114,6 +117,8 @@ export default function AdminMasterDataModulePage() {
         password: "",
         address: "",
         label: "",
+        scopeCode: "",
+        scopeLabel: "",
     });
 
     const splitName = (fullName) => {
@@ -176,6 +181,8 @@ export default function AdminMasterDataModulePage() {
             query = query.order("created_at", { ascending: false });
         } else if (moduleKey === "projects") {
             query = query.order("created_at", { ascending: false });
+        } else if (moduleKey === "job_scopes") {
+            query = query.order("label", { ascending: true });
         } else if (moduleKey === "ac_pks") {
             query = query.order("label", { ascending: true });
         } else {
@@ -229,7 +236,7 @@ export default function AdminMasterDataModulePage() {
             if (item.role !== "technician") return "-";
             if (item.technician_type === "external") {
                 return item.customer_id
-                    ? customerNameById.get(item.customer_id) ?? "1 customer"
+                    ? (customerNameById.get(item.customer_id) ?? "1 customer")
                     : "Belum ditentukan";
             }
             if (item.technician_type === "internal") {
@@ -307,8 +314,7 @@ export default function AdminMasterDataModulePage() {
             const normalizedTechnicianType =
                 role === "technician" ? technicianType || "internal" : null;
             const targetCustomerId =
-                role === "technician" &&
-                normalizedTechnicianType === "external"
+                role === "technician" && normalizedTechnicianType === "external"
                     ? assignedCustomerId || null
                     : null;
 
@@ -351,7 +357,9 @@ export default function AdminMasterDataModulePage() {
                     );
                     if (error) throw error;
                     if (data?.[0]?.success === false) {
-                        throw new Error(data?.[0]?.message || "Unassign gagal.");
+                        throw new Error(
+                            data?.[0]?.message || "Unassign gagal.",
+                        );
                     }
                 }
             }
@@ -489,12 +497,27 @@ export default function AdminMasterDataModulePage() {
             throw new Error("User dibuat tapi profile tidak ditemukan.");
         }
 
+        // Auto-assign internal technicians to ALL customers
+        let assignmentsToUse = userForm.internalAssignments;
+        if (
+            userForm.role === "technician" &&
+            userForm.technicianType === "internal"
+        ) {
+            if (!assignmentsToUse || assignmentsToUse.length === 0) {
+                // Fetch all customers
+                const { data: allCustomers, error: customersError } =
+                    await supabase.from("master_customers").select("id");
+                if (customersError) throw customersError;
+                assignmentsToUse = (allCustomers || []).map((c) => c.id);
+            }
+        }
+
         await updateTechnicianTenantConfig({
             userId: createdProfile.id,
             role: userForm.role,
             technicianType: userForm.technicianType,
             assignedCustomerId: userForm.assignedCustomerId,
-            internalAssignments: userForm.internalAssignments,
+            internalAssignments: assignmentsToUse,
         });
 
         setUserForm({
@@ -630,6 +653,16 @@ export default function AdminMasterDataModulePage() {
                     null,
             };
             await syncProjectMutation("insert", basePayload);
+        } else if (moduleKey === "job_scopes") {
+            const code = normalizeJobScopeCode(simpleForm.scopeCode);
+            const label = String(simpleForm.scopeLabel ?? "").trim();
+            if (!code || !label) {
+                throw new Error("Kode dan label scope pekerjaan wajib diisi.");
+            }
+            const { error } = await supabase
+                .from("master_job_scopes")
+                .insert({ code, label });
+            if (error) throw error;
         } else if (moduleKey === "ac_brands") {
             const { error } = await supabase
                 .from("master_ac_brands")
@@ -659,6 +692,8 @@ export default function AdminMasterDataModulePage() {
             password: "",
             address: "",
             label: "",
+            scopeCode: "",
+            scopeLabel: "",
         });
     };
 
@@ -711,6 +746,17 @@ export default function AdminMasterDataModulePage() {
                     null,
             };
             await syncProjectMutation("update", basePayload, editSimpleId);
+        } else if (moduleKey === "job_scopes") {
+            const code = normalizeJobScopeCode(simpleForm.scopeCode);
+            const label = String(simpleForm.scopeLabel ?? "").trim();
+            if (!code || !label) {
+                throw new Error("Kode dan label scope pekerjaan wajib diisi.");
+            }
+            const { error } = await supabase
+                .from("master_job_scopes")
+                .update({ code, label })
+                .eq("id", editSimpleId);
+            if (error) throw error;
         } else if (moduleKey === "ac_brands") {
             const { error } = await supabase
                 .from("master_ac_brands")
@@ -883,6 +929,9 @@ export default function AdminMasterDataModulePage() {
             }
 
             await loadItems();
+            if (moduleKey === "job_scopes") {
+                await reloadJobScopes();
+            }
         } catch (error) {
             console.error("Delete data failed:", error);
             await showAlert(await resolveErrorMessage(error), {
@@ -915,6 +964,8 @@ export default function AdminMasterDataModulePage() {
             password: "",
             address: "",
             label: "",
+            scopeCode: "",
+            scopeLabel: "",
         });
     };
 
@@ -938,6 +989,9 @@ export default function AdminMasterDataModulePage() {
             setEditUserId(null);
             setEditSimpleId(null);
             await loadItems();
+            if (moduleKey === "job_scopes") {
+                await reloadJobScopes();
+            }
         } catch (error) {
             console.error("Add data failed:", error);
             await showAlert(await resolveErrorMessage(error), {
@@ -1025,7 +1079,7 @@ export default function AdminMasterDataModulePage() {
                                     ? "Tambah User"
                                     : moduleKey === "projects"
                                       ? "Tambah Project"
-                                    : "Tambah Data"}
+                                      : "Tambah Data"}
                             </button>
                         </div>
                     </div>
@@ -1137,6 +1191,19 @@ export default function AdminMasterDataModulePage() {
                                                     </th>
                                                 </>
                                             )}
+                                            {moduleKey === "job_scopes" && (
+                                                <>
+                                                    <th className="px-3 py-3">
+                                                        Kode
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Label
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Aksi
+                                                    </th>
+                                                </>
+                                            )}
                                             {(moduleKey === "ac_brands" ||
                                                 moduleKey === "ac_types") && (
                                                 <>
@@ -1182,8 +1249,8 @@ export default function AdminMasterDataModulePage() {
                                                         <td className="px-3 py-3 text-slate-600">
                                                             {item.role ===
                                                             "technician"
-                                                                ? item.technician_type ??
-                                                                  "-"
+                                                                ? (item.technician_type ??
+                                                                  "-")
                                                                 : "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
@@ -1486,7 +1553,7 @@ export default function AdminMasterDataModulePage() {
                                                                 "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
-                                                            {JOB_SCOPE_LABELS[
+                                                            {jobScopeLabels[
                                                                 item.job_scope
                                                             ] ??
                                                                 item.job_scope ??
@@ -1552,6 +1619,86 @@ export default function AdminMasterDataModulePage() {
                                                                                     item.address ??
                                                                                     "",
                                                                                 label: "",
+                                                                            },
+                                                                        );
+                                                                        setOpenModal(
+                                                                            true,
+                                                                        );
+                                                                    }}
+                                                                    className="inline-flex cursor-pointer rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                                                                    title="Edit"
+                                                                >
+                                                                    <Pencil
+                                                                        size={
+                                                                            14
+                                                                        }
+                                                                    />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        deleteItem(
+                                                                            item.id,
+                                                                        )
+                                                                    }
+                                                                    className="inline-flex cursor-pointer rounded-md p-1 text-rose-500 hover:bg-rose-50"
+                                                                    title="Hapus"
+                                                                >
+                                                                    <Trash2
+                                                                        size={
+                                                                            14
+                                                                        }
+                                                                    />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </>
+                                                )}
+                                                {moduleKey === "job_scopes" && (
+                                                    <>
+                                                        <td className="px-3 py-3 font-medium text-slate-800">
+                                                            {item.code ?? "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
+                                                            {item.label ?? "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setEditUserId(
+                                                                            null,
+                                                                        );
+                                                                        setEditSimpleId(
+                                                                            item.id,
+                                                                        );
+                                                                        setSimpleForm(
+                                                                            {
+                                                                                customerId:
+                                                                                    "",
+                                                                                name: "",
+                                                                                picName:
+                                                                                    "",
+                                                                                projectName:
+                                                                                    "",
+                                                                                jobScope:
+                                                                                    JOB_SCOPES.AC,
+                                                                                location:
+                                                                                    "",
+                                                                                phone: "",
+                                                                                email: "",
+                                                                                password:
+                                                                                    "",
+                                                                                address:
+                                                                                    "",
+                                                                                label: "",
+                                                                                scopeCode:
+                                                                                    item.code ??
+                                                                                    "",
+                                                                                scopeLabel:
+                                                                                    item.label ??
+                                                                                    "",
                                                                             },
                                                                         );
                                                                         setOpenModal(
@@ -1893,9 +2040,7 @@ export default function AdminMasterDataModulePage() {
                                                         value={
                                                             userForm.assignedCustomerId
                                                         }
-                                                        onChange={(
-                                                            nextValue,
-                                                        ) =>
+                                                        onChange={(nextValue) =>
                                                             setUserForm(
                                                                 (prev) => ({
                                                                     ...prev,
@@ -1917,7 +2062,8 @@ export default function AdminMasterDataModulePage() {
                                             ) : (
                                                 <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                                     <p className="text-sm font-medium text-slate-700">
-                                                        Assignment Customer Internal
+                                                        Assignment Customer
+                                                        Internal
                                                     </p>
                                                     <p className="mt-1 text-xs text-slate-500">
                                                         Teknisi internal bisa
@@ -2089,7 +2235,7 @@ export default function AdminMasterDataModulePage() {
                                                     jobScope: nextValue,
                                                 }))
                                             }
-                                            options={PROJECT_SCOPE_OPTIONS}
+                                            options={projectScopeOptions}
                                         />
                                     </label>
                                     <label>
@@ -2227,7 +2373,7 @@ export default function AdminMasterDataModulePage() {
                                                     jobScope: nextValue,
                                                 }))
                                             }
-                                            options={PROJECT_SCOPE_OPTIONS}
+                                            options={projectScopeOptions}
                                         />
                                     </label>
                                     <label>
@@ -2291,6 +2437,47 @@ export default function AdminMasterDataModulePage() {
                                                 }))
                                             }
                                             className={`${inputClass} min-h-24`}
+                                            required
+                                        />
+                                    </label>
+                                </>
+                            )}
+
+                            {moduleKey === "job_scopes" && (
+                                <>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Kode Scope
+                                        </span>
+                                        <input
+                                            value={simpleForm.scopeCode}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    scopeCode:
+                                                        e.target.value,
+                                                }))
+                                            }
+                                            className={inputClass}
+                                            placeholder="Contoh: SECURITY_SYSTEM"
+                                            required
+                                        />
+                                    </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Label Scope
+                                        </span>
+                                        <input
+                                            value={simpleForm.scopeLabel}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    scopeLabel:
+                                                        e.target.value,
+                                                }))
+                                            }
+                                            className={inputClass}
+                                            placeholder="Contoh: Security System"
                                             required
                                         />
                                     </label>

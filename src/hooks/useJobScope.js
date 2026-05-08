@@ -1,7 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
 import supabase from "../supabaseClient";
 export { JOB_SCOPES, JOB_SCOPE_LABELS } from "../utils/jobScopeCatalog";
-import { JOB_SCOPES, JOB_SCOPE_LABELS } from "../utils/jobScopeCatalog";
+import {
+    DEFAULT_JOB_SCOPE_ROWS,
+    buildJobScopeLabels,
+    normalizeJobScopeCode,
+} from "../utils/jobScopeCatalog";
 
 /**
  * Hook to manage job scope operations
@@ -9,6 +13,7 @@ import { JOB_SCOPES, JOB_SCOPE_LABELS } from "../utils/jobScopeCatalog";
  */
 export function useJobScope(customerId = null) {
     const [scopes, setScopes] = useState([]);
+    const [scopeRows, setScopeRows] = useState(DEFAULT_JOB_SCOPE_ROWS);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -17,11 +22,31 @@ export function useJobScope(customerId = null) {
         setLoading(true);
         setError(null);
         try {
-            // For Phase 1, scopes are hardcoded; Phase 3 will fetch from job_scopes table
-            setScopes(Object.values(JOB_SCOPES));
+            const { data, error: err } = await supabase
+                .from("master_job_scopes")
+                .select("code, label")
+                .order("label", { ascending: true });
+            if (err) throw err;
+            const nextRows = (data ?? [])
+                .map((item) => ({
+                    code: normalizeJobScopeCode(item?.code),
+                    label: String(item?.label ?? "").trim(),
+                }))
+                .filter((item) => item.code);
+            const nextScopes = nextRows
+                .map((item) => normalizeJobScopeCode(item?.code))
+                .filter(Boolean);
+            setScopes(
+                nextScopes.length
+                    ? nextScopes
+                    : DEFAULT_JOB_SCOPE_ROWS.map((item) => item.code),
+            );
+            setScopeRows(nextRows.length ? nextRows : DEFAULT_JOB_SCOPE_ROWS);
         } catch (err) {
             console.error("Error fetching job scopes:", err);
             setError(err.message);
+            setScopes(DEFAULT_JOB_SCOPE_ROWS.map((item) => item.code));
+            setScopeRows(DEFAULT_JOB_SCOPE_ROWS);
         } finally {
             setLoading(false);
         }
@@ -97,6 +122,6 @@ export function useJobScope(customerId = null) {
         getAvailableScopes,
         getRequestsByScope,
         getAllRequests,
-        scopeLabels: JOB_SCOPE_LABELS,
+        scopeLabels: buildJobScopeLabels(scopeRows),
     };
 }

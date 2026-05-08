@@ -20,6 +20,43 @@ export const JOB_SCOPE_LABELS = {
     ACCESS_CONTROL: "Access Control / Door Lock",
 };
 
+export const DEFAULT_JOB_SCOPE_ROWS = Object.values(JOB_SCOPES).map((code) => ({
+    code,
+    label: JOB_SCOPE_LABELS[code] ?? code,
+}));
+
+export const normalizeJobScopeCode = (value) =>
+    String(value ?? "")
+        .trim()
+        .toUpperCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+
+export const getJobScopeLabel = (scope, labels = JOB_SCOPE_LABELS) => {
+    const normalizedScope = normalizeJobScope(scope);
+    return labels?.[normalizedScope] ?? JOB_SCOPE_LABELS[normalizedScope] ?? normalizedScope;
+};
+
+export const buildJobScopeLabels = (rows = DEFAULT_JOB_SCOPE_ROWS) =>
+    rows.reduce((acc, row) => {
+        const code = normalizeJobScopeCode(row?.code);
+        if (!code) return acc;
+        acc[code] = String(row?.label ?? "").trim() || code;
+        return acc;
+    }, {});
+
+export const buildJobScopeOptions = (rows = DEFAULT_JOB_SCOPE_ROWS) =>
+    rows
+        .map((row) => {
+            const value = normalizeJobScopeCode(row?.code);
+            if (!value) return null;
+            return {
+                value,
+                label: String(row?.label ?? "").trim() || value,
+            };
+        })
+        .filter(Boolean);
+
 export const SCOPE_DETAIL_CONFIG = {
     ELECTRICAL: {
         fields: [
@@ -137,11 +174,7 @@ export const SCOPE_DETAIL_CONFIG = {
 };
 
 export const normalizeJobScope = (value) => {
-    const raw = String(value ?? "")
-        .trim()
-        .toUpperCase()
-        .replaceAll("-", "_")
-        .replaceAll(" ", "_");
+    const raw = normalizeJobScopeCode(value);
     return JOB_SCOPES[raw] ?? raw ?? JOB_SCOPES.AC;
 };
 

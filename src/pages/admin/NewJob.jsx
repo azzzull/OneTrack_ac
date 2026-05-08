@@ -12,6 +12,7 @@ import {
 import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
+import useJobScopeOptions from "../../hooks/useJobScopeOptions";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
 
@@ -108,6 +109,7 @@ export default function AdminNewJobPage() {
 
     const { user, role } = useAuth();
     const { alert: showAlert } = useDialog();
+    const { labels: jobScopeLabels } = useJobScopeOptions();
     const navigate = useNavigate();
     const sessionRole = getSessionRole(role, user);
 
@@ -572,6 +574,7 @@ export default function AdminNewJobPage() {
                                     </span>
                                     <input
                                         value={
+                                            jobScopeLabels[activeJobScope] ??
                                             JOB_SCOPE_LABELS[activeJobScope] ??
                                             activeJobScope
                                         }
@@ -762,7 +765,8 @@ export default function AdminNewJobPage() {
                                 <section className="mt-8">
                                     <SectionTitle>
                                         Detail{" "}
-                                        {JOB_SCOPE_LABELS[activeJobScope] ??
+                                        {jobScopeLabels[activeJobScope] ??
+                                            JOB_SCOPE_LABELS[activeJobScope] ??
                                             activeJobScope}
                                     </SectionTitle>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
