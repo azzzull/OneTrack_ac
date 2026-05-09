@@ -59,15 +59,6 @@ export const buildJobScopeOptions = (rows = DEFAULT_JOB_SCOPE_ROWS) =>
 
 export const SCOPE_DETAIL_CONFIG = {
     ELECTRICAL: {
-        fields: [
-            { key: "equipment_type", label: "Tipe Aset", type: "select", options: [
-                { value: "panel", label: "Panel" },
-                { value: "ups", label: "UPS" },
-            ]},
-            { key: "panel_name", label: "Nama Panel / Unit", placeholder: "Panel SDP-A / UPS LT 2" },
-            { key: "panel_location", label: "Lokasi Panel / Unit", placeholder: "Ruang listrik LT 2" },
-            { key: "voltage_notes", label: "Catatan Tegangan", placeholder: "220V stabil" },
-        ],
         checklist: [
             "Inspeksi breaker",
             "Inspeksi pilot lamp",
@@ -86,11 +77,6 @@ export const SCOPE_DETAIL_CONFIG = {
         ],
     },
     ELEVATOR: {
-        fields: [
-            { key: "unit_name", label: "Nama Unit Lift", placeholder: "Lift A / Service Lift" },
-            { key: "unit_location", label: "Lokasi / Tower", placeholder: "Tower A" },
-            { key: "serving_floor", label: "Lantai Layanan", placeholder: "B1 - 10" },
-        ],
         checklist: [
             "Pengecekan controller dan inverter",
             "Pengecekan mesin",
@@ -101,11 +87,6 @@ export const SCOPE_DETAIL_CONFIG = {
         ],
     },
     GENSET: {
-        fields: [
-            { key: "unit_name", label: "Nama Unit Genset", placeholder: "GEN-01" },
-            { key: "capacity", label: "Kapasitas", placeholder: "500 kVA" },
-            { key: "load_check", label: "Catatan Beban", placeholder: "Load 68%" },
-        ],
         checklist: [
             "Pembersihan genset",
             "Ganti oli",
@@ -116,11 +97,6 @@ export const SCOPE_DETAIL_CONFIG = {
         ],
     },
     PLUMBING: {
-        fields: [
-            { key: "work_area", label: "Area Pekerjaan", placeholder: "Toilet LT 3 / pantry" },
-            { key: "line_type", label: "Jenis Saluran", placeholder: "Air bersih / air kotor / closet" },
-            { key: "pump_unit", label: "Unit Pompa Terkait", placeholder: "Pompa transfer 1" },
-        ],
         checklist: [
             "Pemeriksaan rutin",
             "Perawatan dan perbaikan pipa air kotor dan pembuangan",
@@ -132,11 +108,6 @@ export const SCOPE_DETAIL_CONFIG = {
         ],
     },
     FIRE_ALARM: {
-        fields: [
-            { key: "zone_name", label: "Zone / Area", placeholder: "Zone 4 / Gedung A" },
-            { key: "device_name", label: "Panel / Device", placeholder: "MCFA / detector / hydrant" },
-            { key: "interlock_note", label: "Catatan Interlock", placeholder: "PA, press fan, BAS" },
-        ],
         checklist: [
             "Pemeriksaan & test annunciator",
             "Pemeriksaan & test detector beserta accessories",
@@ -148,19 +119,9 @@ export const SCOPE_DETAIL_CONFIG = {
         ],
     },
     CIVIL: {
-        fields: [
-            { key: "work_area", label: "Area Pekerjaan", placeholder: "Atap / toilet / parkiran" },
-            { key: "damage_type", label: "Jenis Kerusakan", placeholder: "Retak / bocor / finishing" },
-            { key: "material_note", label: "Catatan Material", placeholder: "Cat / semen / waterproofing" },
-        ],
         checklist: [],
     },
     ACCESS_CONTROL: {
-        fields: [
-            { key: "door_name", label: "Nama Pintu / Device", placeholder: "Main Entrance / Door A" },
-            { key: "device_type", label: "Tipe Device", placeholder: "Maglock / reader / push button" },
-            { key: "location", label: "Lokasi", placeholder: "Lobby / ruang server" },
-        ],
         checklist: [
             "Pemeriksaan electric lock / maglock",
             "Pemeriksaan access reader / credential",
@@ -171,7 +132,13 @@ export const SCOPE_DETAIL_CONFIG = {
             "Test buka/tutup dan akses user",
         ],
     },
+    AC: {
+        checklist: [],
+    },
 };
+
+export const getScopeChecklist = (scope) =>
+    SCOPE_DETAIL_CONFIG[normalizeJobScope(scope)]?.checklist ?? [];
 
 export const normalizeJobScope = (value) => {
     const raw = normalizeJobScopeCode(value);
@@ -182,6 +149,15 @@ export const getScopeSummaryMeta = (jobScope, dynamicData, roomLocation) => {
     const normalizedScope = normalizeJobScope(jobScope);
     const details =
         dynamicData && typeof dynamicData === "object" ? dynamicData : {};
+
+    const stringifyValue = (value) => {
+        if (value === null || value === undefined) return "";
+        if (Array.isArray(value)) return value.filter(Boolean).join(", ");
+        if (typeof value === "object") {
+            return String(value?.name ?? value?.label ?? value?.url ?? "");
+        }
+        return String(value).trim();
+    };
 
     if (normalizedScope === JOB_SCOPES.AC) {
         return {
@@ -213,11 +189,22 @@ export const getScopeSummaryMeta = (jobScope, dynamicData, roomLocation) => {
     const candidates = fieldPriority[normalizedScope] ?? [];
     const value =
         candidates
-            .map((key) => details[key])
+            .map((key) => stringifyValue(details[key]))
             .find((item) => String(item ?? "").trim() !== "") || "-";
+
+    if (value !== "-") {
+        return {
+            label: labelMap[normalizedScope] ?? "Detail",
+            value,
+        };
+    }
+
+    const fallback = Object.values(details)
+        .map((item) => stringifyValue(item))
+        .find((item) => String(item ?? "").trim() !== "");
 
     return {
         label: labelMap[normalizedScope] ?? "Detail",
-        value,
+        value: fallback || "-",
     };
 };

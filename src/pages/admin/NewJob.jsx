@@ -4,10 +4,11 @@ import { Link, useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
 import PhotoUploadInput from "../../components/PhotoUploadInput";
+import ScopeDetailFieldsRenderer from "../../components/scope-detail-fields/ScopeDetailFieldsRenderer";
+import useScopeDetailFields from "../../hooks/useScopeDetailFields";
 import {
     JOB_SCOPE_LABELS,
     JOB_SCOPES,
-    SCOPE_DETAIL_CONFIG,
 } from "../../utils/jobScopeCatalog";
 import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
@@ -15,6 +16,10 @@ import { useDialog } from "../../context/useDialog";
 import useJobScopeOptions from "../../hooks/useJobScopeOptions";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
+import {
+    buildScopeDetailValuesPayload,
+    validateScopeDetailValues,
+} from "../../services/scopeDetailFieldsService";
 
 const initialForm = {
     jobScope: "AC",
@@ -59,11 +64,6 @@ const FileCaptureCard = ({ label, fileName, onClick }) => (
 
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
-
-const isAcScope = (scope) =>
-    String(scope ?? "")
-        .trim()
-        .toUpperCase() === "AC";
 
 const getCurrentUserDisplayName = (user) => {
     const composed =
@@ -216,10 +216,57 @@ export default function AdminNewJobPage() {
     );
     const activeJobScope =
         selectedProject?.job_scope ?? form.jobScope ?? JOB_SCOPES.AC;
-    const activeScopeConfig = SCOPE_DETAIL_CONFIG[activeJobScope] ?? null;
-    const activeScopeDetailFields = activeScopeConfig?.fields ?? [];
-    const activeScopeChecklist = activeScopeConfig?.checklist ?? [];
+    const {
+        fields: activeScopeDetailFields,
+        checklist: activeScopeChecklist,
+        loading: scopeFieldsLoading,
+    } =
+        useScopeDetailFields(activeJobScope);
+    const activeScopeChecklistItems = useMemo(
+        () =>
+            activeScopeChecklist.map((item) =>
+                typeof item === "object" && item
+                    ? {
+                          key: String(item.id ?? item.item_label ?? ""),
+                          label: String(item.item_label ?? "").trim(),
+                      }
+                    : {
+                          key: String(item ?? ""),
+                          label: String(item ?? "").trim(),
+                      },
+            ),
+        [activeScopeChecklist],
+    );
+    const scopeFieldSelectOptions = useMemo(
+        () => ({
+            ac_brand: acBrands.map((item) => ({
+                value: item.name,
+                label: item.name,
+            })),
+            ac_type: acTypes.map((item) => ({
+                value: item.name,
+                label: item.name,
+            })),
+            ac_capacity_pk: acPks.map((item) => ({
+                value: item.label,
+                label: item.label,
+            })),
+        }),
+        [acBrands, acTypes, acPks],
+    );
     const hasSelectedProject = Boolean(form.projectId && selectedProject);
+
+    useEffect(() => {
+        setForm((prev) => {
+            if (!prev.scopeDetails || Object.keys(prev.scopeDetails).length === 0) {
+                return prev;
+            }
+            return {
+                ...prev,
+                scopeDetails: {},
+            };
+        });
+    }, [activeJobScope]);
 
     useEffect(() => {
         if (!form.customerId) {
@@ -290,7 +337,7 @@ export default function AdminNewJobPage() {
     const scanSerialFromImage = async (file) => {
         const value = await scanBarcodeFromFile(file);
         if (!value) return false;
-        setField("serialNumber", value);
+        setScopeDetail("serial_number", value);
         return true;
     };
 
@@ -341,7 +388,6 @@ export default function AdminNewJobPage() {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
-        const acScopeSelected = isAcScope(activeJobScope);
 
         if (!form.customerId || !form.projectId) {
             await showAlert("Lengkapi customer dan proyek terlebih dahulu.", {
@@ -350,12 +396,22 @@ export default function AdminNewJobPage() {
             return;
         }
 
-        if (
-            acScopeSelected &&
-            (!form.acBrand || !form.acType || !form.acCapacityPk)
-        ) {
+        if (scopeFieldsLoading) {
+            await showAlert("Konfigurasi field scope masih dimuat.", {
+                title: "Mohon Tunggu",
+            });
+            return;
+        }
+
+        const missingFields = validateScopeDetailValues(
+            activeScopeDetailFields,
+            form.scopeDetails,
+        );
+        if (missingFields.length > 0) {
             await showAlert(
-                "Lengkapi Merk AC, Tipe AC, dan Kapasitas AC terlebih dahulu.",
+                `Lengkapi field berikut: ${missingFields
+                    .map((field) => field.field_label)
+                    .join(", ")}`,
                 { title: "Data Belum Lengkap" },
             );
             return;
@@ -364,6 +420,10 @@ export default function AdminNewJobPage() {
         setSubmitting(true);
 
         try {
+            const detailValues = buildScopeDetailValuesPayload(
+                activeScopeDetailFields,
+                form.scopeDetails,
+            );
             const payload = {
                 title: selectedProject?.project_name ?? "",
                 status: afterPhotoUrl
@@ -372,22 +432,13 @@ export default function AdminNewJobPage() {
                       ? "in_progress"
                       : "requested",
                 job_scope: activeJobScope,
-                dynamic_data: acScopeSelected
-                    ? null
-                    : Object.fromEntries(
-                          Object.entries(form.scopeDetails ?? {}).filter(
-                              ([, value]) => {
-                                  if (Array.isArray(value)) {
-                                      return value.length > 0;
-                                  }
-                                  return (
-                                      value !== null &&
-                                      value !== undefined &&
-                                      String(value).trim() !== ""
-                                  );
-                              },
-                          ),
-                      ),
+                dynamic_data: {
+                    ...detailValues,
+                    ...(Array.isArray(form.scopeDetails?.checklist) &&
+                    form.scopeDetails.checklist.length > 0
+                        ? { checklist: form.scopeDetails.checklist }
+                        : {}),
+                },
                 location:
                     selectedProject?.location ??
                     selectedCustomer?.location ??
@@ -399,11 +450,11 @@ export default function AdminNewJobPage() {
                     selectedProject?.address ?? selectedCustomer?.address ?? "",
                 customer_id: form.customerId,
                 project_id: form.projectId,
-                ac_brand: acScopeSelected ? form.acBrand : null,
-                ac_type: acScopeSelected ? form.acType : null,
-                ac_capacity_pk: acScopeSelected ? form.acCapacityPk : null,
-                room_location: form.roomLocation,
-                serial_number: form.serialNumber,
+                ac_brand: detailValues.ac_brand ?? null,
+                ac_type: detailValues.ac_type ?? null,
+                ac_capacity_pk: detailValues.ac_capacity_pk ?? null,
+                room_location: detailValues.room_location ?? null,
+                serial_number: detailValues.serial_number ?? null,
                 trouble_description: form.troubleDescription,
                 replaced_parts: form.replacedParts,
                 reconditioned_parts: form.reconditionedParts,
@@ -616,265 +667,73 @@ export default function AdminNewJobPage() {
                             </div>
                         </section>
 
-                        {hasSelectedProject && isAcScope(activeJobScope) && (
+                        {hasSelectedProject && (
                             <section className="mt-8">
-                                <SectionTitle>Detail Unit AC</SectionTitle>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                    <label>
-                                        <span className="text-sm font-medium text-slate-700">
-                                            Merk AC
-                                        </span>
-                                        <CustomSelect
-                                            value={form.acBrand}
-                                            onChange={(nextValue) =>
-                                                setField("acBrand", nextValue)
-                                            }
-                                            options={[
-                                                {
-                                                    value: "",
-                                                    label: "Pilih Merk",
-                                                },
-                                                ...acBrands.map((item) => ({
-                                                    value: item.name,
-                                                    label: item.name,
-                                                })),
-                                            ]}
-                                            placeholder="Pilih merk"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span className="text-sm font-medium text-slate-700">
-                                            Tipe AC
-                                        </span>
-                                        <CustomSelect
-                                            value={form.acType}
-                                            onChange={(nextValue) =>
-                                                setField("acType", nextValue)
-                                            }
-                                            options={[
-                                                {
-                                                    value: "",
-                                                    label: "Pilih Tipe",
-                                                },
-                                                ...acTypes.map((item) => ({
-                                                    value: item.name,
-                                                    label: item.name,
-                                                })),
-                                            ]}
-                                            placeholder="Pilih tipe"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span className="text-sm font-medium text-slate-700">
-                                            Kapasitas AC (PK)
-                                        </span>
-                                        <CustomSelect
-                                            value={form.acCapacityPk}
-                                            onChange={(nextValue) =>
-                                                setField(
-                                                    "acCapacityPk",
-                                                    nextValue,
-                                                )
-                                            }
-                                            options={[
-                                                {
-                                                    value: "",
-                                                    label: "Pilih PK",
-                                                },
-                                                ...acPks.map((item) => ({
-                                                    value: item.label,
-                                                    label: item.label,
-                                                })),
-                                            ]}
-                                            placeholder="Pilih PK"
-                                        />
-                                    </label>
-                                    <label className="md:col-span-1">
-                                        <span className="text-sm font-medium text-slate-700">
-                                            Lokasi Ruangan
-                                        </span>
-                                        <input
-                                            value={form.roomLocation}
-                                            onChange={(e) =>
-                                                setField(
-                                                    "roomLocation",
-                                                    e.target.value,
-                                                )
-                                            }
-                                            placeholder="Contoh: Ruang Meeting A"
-                                            className={inputClass}
-                                        />
-                                    </label>
-                                    <div className="md:col-span-2">
-                                        <label>
-                                            <span className="text-sm font-medium text-slate-700">
-                                                Serial Number
-                                            </span>
-                                            <div className="mt-1 flex gap-2">
-                                                <input
-                                                    value={form.serialNumber}
-                                                    onChange={(e) =>
-                                                        setField(
-                                                            "serialNumber",
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                    placeholder="Scan dari kamera atau ketik manual"
-                                                    className={inputClass}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        openCamera(
-                                                            "serial-scan",
-                                                        )
-                                                    }
-                                                    className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-600 hover:bg-slate-200"
-                                                    title="Scan serial dengan kamera"
-                                                >
-                                                    <Camera size={16} />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setField(
-                                                            "serialNumber",
-                                                            "",
-                                                        )
-                                                    }
-                                                    className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-slate-600 hover:bg-slate-200"
-                                                    title="Kosongkan serial number"
-                                                >
-                                                    <X size={16} />
-                                                </button>
-                                            </div>
-                                            <p className="mt-2 text-xs text-slate-500">
-                                                Jika unit tidak punya barcode,
-                                                isi manual nomor seri.
-                                            </p>
-                                        </label>
+                                <SectionTitle>
+                                    Detail{" "}
+                                    {jobScopeLabels[activeJobScope] ??
+                                        JOB_SCOPE_LABELS[activeJobScope] ??
+                                        activeJobScope}
+                                </SectionTitle>
+                                <ScopeDetailFieldsRenderer
+                                    scopeCode={activeJobScope}
+                                    fields={activeScopeDetailFields}
+                                    values={form.scopeDetails}
+                                    onChange={setScopeDetail}
+                                    selectOptionsByFieldKey={
+                                        scopeFieldSelectOptions
+                                    }
+                                    supabaseClient={supabase}
+                                    loading={scopeFieldsLoading}
+                                    serialNumberActions={{
+                                        onScan: () =>
+                                            openCamera("serial-scan"),
+                                        onClear: () =>
+                                            setScopeDetail(
+                                                "serial_number",
+                                                "",
+                                            ),
+                                    }}
+                                />
+                                {activeScopeChecklist.length > 0 && (
+                                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-sm font-medium text-slate-700">
+                                            Checklist Pekerjaan
+                                        </p>
+                                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                            {activeScopeChecklistItems.map((item) => {
+                                                const checked =
+                                                    Array.isArray(
+                                                        form.scopeDetails
+                                                            ?.checklist,
+                                                    ) &&
+                                                    form.scopeDetails.checklist.includes(
+                                                        item.label,
+                                                    );
+                                                return (
+                                                    <label
+                                                        key={item.key}
+                                                        className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={() =>
+                                                                toggleScopeChecklist(
+                                                                    item.label,
+                                                                )
+                                                            }
+                                                            className="mt-1"
+                                                        />
+                                                        <span>{item.label}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </section>
                         )}
-
-                        {hasSelectedProject &&
-                            !isAcScope(activeJobScope) &&
-                            (activeScopeDetailFields.length > 0 ||
-                                activeScopeChecklist.length > 0) && (
-                                <section className="mt-8">
-                                    <SectionTitle>
-                                        Detail{" "}
-                                        {jobScopeLabels[activeJobScope] ??
-                                            JOB_SCOPE_LABELS[activeJobScope] ??
-                                            activeJobScope}
-                                    </SectionTitle>
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        {activeScopeDetailFields.map(
-                                            (field) => (
-                                                <label key={field.key}>
-                                                    <span className="text-sm font-medium text-slate-700">
-                                                        {field.label}
-                                                    </span>
-                                                    {field.type === "select" ? (
-                                                        <CustomSelect
-                                                            value={
-                                                                form
-                                                                    .scopeDetails?.[
-                                                                    field.key
-                                                                ] ?? ""
-                                                            }
-                                                            onChange={(
-                                                                nextValue,
-                                                            ) =>
-                                                                setScopeDetail(
-                                                                    field.key,
-                                                                    nextValue,
-                                                                )
-                                                            }
-                                                            options={[
-                                                                {
-                                                                    value: "",
-                                                                    label: "Pilih opsi",
-                                                                },
-                                                                ...(field.options ??
-                                                                    []),
-                                                            ]}
-                                                            placeholder="Pilih opsi"
-                                                        />
-                                                    ) : (
-                                                        <input
-                                                            value={
-                                                                form
-                                                                    .scopeDetails?.[
-                                                                    field.key
-                                                                ] ?? ""
-                                                            }
-                                                            onChange={(e) =>
-                                                                setScopeDetail(
-                                                                    field.key,
-                                                                    e.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            placeholder={
-                                                                field.placeholder
-                                                            }
-                                                            className={
-                                                                inputClass
-                                                            }
-                                                        />
-                                                    )}
-                                                </label>
-                                            ),
-                                        )}
-                                    </div>
-                                    {activeScopeChecklist.length > 0 && (
-                                        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                            <p className="text-sm font-medium text-slate-700">
-                                                Checklist Pekerjaan
-                                            </p>
-                                            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-                                                {activeScopeChecklist.map(
-                                                    (item) => {
-                                                        const checked =
-                                                            Array.isArray(
-                                                                form
-                                                                    .scopeDetails
-                                                                    ?.checklist,
-                                                            ) &&
-                                                            form.scopeDetails.checklist.includes(
-                                                                item,
-                                                            );
-                                                        return (
-                                                            <label
-                                                                key={item}
-                                                                className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                                                            >
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={
-                                                                        checked
-                                                                    }
-                                                                    onChange={() =>
-                                                                        toggleScopeChecklist(
-                                                                            item,
-                                                                        )
-                                                                    }
-                                                                    className="mt-1"
-                                                                />
-                                                                <span>
-                                                                    {item}
-                                                                </span>
-                                                            </label>
-                                                        );
-                                                    },
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </section>
-                            )}
 
                         {hasSelectedProject ? (
                             <>
@@ -1031,7 +890,11 @@ export default function AdminNewJobPage() {
 
                         <button
                             type="submit"
-                            disabled={submitting || !hasSelectedProject}
+                            disabled={
+                                submitting ||
+                                !hasSelectedProject ||
+                                scopeFieldsLoading
+                            }
                             className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-sky-500 px-6 py-3 text-base font-semibold text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-70 md:text-lg"
                         >
                             <span>

@@ -93,6 +93,7 @@ Deno.serve(async (req) => {
         body.full_name ?? body.fullName ?? body.name ?? "",
     ).trim();
     const fullName = fullNameInput || `${firstName} ${lastName}`.trim();
+    const displayName = [firstName, lastName].filter(Boolean).join(" ").trim() || firstName;
     const phone = String(body.phone ?? "").trim();
 
     if (!email || !password) {
@@ -179,8 +180,7 @@ Deno.serve(async (req) => {
     }
 
     // User created successfully; now insert profile directly (bypass trigger)
-    const profileName =
-        `${firstName} ${lastName}`.trim() || email.split("@")[0];
+    const profileName = displayName || email.split("@")[0];
     const { error: profileError } = await adminClient
         .from("profiles")
         .insert({

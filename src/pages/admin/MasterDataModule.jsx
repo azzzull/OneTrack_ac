@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Settings2, Trash2, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
+import ScopeDetailFieldsManagerModal from "../../components/scope-detail-fields/ScopeDetailFieldsManagerModal";
 import useJobScopeOptions from "../../hooks/useJobScopeOptions";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useDialog } from "../../context/useDialog";
@@ -92,6 +93,7 @@ export default function AdminMasterDataModulePage() {
     const [openModal, setOpenModal] = useState(false);
     const [editUserId, setEditUserId] = useState(null);
     const [editSimpleId, setEditSimpleId] = useState(null);
+    const [manageFieldsScope, setManageFieldsScope] = useState(null);
     const [loading, setLoading] = useState(false);
 
     const [userForm, setUserForm] = useState({
@@ -1730,6 +1732,25 @@ export default function AdminMasterDataModulePage() {
                                                                         }
                                                                     />
                                                                 </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setManageFieldsScope(
+                                                                            item,
+                                                                        )
+                                                                    }
+                                                                    className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-sky-600 hover:bg-sky-50"
+                                                                    title="Manage Detail Fields"
+                                                                >
+                                                                    <Settings2
+                                                                        size={
+                                                                            14
+                                                                        }
+                                                                    />
+                                                                    <span className="text-xs font-semibold">
+                                                                        Fields
+                                                                    </span>
+                                                                </button>
                                                             </div>
                                                         </td>
                                                     </>
@@ -1891,8 +1912,9 @@ export default function AdminMasterDataModulePage() {
             <MobileBottomNav />
 
             {openModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-                    <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-xl">
+                <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 p-4">
+                    <div className="flex min-h-full items-start justify-center py-6 md:items-center md:py-0">
+                        <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-xl">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-slate-900">
                                 {editUserId || editSimpleId
@@ -1947,7 +1969,7 @@ export default function AdminMasterDataModulePage() {
                                                 }))
                                             }
                                             className={inputClass}
-                                            required
+                                            placeholder="Boleh dikosongkan"
                                         />
                                     </label>
                                     <label>
@@ -2533,8 +2555,17 @@ export default function AdminMasterDataModulePage() {
                                     : "Simpan"}
                             </button>
                         </form>
+                        </div>
                     </div>
                 </div>
+            )}
+
+            {manageFieldsScope && (
+                <ScopeDetailFieldsManagerModal
+                    isOpen={Boolean(manageFieldsScope)}
+                    scope={manageFieldsScope}
+                    onClose={() => setManageFieldsScope(null)}
+                />
             )}
         </div>
     );
