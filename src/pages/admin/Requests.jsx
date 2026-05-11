@@ -13,6 +13,7 @@ import {
     ShieldCheck,
     Search,
     UserRound,
+    Users,
     Wrench,
     X,
     ChevronLeft,
@@ -24,7 +25,10 @@ import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import PhotoUploadInput from "../../components/PhotoUploadInput";
 import CustomSelect from "../../components/ui/CustomSelect";
 import ScopeDetailsCard from "../../components/ScopeDetailsCard";
+import JobTechnicianManagerModal from "../../components/job-technicians/JobTechnicianManagerModal";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
+import useJobTechnicians from "../../hooks/useJobTechnicians";
+import useTechnicianDirectory from "../../hooks/useTechnicianDirectory";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
@@ -35,6 +39,10 @@ import {
     createUniqueChannelName,
 } from "../../utils/realtimeChannelManager";
 import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
+import {
+    getTechnicianJobIds,
+    syncJobTechnicians,
+} from "../../services/jobTechniciansService";
 
 const FILTERS = [
     { key: "all", label: "All" },
@@ -254,6 +262,8 @@ export default function AdminRequestsPage() {
         url: "",
         label: "",
     });
+    const [jobTechnicianModalOpen, setJobTechnicianModalOpen] =
+        useState(false);
     const [hasDeferredRefresh, setHasDeferredRefresh] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 5;
@@ -285,9 +295,17 @@ export default function AdminRequestsPage() {
                 .order("created_at", { ascending: false });
 
             if (roleRef.current === "technician" && userIdRef.current) {
-                query = query.or(
-                    `and(status.in.(pending,requested),technician_id.is.null),technician_id.eq.${userIdRef.current}`,
+                const technicianJobIds = await getTechnicianJobIds(
+                    userIdRef.current,
                 );
+                if (technicianJobIds.length === 0) {
+                    if (isMountedRef.current) {
+                        setRequests([]);
+                        setLoading(false);
+                    }
+                    return;
+                }
+                query = query.in("id", technicianJobIds);
             }
 
             const { data, error } = await query;
@@ -635,6 +653,27 @@ export default function AdminRequestsPage() {
         () => requests.find((item) => item.id === selectedRequestId) ?? null,
         [requests, selectedRequestId],
     );
+    const {
+        technicians: selectedRequestTechnicians,
+        loading: selectedRequestTechniciansLoading,
+        reload: reloadSelectedRequestTechnicians,
+    } = useJobTechnicians(selectedRequest?.id);
+    const { technicians: technicianDirectory } = useTechnicianDirectory();
+    const creatorTechnicianId = useMemo(() => {
+        const creatorRow =
+            selectedRequestTechnicians.find((item) => item.role === "creator") ??
+            null;
+        return (
+            creatorRow?.technician_id ??
+            selectedRequest?.createdBy ??
+            selectedRequest?.technicianId ??
+            ""
+        );
+    }, [selectedRequest?.createdBy, selectedRequest?.technicianId, selectedRequestTechnicians]);
+    const canManageTechnicians =
+        role === "admin" ||
+        (Boolean(user?.id) &&
+            String(creatorTechnicianId) === String(user?.id));
 
     useEffect(() => {
         if (!selectedRequest) return;
@@ -656,6 +695,7 @@ export default function AdminRequestsPage() {
     const closeDetail = () => {
         setSelectedRequestId(null);
         setSaving(false);
+        setJobTechnicianModalOpen(false);
         setPhotoPreview({ open: false, url: "", label: "" });
         setBeforePhotoUrl(null);
         setProgressPhotoUrl(null);
@@ -801,12 +841,6 @@ export default function AdminRequestsPage() {
             if (progressPhotoUrl) payload.progress_photo_url = progressPhotoUrl;
             if (afterPhotoUrl) payload.after_photo_url = afterPhotoUrl;
 
-            // Add technician info if technician
-            if (role === "technician") {
-                payload.technician_id = user?.id ?? null;
-                payload.technician_name = getCurrentUserDisplayName(user);
-            }
-
             // Determine status automatically based on photos
             // Check current photos + newly uploaded ones
             const hasBefore = beforePhotoUrl || selectedRequest.beforePhotoUrl;
@@ -846,7 +880,22 @@ export default function AdminRequestsPage() {
 
             if (error) throw error;
 
+            if (role === "technician" && user?.id) {
+                await syncJobTechnicians({
+                    jobId: selectedRequest.id,
+                    creatorId: creatorTechnicianId || user.id,
+                    technicianIds: [
+                        ...selectedRequestTechnicians
+                            .filter((item) => item.role !== "creator")
+                            .map((item) => item.technician_id),
+                        user.id,
+                    ],
+                    addedBy: user.id,
+                });
+            }
+
             await loadRequests();
+            await reloadSelectedRequestTechnicians();
             setBeforePhotoUrl(null);
             setProgressPhotoUrl(null);
             setAfterPhotoUrl(null);
@@ -1287,6 +1336,129 @@ export default function AdminRequestsPage() {
                                             selectedRequest.serialNumber,
                                     }}
                                 />
+                                <div className="mt-4 border-t border-slate-200 pt-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                <Users size={14} />
+                                                Teknisi Terlibat
+                                            </p>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Pembuat job diberi badge khusus.
+                                            </p>
+                                        </div>
+                                        {canManageTechnicians && (
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setJobTechnicianModalOpen(
+                                                        true,
+                                                    )
+                                                }
+                                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                            >
+                                                Kelola Teknisi
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-3 space-y-2">
+                                        {selectedRequestTechniciansLoading ? (
+                                            <p className="text-sm text-slate-500">
+                                                Memuat teknisi...
+                                            </p>
+                                        ) : selectedRequestTechnicians.length > 0 ? (
+                                            selectedRequestTechnicians.map(
+                                                (item) => {
+                                                    const isCreator =
+                                                        item.role ===
+                                                        "creator";
+                                                    return (
+                                                        <div
+                                                            key={item.id}
+                                                            className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <p className="truncate text-sm font-medium text-slate-800">
+                                                                    {item.technician_name}
+                                                                </p>
+                                                                <p className="truncate text-xs text-slate-500">
+                                                                    {item.technician
+                                                                        ?.email ??
+                                                                        "-"}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex shrink-0 items-center gap-2">
+                                                                {isCreator && (
+                                                                    <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                                                        Pembuat
+                                                                    </span>
+                                                                )}
+                                                                {!isCreator &&
+                                                                    canManageTechnicians && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    await syncJobTechnicians({
+                                                                                        jobId: selectedRequest.id,
+                                                                                        creatorId:
+                                                                                            creatorTechnicianId ||
+                                                                                            selectedRequest.createdBy ||
+                                                                                            user?.id ||
+                                                                                            item.technician_id,
+                                                                                        technicianIds:
+                                                                                            selectedRequestTechnicians
+                                                                                                .filter(
+                                                                                                    (row) =>
+                                                                                                        row.role !==
+                                                                                                        "creator",
+                                                                                                )
+                                                                                                .map(
+                                                                                                    (row) =>
+                                                                                                        row.technician_id,
+                                                                                                )
+                                                                                                .filter(
+                                                                                                    (id) =>
+                                                                                                        id !==
+                                                                                                        item.technician_id,
+                                                                                                ),
+                                                                                        addedBy:
+                                                                                            user?.id ??
+                                                                                            null,
+                                                                                    });
+                                                                                    await reloadSelectedRequestTechnicians();
+                                                                                } catch (error) {
+                                                                                    console.error(
+                                                                                        "Failed to remove technician:",
+                                                                                        error,
+                                                                                    );
+                                                                                    await showAlert(
+                                                                                        error?.message ??
+                                                                                            "Gagal menghapus teknisi.",
+                                                                                        {
+                                                                                            title: "Gagal",
+                                                                                        },
+                                                                                    );
+                                                                                }
+                                                                            }}
+                                                                            className="rounded-lg border border-rose-200 bg-white px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                                                                        >
+                                                                            Hapus
+                                                                        </button>
+                                                                    )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                },
+                                            )
+                                        ) : (
+                                            <p className="text-sm text-slate-500">
+                                                Belum ada teknisi terlibat.
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="rounded-2xl border border-slate-200 p-4">
@@ -1556,6 +1728,45 @@ export default function AdminRequestsPage() {
                     </div>
                 </div>
             )}
+
+            <JobTechnicianManagerModal
+                isOpen={jobTechnicianModalOpen}
+                title={`Kelola Teknisi - ${selectedRequest?.title ?? "Job"}`}
+                technicians={technicianDirectory}
+                selectedTechnicianIds={selectedRequestTechnicians
+                    .filter((item) => item.role !== "creator")
+                    .map((item) => item.technician_id)}
+                creatorTechnicianId={
+                    creatorTechnicianId || selectedRequest?.createdBy || null
+                }
+                creatorLabel="Pembuat"
+                saving={saving}
+                onClose={() => setJobTechnicianModalOpen(false)}
+                onSave={async (nextIds) => {
+                    if (!selectedRequest?.id) return;
+                    try {
+                        await syncJobTechnicians({
+                            jobId: selectedRequest.id,
+                            creatorId:
+                                creatorTechnicianId ||
+                                selectedRequest.createdBy ||
+                                user?.id ||
+                                null,
+                            technicianIds: nextIds,
+                            addedBy: user?.id ?? null,
+                        });
+                        await reloadSelectedRequestTechnicians();
+                        await loadRequests();
+                        setJobTechnicianModalOpen(false);
+                    } catch (error) {
+                        console.error("Failed to sync job technicians:", error);
+                        await showAlert(
+                            error?.message ?? "Gagal menyimpan teknisi.",
+                            { title: "Gagal" },
+                        );
+                    }
+                }}
+            />
 
             {photoPreview.open && (
                 <div className="fixed inset-0 z-55 flex items-center justify-center bg-slate-900/70 p-4">

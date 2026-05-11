@@ -12,6 +12,7 @@ import supabase from "../../supabaseClient";
 import {
     JOB_SCOPES,
     JOB_SCOPE_LABELS,
+    normalizeJobScope,
 } from "../../utils/jobScopeCatalog";
 import {
     buildScopeDetailValuesPayload,
@@ -56,7 +57,9 @@ export default function CustomerRequestFormPage() {
             null,
         [availableProjects, form.projectId],
     );
-    const activeJobScope = selectedProject?.job_scope ?? JOB_SCOPES.AC;
+    const activeJobScope = normalizeJobScope(
+        selectedProject?.job_scope ?? JOB_SCOPES.AC,
+    );
     const {
         fields: activeScopeDetailFields,
         checklist: activeScopeChecklist,

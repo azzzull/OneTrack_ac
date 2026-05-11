@@ -11,6 +11,7 @@ const PhotoUploadInput = ({
     folderName = "temp",
     onPhotoSelected = () => {},
     onUploadSuccess = () => {},
+    deferredUpload = false,
     photoType = "generic", // for metadata
     disabled = false,
     className = "",
@@ -264,6 +265,23 @@ const PhotoUploadInput = ({
                 return;
             }
 
+            if (deferredUpload) {
+                await onPhotoSelected(fileToUpload);
+                setUploadMessage("✓ Photo dipilih");
+                setMessageType("success");
+                setTimeout(() => {
+                    setPreviewImage(null);
+                    setSelectedFile(null);
+                    setUploadMessage("");
+                    setIsOpen(false);
+                    setUploadMode("gallery");
+                    if (fileInputRef.current) {
+                        fileInputRef.current.value = "";
+                    }
+                }, 800);
+                return;
+            }
+
             await performUpload(fileToUpload);
         } catch (error) {
             console.error("Upload error:", error);
@@ -362,6 +380,18 @@ const PhotoUploadInput = ({
             fileInputRef.current.value = "";
         }
         setIsUploading(false);
+    };
+
+    const handleRetake = () => {
+        stopCamera();
+        setPreviewImage(null);
+        setSelectedFile(null);
+        setUploadMessage("");
+        setMessageType("info");
+        setUploadMode("gallery");
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     };
 
     return (
@@ -550,7 +580,7 @@ const PhotoUploadInput = ({
                                     <div className="flex gap-3">
                                         <button
                                             type="button"
-                                            onClick={handleCancel}
+                                            onClick={handleRetake}
                                             disabled={isUploading}
                                             className="flex-1 py-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium rounded-lg disabled:opacity-50 transition"
                                         >

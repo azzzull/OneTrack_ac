@@ -4,11 +4,14 @@ import { Link, useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
 import PhotoUploadInput from "../../components/PhotoUploadInput";
+import JobTechnicianManagerModal from "../../components/job-technicians/JobTechnicianManagerModal";
 import ScopeDetailFieldsRenderer from "../../components/scope-detail-fields/ScopeDetailFieldsRenderer";
 import useScopeDetailFields from "../../hooks/useScopeDetailFields";
+import useTechnicianDirectory from "../../hooks/useTechnicianDirectory";
 import {
     JOB_SCOPE_LABELS,
     JOB_SCOPES,
+    normalizeJobScope,
 } from "../../utils/jobScopeCatalog";
 import supabase from "../../supabaseClient";
 import { useAuth } from "../../context/useAuth";
@@ -20,6 +23,8 @@ import {
     buildScopeDetailValuesPayload,
     validateScopeDetailValues,
 } from "../../services/scopeDetailFieldsService";
+import { uploadJobPhotoFile } from "../../services/jobPhotoService";
+import { syncJobTechnicians } from "../../services/jobTechniciansService";
 
 const initialForm = {
     jobScope: "AC",
@@ -96,13 +101,18 @@ export default function AdminNewJobPage() {
     const [acBrands, setAcBrands] = useState([]);
     const [acTypes, setAcTypes] = useState([]);
     const [acPks, setAcPks] = useState([]);
-    const [beforePhotoUrl, setBeforePhotoUrl] = useState(null);
-    const [progressPhotoUrl, setProgressPhotoUrl] = useState(null);
-    const [afterPhotoUrl, setAfterPhotoUrl] = useState(null);
+    const [beforePhotoFile, setBeforePhotoFile] = useState(null);
+    const [progressPhotoFile, setProgressPhotoFile] = useState(null);
+    const [afterPhotoFile, setAfterPhotoFile] = useState(null);
+    const [beforePhotoUrl, setBeforePhotoUrl] = useState("");
+    const [progressPhotoUrl, setProgressPhotoUrl] = useState("");
+    const [afterPhotoUrl, setAfterPhotoUrl] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
     const [cameraError, setCameraError] = useState("");
+    const [technicianModalOpen, setTechnicianModalOpen] = useState(false);
+    const [selectedTechnicianIds, setSelectedTechnicianIds] = useState([]);
 
     const streamRef = useRef(null);
     const videoRef = useRef(null);
@@ -110,6 +120,8 @@ export default function AdminNewJobPage() {
     const { user, role } = useAuth();
     const { alert: showAlert } = useDialog();
     const { labels: jobScopeLabels } = useJobScopeOptions();
+    const { technicians, loading: techniciansLoading } =
+        useTechnicianDirectory();
     const navigate = useNavigate();
     const sessionRole = getSessionRole(role, user);
 
@@ -214,14 +226,39 @@ export default function AdminNewJobPage() {
             null,
         [availableProjects, form.projectId],
     );
-    const activeJobScope =
-        selectedProject?.job_scope ?? form.jobScope ?? JOB_SCOPES.AC;
+    const activeJobScope = normalizeJobScope(
+        selectedProject?.job_scope ?? form.jobScope ?? JOB_SCOPES.AC,
+    );
     const {
         fields: activeScopeDetailFields,
         checklist: activeScopeChecklist,
         loading: scopeFieldsLoading,
     } =
         useScopeDetailFields(activeJobScope);
+    const activeScopeDetailFormFields = useMemo(() => {
+        const hasSerialNumber = activeScopeDetailFields.some(
+            (field) => field.field_key === "serial_number",
+        );
+
+        if (hasSerialNumber) return activeScopeDetailFields;
+
+        return [
+            {
+                id: "serial_number",
+                scope_id: null,
+                field_key: "serial_number",
+                field_label: "Serial Number",
+                field_type: "text",
+                placeholder: "Opsional, bisa dikosongkan",
+                is_required: false,
+                options: [],
+                sort_order: -1,
+                created_at: null,
+                updated_at: null,
+            },
+            ...activeScopeDetailFields,
+        ];
+    }, [activeScopeDetailFields]);
     const activeScopeChecklistItems = useMemo(
         () =>
             activeScopeChecklist.map((item) =>
@@ -255,6 +292,13 @@ export default function AdminNewJobPage() {
         [acBrands, acTypes, acPks],
     );
     const hasSelectedProject = Boolean(form.projectId && selectedProject);
+    const selectedTechnicians = useMemo(
+        () =>
+            technicians.filter((tech) =>
+                selectedTechnicianIds.includes(tech.id),
+            ),
+        [selectedTechnicianIds, technicians],
+    );
 
     useEffect(() => {
         setForm((prev) => {
@@ -286,7 +330,7 @@ export default function AdminNewJobPage() {
 
     useEffect(() => {
         if (!selectedProject) return;
-        const nextScope = selectedProject.job_scope ?? "AC";
+        const nextScope = normalizeJobScope(selectedProject.job_scope ?? "AC");
         setForm((prev) =>
             prev.jobScope === nextScope
                 ? prev
@@ -379,6 +423,19 @@ export default function AdminNewJobPage() {
         closeCamera();
     };
 
+    const uploadQueuedPhoto = useCallback(
+        async (file, folderName) => {
+            if (!file) return { url: "", path: "" };
+            return uploadJobPhotoFile({
+                supabaseClient: supabase,
+                userId: user?.id ?? null,
+                folderName,
+                file,
+            });
+        },
+        [user?.id],
+    );
+
     useEffect(() => {
         if (cameraOpen && videoRef.current && streamRef.current) {
             videoRef.current.srcObject = streamRef.current;
@@ -404,7 +461,7 @@ export default function AdminNewJobPage() {
         }
 
         const missingFields = validateScopeDetailValues(
-            activeScopeDetailFields,
+            activeScopeDetailFormFields,
             form.scopeDetails,
         );
         if (missingFields.length > 0) {
@@ -419,16 +476,36 @@ export default function AdminNewJobPage() {
 
         setSubmitting(true);
 
+        const uploadedPhotoPaths = [];
+
         try {
             const detailValues = buildScopeDetailValuesPayload(
-                activeScopeDetailFields,
+                activeScopeDetailFormFields,
                 form.scopeDetails,
             );
+
+            const beforeUpload = await uploadQueuedPhoto(
+                beforePhotoFile,
+                "before",
+            );
+            const progressUpload = await uploadQueuedPhoto(
+                progressPhotoFile,
+                "progress",
+            );
+            const afterUpload = await uploadQueuedPhoto(
+                afterPhotoFile,
+                "after",
+            );
+
+            if (beforeUpload?.path) uploadedPhotoPaths.push(beforeUpload.path);
+            if (progressUpload?.path) uploadedPhotoPaths.push(progressUpload.path);
+            if (afterUpload?.path) uploadedPhotoPaths.push(afterUpload.path);
+
             const payload = {
                 title: selectedProject?.project_name ?? "",
-                status: afterPhotoUrl
+                status: afterUpload?.url
                     ? "completed"
-                    : progressPhotoUrl
+                    : progressUpload?.url
                       ? "in_progress"
                       : "requested",
                 job_scope: activeJobScope,
@@ -458,9 +535,9 @@ export default function AdminNewJobPage() {
                 trouble_description: form.troubleDescription,
                 replaced_parts: form.replacedParts,
                 reconditioned_parts: form.reconditionedParts,
-                before_photo_url: beforePhotoUrl,
-                progress_photo_url: progressPhotoUrl,
-                after_photo_url: afterPhotoUrl,
+                before_photo_url: beforeUpload?.url || null,
+                progress_photo_url: progressUpload?.url || null,
+                after_photo_url: afterUpload?.url || null,
                 created_by: user?.id ?? null,
             };
             if (sessionRole === "technician") {
@@ -468,14 +545,48 @@ export default function AdminNewJobPage() {
                 payload.technician_name = getCurrentUserDisplayName(user);
             }
 
-            const { error } = await supabase.from("requests").insert(payload);
+            const { data: createdRequest, error } = await supabase
+                .from("requests")
+                .insert(payload)
+                .select("id")
+                .single();
             if (error) throw error;
+            if (!createdRequest?.id) {
+                throw new Error("Job berhasil dibuat tetapi ID tidak ditemukan.");
+            }
+
+            await syncJobTechnicians({
+                jobId: createdRequest.id,
+                creatorId: user?.id ?? null,
+                technicianIds: selectedTechnicianIds,
+                addedBy: user?.id ?? null,
+            });
+
+            setSelectedTechnicianIds([]);
+            setBeforePhotoFile(null);
+            setProgressPhotoFile(null);
+            setAfterPhotoFile(null);
+            setBeforePhotoUrl("");
+            setProgressPhotoUrl("");
+            setAfterPhotoUrl("");
 
             navigate(
                 sessionRole === "technician" ? "/technician" : "/requests",
             );
         } catch (error) {
             console.error("Error submitting new job:", error);
+            if (uploadedPhotoPaths.length > 0) {
+                try {
+                    await supabase.storage.from("job-photos").remove(
+                        uploadedPhotoPaths
+                    );
+                } catch (cleanupError) {
+                    console.warn(
+                        "Failed to cleanup uploaded job photos:",
+                        cleanupError,
+                    );
+                }
+            }
             const detail = [
                 error?.message,
                 error?.details,
@@ -625,12 +736,17 @@ export default function AdminNewJobPage() {
                                     </span>
                                     <input
                                         value={
-                                            jobScopeLabels[activeJobScope] ??
-                                            JOB_SCOPE_LABELS[activeJobScope] ??
-                                            activeJobScope
+                                            selectedProject
+                                                ? jobScopeLabels[
+                                                      activeJobScope
+                                                  ] ??
+                                                  JOB_SCOPE_LABELS[
+                                                      activeJobScope
+                                                  ] ??
+                                                  activeJobScope
+                                                : "Auto dari project pekerjaan"
                                         }
                                         readOnly
-                                        placeholder="Diambil dari master project"
                                         className={inputClass}
                                     />
                                 </label>
@@ -677,7 +793,7 @@ export default function AdminNewJobPage() {
                                 </SectionTitle>
                                 <ScopeDetailFieldsRenderer
                                     scopeCode={activeJobScope}
-                                    fields={activeScopeDetailFields}
+                                    fields={activeScopeDetailFormFields}
                                     values={form.scopeDetails}
                                     onChange={setScopeDetail}
                                     selectOptionsByFieldKey={
@@ -695,6 +811,47 @@ export default function AdminNewJobPage() {
                                             ),
                                     }}
                                 />
+                                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-medium text-slate-700">
+                                                Tambah Teknisi
+                                            </p>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Pilih teknisi lain yang ikut
+                                                mengerjakan job ini.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setTechnicianModalOpen(true)
+                                            }
+                                            className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-100"
+                                            disabled={techniciansLoading}
+                                        >
+                                            Kelola Teknisi
+                                        </button>
+                                    </div>
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {selectedTechnicians.length > 0 ? (
+                                            selectedTechnicians.map((tech) => (
+                                                <span
+                                                    key={tech.id}
+                                                    className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700"
+                                                >
+                                                    {`${tech.first_name ?? ""} ${tech.last_name ?? ""}`.trim() ||
+                                                        tech.name ||
+                                                        tech.email}
+                                                </span>
+                                            ))
+                                        ) : (
+                                            <span className="text-xs text-slate-500">
+                                                Belum ada teknisi tambahan.
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                                 {activeScopeChecklist.length > 0 && (
                                     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                         <p className="text-sm font-medium text-slate-700">
@@ -750,19 +907,16 @@ export default function AdminNewJobPage() {
                                                 folderName="before"
                                                 photoType="before"
                                                 supabaseClient={supabase}
-                                                onPhotoSelected={() => {}}
-                                                onUploadSuccess={async (
-                                                    metadata,
-                                                    photoUrl,
-                                                ) => {
-                                                    setBeforePhotoUrl(photoUrl);
-                                                }}
-                                                showQueuedStatus={false}
+                                                deferredUpload={true}
+                                                onPhotoSelected={(file) =>
+                                                    setBeforePhotoFile(file)
+                                                }
                                             />
-                                            {beforePhotoUrl && (
+                                            {beforePhotoFile && (
                                                 <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
                                                     <p className="text-xs text-emerald-700">
-                                                        Foto terpilih
+                                                        Foto terpilih:{" "}
+                                                        {beforePhotoFile.name}
                                                     </p>
                                                 </div>
                                             )}
@@ -775,21 +929,16 @@ export default function AdminNewJobPage() {
                                                 folderName="progress"
                                                 photoType="progress"
                                                 supabaseClient={supabase}
-                                                onPhotoSelected={() => {}}
-                                                onUploadSuccess={async (
-                                                    metadata,
-                                                    photoUrl,
-                                                ) => {
-                                                    setProgressPhotoUrl(
-                                                        photoUrl,
-                                                    );
-                                                }}
-                                                showQueuedStatus={false}
+                                                deferredUpload={true}
+                                                onPhotoSelected={(file) =>
+                                                    setProgressPhotoFile(file)
+                                                }
                                             />
-                                            {progressPhotoUrl && (
+                                            {progressPhotoFile && (
                                                 <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
                                                     <p className="text-xs text-emerald-700">
-                                                        Foto terpilih
+                                                        Foto terpilih:{" "}
+                                                        {progressPhotoFile.name}
                                                     </p>
                                                 </div>
                                             )}
@@ -802,19 +951,16 @@ export default function AdminNewJobPage() {
                                                 folderName="after"
                                                 photoType="after"
                                                 supabaseClient={supabase}
-                                                onPhotoSelected={() => {}}
-                                                onUploadSuccess={async (
-                                                    metadata,
-                                                    photoUrl,
-                                                ) => {
-                                                    setAfterPhotoUrl(photoUrl);
-                                                }}
-                                                showQueuedStatus={false}
+                                                deferredUpload={true}
+                                                onPhotoSelected={(file) =>
+                                                    setAfterPhotoFile(file)
+                                                }
                                             />
-                                            {afterPhotoUrl && (
+                                            {afterPhotoFile && (
                                                 <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
                                                     <p className="text-xs text-emerald-700">
-                                                        Foto terpilih
+                                                        Foto terpilih:{" "}
+                                                        {afterPhotoFile.name}
                                                     </p>
                                                 </div>
                                             )}
@@ -909,6 +1055,20 @@ export default function AdminNewJobPage() {
             </div>
 
             <MobileBottomNav />
+
+            <JobTechnicianManagerModal
+                isOpen={technicianModalOpen}
+                title="Tambah Teknisi ke Job Baru"
+                technicians={technicians}
+                selectedTechnicianIds={selectedTechnicianIds}
+                creatorTechnicianId={user?.id ?? null}
+                creatorLabel="Pembuat"
+                onClose={() => setTechnicianModalOpen(false)}
+                onSave={async (nextIds) => {
+                    setSelectedTechnicianIds(nextIds);
+                    setTechnicianModalOpen(false);
+                }}
+            />
 
             {cameraOpen && cameraTarget === "serial-scan" && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4">

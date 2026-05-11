@@ -8,7 +8,10 @@ import useJobScopeOptions from "../../hooks/useJobScopeOptions";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useDialog } from "../../context/useDialog";
 import { JOB_SCOPES } from "../../hooks/useJobScope";
-import { normalizeJobScopeCode } from "../../utils/jobScopeCatalog";
+import {
+    normalizeJobScope,
+    normalizeJobScopeCode,
+} from "../../utils/jobScopeCatalog";
 import supabase from "../../supabaseClient";
 
 const inputClass =
@@ -622,7 +625,7 @@ export default function AdminMasterDataModulePage() {
             const baseProjectPayload = {
                 customer_id: createdCustomer.id,
                 project_name: simpleForm.projectName,
-                job_scope: simpleForm.jobScope,
+                job_scope: normalizeJobScope(simpleForm.jobScope),
                 location: simpleForm.location,
                 phone: simpleForm.phone,
                 address: simpleForm.address,
@@ -639,7 +642,7 @@ export default function AdminMasterDataModulePage() {
             const basePayload = {
                 customer_id: simpleForm.customerId,
                 project_name: simpleForm.projectName,
-                job_scope: simpleForm.jobScope,
+                job_scope: normalizeJobScope(simpleForm.jobScope),
                 location: simpleForm.location,
                 phone:
                     String(simpleForm.phone ?? "").trim() ||
@@ -731,7 +734,7 @@ export default function AdminMasterDataModulePage() {
             const basePayload = {
                 customer_id: simpleForm.customerId,
                 project_name: simpleForm.projectName,
-                job_scope: simpleForm.jobScope,
+                job_scope: normalizeJobScope(simpleForm.jobScope),
                 location: simpleForm.location,
                 phone:
                     String(simpleForm.phone ?? "").trim() ||
@@ -1556,9 +1559,13 @@ export default function AdminMasterDataModulePage() {
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
                                                             {jobScopeLabels[
-                                                                item.job_scope
+                                                                normalizeJobScope(
+                                                                    item.job_scope,
+                                                                )
                                                             ] ??
-                                                                item.job_scope ??
+                                                                normalizeJobScope(
+                                                                    item.job_scope,
+                                                                ) ??
                                                                 "AC"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
@@ -1606,8 +1613,10 @@ export default function AdminMasterDataModulePage() {
                                                                                     item.project_name ??
                                                                                     "",
                                                                                 jobScope:
-                                                                                    item.job_scope ??
-                                                                                    JOB_SCOPES.AC,
+                                                                                    normalizeJobScope(
+                                                                                        item.job_scope ??
+                                                                                            JOB_SCOPES.AC,
+                                                                                    ),
                                                                                 location:
                                                                                     item.location ??
                                                                                     "",

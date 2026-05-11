@@ -28,3 +28,12 @@ docs/*.sql
 docs/*.md
 docs/**/*.md
 docs/**/*.sql
+
+migrations/*.sql
+
+# Ignore ad-hoc markdown files, keep README files
+*.md
+!README.md
+!README.*.md
+!**/README.md
+!**/README.*.md

@@ -32,6 +32,25 @@ export const normalizeJobScopeCode = (value) =>
         .replaceAll("-", "_")
         .replaceAll(" ", "_");
 
+const normalizeLabelKey = (value) =>
+    String(value ?? "")
+        .trim()
+        .toUpperCase()
+        .replaceAll(/[^A-Z0-9]+/g, "_")
+        .replaceAll(/^_+|_+$/g, "");
+
+const JOB_SCOPE_LABEL_TO_CODE = Object.entries(JOB_SCOPE_LABELS).reduce(
+    (acc, [code, label]) => {
+        const normalizedLabel = normalizeLabelKey(label);
+        if (normalizedLabel) {
+            acc[normalizedLabel] = code;
+        }
+        acc[normalizeLabelKey(code)] = code;
+        return acc;
+    },
+    {},
+);
+
 export const getJobScopeLabel = (scope, labels = JOB_SCOPE_LABELS) => {
     const normalizedScope = normalizeJobScope(scope);
     return labels?.[normalizedScope] ?? JOB_SCOPE_LABELS[normalizedScope] ?? normalizedScope;
@@ -142,7 +161,10 @@ export const getScopeChecklist = (scope) =>
 
 export const normalizeJobScope = (value) => {
     const raw = normalizeJobScopeCode(value);
-    return JOB_SCOPES[raw] ?? raw ?? JOB_SCOPES.AC;
+    if (JOB_SCOPES[raw]) return JOB_SCOPES[raw];
+    const fromLabel = JOB_SCOPE_LABEL_TO_CODE[normalizeLabelKey(value)];
+    if (fromLabel) return fromLabel;
+    return raw || JOB_SCOPES.AC;
 };
 
 export const getScopeSummaryMeta = (jobScope, dynamicData, roomLocation) => {

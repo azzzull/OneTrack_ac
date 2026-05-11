@@ -5,6 +5,7 @@ import {
     cleanupAllChannels,
     createUniqueChannelName,
 } from "../utils/realtimeChannelManager";
+import { getTechnicianJobIds } from "../services/jobTechniciansService";
 
 const INITIAL_STATS = {
     pending: 0,
@@ -13,7 +14,7 @@ const INITIAL_STATS = {
     active: 0,
 };
 
-const countByStatus = async (status, { onlyUnassigned = false } = {}) => {
+const countByStatus = async (status, { jobIds = [] } = {}) => {
     let query = supabase
         .from("requests")
         .select("*", { count: "exact", head: true });
@@ -24,8 +25,10 @@ const countByStatus = async (status, { onlyUnassigned = false } = {}) => {
         query = query.eq("status", status);
     }
 
-    if (onlyUnassigned) {
-        query = query.is("technician_id", null);
+    if (Array.isArray(jobIds) && jobIds.length > 0) {
+        query = query.in("id", jobIds);
+    } else if (Array.isArray(jobIds) && jobIds.length === 0) {
+        return 0;
     }
 
     const { count, error } = await query;
@@ -65,14 +68,15 @@ export default function useRequestStats() {
                 return;
             }
 
-            const onlyUnassignedPending = roleRef.current === "technician";
+            const technicianJobIds =
+                roleRef.current === "technician"
+                    ? await getTechnicianJobIds(userIdRef.current)
+                    : undefined;
 
             const [pending, inProgress, completed] = await Promise.all([
-                countByStatus("pending", {
-                    onlyUnassigned: onlyUnassignedPending,
-                }),
-                countByStatus("in_progress"),
-                countByStatus("completed"),
+                countByStatus("pending", { jobIds: technicianJobIds }),
+                countByStatus("in_progress", { jobIds: technicianJobIds }),
+                countByStatus("completed", { jobIds: technicianJobIds }),
             ]);
 
             if (isMountedRef.current) {
