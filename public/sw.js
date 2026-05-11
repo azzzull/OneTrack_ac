@@ -3,7 +3,21 @@
  */
 
 const CACHE_NAME = "onetrack-v2";
-const URLS_TO_CACHE = ["/", "/index.html", "/manifest.json"];
+const URLS_TO_CACHE = [
+    "/",
+    "/index.html",
+    "/manifest.json",
+    "/saplogo-192x192.png",
+    "/saplogo-512x512.png",
+    "/saplogo-180x180.png",
+    "/saplogo-152x152.png",
+    "/saplogo-167x167.png",
+    "/saplogo-144x144.png",
+    "/saplogo-96x96.png",
+    "/saplogo-72x72.png",
+    "/saplogo-maskable-512x512.png",
+    "/saplogo.svg",
+];
 
 // Install event - cache static assets
 self.addEventListener("install", (event) => {

@@ -4,15 +4,55 @@
     "description": "AC Service Management Application",
     "icons": [
         {
+            "src": "/saplogo-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/saplogo-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "/saplogo-180x180.png",
+            "sizes": "180x180",
+            "type": "image/png"
+        },
+        {
+            "src": "/saplogo-152x152.png",
+            "sizes": "152x152",
+            "type": "image/png"
+        },
+        {
+            "src": "/saplogo-167x167.png",
+            "sizes": "167x167",
+            "type": "image/png"
+        },
+        {
+            "src": "/saplogo-144x144.png",
+            "sizes": "144x144",
+            "type": "image/png"
+        },
+        {
+            "src": "/saplogo-96x96.png",
+            "sizes": "96x96",
+            "type": "image/png"
+        },
+        {
+            "src": "/saplogo-72x72.png",
+            "sizes": "72x72",
+            "type": "image/png"
+        },
+        {
+            "src": "/saplogo-maskable-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
             "src": "/saplogo.svg",
             "sizes": "any",
             "type": "image/svg+xml"
-        },
-        {
-            "src": "/vite.svg",
-            "sizes": "any",
-            "type": "image/svg+xml",
-            "purpose": "maskable"
         }
     ],
     "start_url": "/",
