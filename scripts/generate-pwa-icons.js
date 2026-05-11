@@ -31,8 +31,8 @@ console.log(
 console.log("");
 
 console.log("Example filenames:");
-console.log("- saplogo-192x192.png");
-console.log("- saplogo-512x512.png");
+console.log("- saplogo-square-192x192.png");
+console.log("- saplogo-square-512x512.png");
 console.log("- saplogo-maskable-512x512.png");
 console.log("");
 
