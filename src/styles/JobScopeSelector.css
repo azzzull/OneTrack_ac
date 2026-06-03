@@ -1,0 +1,51 @@
+/* JobScopeSelector Component Styles */
+
+.job-scope-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.job-scope-label {
+    font-weight: 500;
+    font-size: 0.95rem;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.job-scope-select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    background-color: #fff;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 200px;
+}
+
+.job-scope-select:hover:not(:disabled) {
+    border-color: #bbb;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.job-scope-select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+.job-scope-select:disabled {
+    background-color: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .job-scope-select {
+        min-width: 100%;
+    }
+}

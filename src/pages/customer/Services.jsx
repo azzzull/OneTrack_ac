@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import ScopeDetailsCard from "../../components/ScopeDetailsCard";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import useCustomerRequests from "../../hooks/useCustomerRequests";
+import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
 
 const FILTERS = [
     { key: "all", label: "All" },
@@ -37,6 +39,20 @@ const STATUS_STYLES = {
     pending: "bg-amber-100 text-amber-700",
     in_progress: "bg-blue-100 text-blue-700",
     completed: "bg-emerald-100 text-emerald-700",
+};
+
+const normalizeStatusKey = (value) => {
+    const raw = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+    if (raw === "inprogress") return "in_progress";
+    if (raw === "in_progress") return "in_progress";
+    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "requested") return "pending";
+    if (raw === "pending" || raw === "") return "pending";
+    return "pending";
 };
 
 const formatDate = (value) => {
@@ -111,10 +127,17 @@ function CustomerServicesPage() {
     const filteredRequests = useMemo(() => {
         const keyword = search.trim().toLowerCase();
         return requests.filter((item) => {
+            const scopeSummary = getScopeSummaryMeta(
+                item.job_scope,
+                item.dynamic_data,
+                item.room_location,
+            );
             const matchFilter =
-                activeFilter === "all" ? true : item.status === activeFilter;
+                activeFilter === "all"
+                    ? true
+                    : normalizeStatusKey(item.status) === activeFilter;
             const matchSearch = keyword
-                ? `${item.title ?? ""} ${item.room_location ?? ""} ${item.trouble_description ?? ""} ${item.customer_name ?? ""} ${item.technician_name ?? ""} ${item.id ?? ""} ${formatOrderId(item.id)}`
+                ? `${item.title ?? ""} ${scopeSummary.value ?? ""} ${item.trouble_description ?? ""} ${item.customer_name ?? ""} ${item.technician_name ?? ""} ${item.id ?? ""} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
@@ -132,7 +155,7 @@ function CustomerServicesPage() {
     const requestCounts = useMemo(() => {
         return requests.reduce(
             (acc, item) => {
-                const status = String(item.status ?? "").trim().toLowerCase();
+                const status = normalizeStatusKey(item.status);
                 acc.all += 1;
                 if (status === "pending") acc.pending += 1;
                 if (status === "in_progress") acc.in_progress += 1;
@@ -190,7 +213,7 @@ function CustomerServicesPage() {
         const rows = filteredRequests.map((item) => [
             formatOrderId(item.id),
             formatDate(item.created_at),
-            STATUS_LABELS[item.status] ?? "PENDING",
+            STATUS_LABELS[normalizeStatusKey(item.status)] ?? "PENDING",
             item.title ?? "-",
             item.customer_name ?? "-",
             item.customer_phone ?? "-",
@@ -338,6 +361,15 @@ function CustomerServicesPage() {
                                         }
                                     >
                                         <div className="flex flex-wrap items-start justify-between gap-3">
+                                            {(() => {
+                                                const scopeSummary =
+                                                    getScopeSummaryMeta(
+                                                        item.job_scope,
+                                                        item.dynamic_data,
+                                                        item.room_location,
+                                                    );
+                                                return (
+                                                    <>
                                             <div>
                                                 <p className="text-base font-semibold text-slate-900">
                                                     {item.title}
@@ -351,9 +383,9 @@ function CustomerServicesPage() {
                                                     </span>
                                                 </p>
                                                 <p className="mt-1 text-xs text-slate-500">
-                                                    Ruangan:{" "}
+                                                    {scopeSummary.label}:{" "}
                                                     {previewText(
-                                                        item.room_location,
+                                                        scopeSummary.value,
                                                         48,
                                                     )}
                                                 </p>
@@ -367,13 +399,21 @@ function CustomerServicesPage() {
                                             <span
                                                 className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
                                                     STATUS_STYLES[
-                                                        item.status
+                                                        normalizeStatusKey(
+                                                            item.status,
+                                                        )
                                                     ] ?? STATUS_STYLES.pending
                                                 }`}
                                             >
-                                                {STATUS_LABELS[item.status] ??
-                                                    "PENDING"}
+                                                {STATUS_LABELS[
+                                                    normalizeStatusKey(
+                                                        item.status,
+                                                    )
+                                                ] ?? "PENDING"}
                                             </span>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
 
                                         <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-500">
@@ -538,12 +578,16 @@ function CustomerServicesPage() {
                                     <span
                                         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
                                             STATUS_STYLES[
-                                                selectedRequest.status
+                                                normalizeStatusKey(
+                                                    selectedRequest.status,
+                                                )
                                             ] ?? STATUS_STYLES.pending
                                         }`}
                                     >
                                         {STATUS_LABELS[
-                                            selectedRequest.status
+                                            normalizeStatusKey(
+                                                selectedRequest.status,
+                                            )
                                         ] ?? "PENDING"}
                                     </span>
                                 </div>
@@ -575,41 +619,20 @@ function CustomerServicesPage() {
                             </div>
 
                             <div className="rounded-xl border border-slate-200 p-4">
-                                <p className="text-xs uppercase tracking-wide text-slate-500">
-                                    Unit AC & Ruangan
-                                </p>
-                                <div className="mt-2 space-y-1 text-sm text-slate-700">
-                                    <p>
-                                        <span className="font-medium">
-                                            Merk AC:
-                                        </span>{" "}
-                                        {selectedRequest.ac_brand ?? "-"}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Tipe AC:
-                                        </span>{" "}
-                                        {selectedRequest.ac_type ?? "-"}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Kapasitas AC:
-                                        </span>{" "}
-                                        {selectedRequest.ac_capacity_pk ?? "-"}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Serial Number AC:
-                                        </span>{" "}
-                                        {selectedRequest.serial_number ?? "-"}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Ruangan Dikerjakan:
-                                        </span>{" "}
-                                        {selectedRequest.room_location ?? "-"}
-                                    </p>
-                                </div>
+                                <ScopeDetailsCard
+                                    jobScope={selectedRequest.job_scope}
+                                    dynamicData={selectedRequest.dynamic_data}
+                                    acDetails={{
+                                        brand: selectedRequest.ac_brand,
+                                        type: selectedRequest.ac_type,
+                                        capacity:
+                                            selectedRequest.ac_capacity_pk,
+                                        roomLocation:
+                                            selectedRequest.room_location,
+                                        serialNumber:
+                                            selectedRequest.serial_number,
+                                    }}
+                                />
                             </div>
 
                             <div className="rounded-xl border border-slate-200 p-4">

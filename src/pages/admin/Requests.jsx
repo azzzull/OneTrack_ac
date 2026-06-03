@@ -13,6 +13,7 @@ import {
     ShieldCheck,
     Search,
     UserRound,
+    Users,
     Wrench,
     X,
     ChevronLeft,
@@ -23,7 +24,11 @@ import { useSearchParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import PhotoUploadInput from "../../components/PhotoUploadInput";
 import CustomSelect from "../../components/ui/CustomSelect";
+import ScopeDetailsCard from "../../components/ScopeDetailsCard";
+import JobTechnicianManagerModal from "../../components/job-technicians/JobTechnicianManagerModal";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
+import useJobTechnicians from "../../hooks/useJobTechnicians";
+import useTechnicianDirectory from "../../hooks/useTechnicianDirectory";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
@@ -33,6 +38,11 @@ import {
     cleanupAllChannels,
     createUniqueChannelName,
 } from "../../utils/realtimeChannelManager";
+import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
+import {
+    getTechnicianJobIds,
+    syncJobTechnicians,
+} from "../../services/jobTechniciansService";
 
 const FILTERS = [
     { key: "all", label: "All" },
@@ -62,6 +72,20 @@ const STATUS_OPTIONS = [
     { value: "completed", label: "Completed" },
 ];
 
+const normalizeStatusKey = (value) => {
+    const raw = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+    if (raw === "inprogress") return "in_progress";
+    if (raw === "in_progress") return "in_progress";
+    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "requested") return "pending";
+    if (raw === "pending" || raw === "") return "pending";
+    return "pending";
+};
+
 const pickFirst = (obj, keys, fallback = "") => {
     for (const key of keys) {
         const value = obj?.[key];
@@ -85,10 +109,7 @@ const getProfileDisplayName = (profile) => {
 };
 
 const normalizeRequest = (row, creatorName = "") => {
-    const rawStatus = String(
-        pickFirst(row, ["status"], "pending"),
-    ).toLowerCase();
-    const status = STATUS_LABELS[rawStatus] ? rawStatus : "pending";
+    const status = normalizeStatusKey(pickFirst(row, ["status"], "pending"));
 
     return {
         id: pickFirst(row, ["id"], `${Math.random()}`),
@@ -130,6 +151,11 @@ const normalizeRequest = (row, creatorName = "") => {
         acCapacityPk: pickFirst(row, ["ac_capacity_pk"], "-"),
         roomLocation: pickFirst(row, ["room_location"], "-"),
         serialNumber: pickFirst(row, ["serial_number"], "-"),
+        jobScope: pickFirst(row, ["job_scope"], "AC"),
+        dynamicData:
+            row?.dynamic_data && typeof row.dynamic_data === "object"
+                ? row.dynamic_data
+                : {},
         troubleDescription: pickFirst(row, ["trouble_description"], "-"),
         replacedParts: pickFirst(row, ["replaced_parts"], "-"),
         reconditionedParts: pickFirst(row, ["reconditioned_parts"], "-"),
@@ -165,17 +191,6 @@ const hasValidSerialNumber = (value) => {
     return normalized !== "-" && normalized.toLowerCase() !== "null";
 };
 
-const getCurrentUserDisplayName = (user) => {
-    const composed =
-        `${user?.user_metadata?.first_name ?? ""} ${user?.user_metadata?.last_name ?? ""}`.trim();
-    return (
-        composed ||
-        String(user?.user_metadata?.full_name ?? "").trim() ||
-        String(user?.email ?? "").trim() ||
-        "Teknisi"
-    );
-};
-
 const sortRequestsByDateDesc = (items) =>
     [...items].sort((a, b) => new Date(b?.date ?? 0) - new Date(a?.date ?? 0));
 
@@ -196,9 +211,7 @@ const shouldIncludeRequestForRole = (row, role, userId) => {
     if (role !== "technician") return true;
     if (!row) return false;
 
-    const status = String(row.status ?? "")
-        .trim()
-        .toLowerCase();
+    const status = normalizeStatusKey(row.status);
     const technicianId = row.technician_id ?? "";
 
     return (
@@ -238,6 +251,7 @@ export default function AdminRequestsPage() {
         url: "",
         label: "",
     });
+    const [jobTechnicianModalOpen, setJobTechnicianModalOpen] = useState(false);
     const [hasDeferredRefresh, setHasDeferredRefresh] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 5;
@@ -261,7 +275,7 @@ export default function AdminRequestsPage() {
         };
     }, [role, user?.id, authLoading]);
 
-    const loadRequests = async () => {
+    const loadRequests = useCallback(async () => {
         try {
             let query = supabase
                 .from("requests")
@@ -269,9 +283,17 @@ export default function AdminRequestsPage() {
                 .order("created_at", { ascending: false });
 
             if (roleRef.current === "technician" && userIdRef.current) {
-                query = query.or(
-                    `and(status.eq.pending,technician_id.is.null),technician_id.eq.${userIdRef.current}`,
+                const technicianJobIds = await getTechnicianJobIds(
+                    userIdRef.current,
                 );
+                if (technicianJobIds.length === 0) {
+                    if (isMountedRef.current) {
+                        setRequests([]);
+                        setLoading(false);
+                    }
+                    return;
+                }
+                query = query.in("id", technicianJobIds);
             }
 
             const { data, error } = await query;
@@ -327,7 +349,7 @@ export default function AdminRequestsPage() {
                 setLoading(false);
             }
         }
-    };
+    }, []);
 
     // ✅ Setup channel with proper lifecycle management
     useEffect(() => {
@@ -506,7 +528,7 @@ export default function AdminRequestsPage() {
                 console.log("[AdminRequests] Channel cleaned up");
             }
         };
-    }, [user?.id]); // ✅ Only depends on user.id - recreates when user changes
+    }, [user?.id, loadRequests]); // ✅ Depends on user.id and stable loadRequests - recreates when user changes
 
     useEffect(() => {
         deferRefreshRef.current = Boolean(cameraOpen || saving);
@@ -558,10 +580,17 @@ export default function AdminRequestsPage() {
         const keyword = search.trim().toLowerCase();
 
         return requests.filter((item) => {
+            const scopeSummary = getScopeSummaryMeta(
+                item.jobScope,
+                item.dynamicData,
+                item.roomLocation,
+            );
             const matchFilter =
-                activeFilter === "all" ? true : item.status === activeFilter;
+                activeFilter === "all"
+                    ? true
+                    : normalizeStatusKey(item.status) === activeFilter;
             const matchSearch = keyword
-                ? `${item.title} ${item.address} ${item.roomLocation} ${item.troubleDescription} ${item.assignee} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
+                ? `${item.title} ${item.address} ${scopeSummary.value} ${item.troubleDescription} ${item.assignee} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
@@ -572,9 +601,7 @@ export default function AdminRequestsPage() {
     const requestCounts = useMemo(() => {
         return requests.reduce(
             (acc, item) => {
-                const status = String(item.status ?? "")
-                    .trim()
-                    .toLowerCase();
+                const status = normalizeStatusKey(item.status);
                 acc.all += 1;
                 if (status === "pending") acc.pending += 1;
                 if (status === "in_progress") acc.in_progress += 1;
@@ -614,6 +641,31 @@ export default function AdminRequestsPage() {
         () => requests.find((item) => item.id === selectedRequestId) ?? null,
         [requests, selectedRequestId],
     );
+    const {
+        technicians: selectedRequestTechnicians,
+        loading: selectedRequestTechniciansLoading,
+        reload: reloadSelectedRequestTechnicians,
+    } = useJobTechnicians(selectedRequest?.id);
+    const { technicians: technicianDirectory } = useTechnicianDirectory();
+    const creatorTechnicianId = useMemo(() => {
+        const creatorRow =
+            selectedRequestTechnicians.find(
+                (item) => item.role === "creator",
+            ) ?? null;
+        return (
+            creatorRow?.technician_id ??
+            selectedRequest?.createdBy ??
+            selectedRequest?.technicianId ??
+            ""
+        );
+    }, [
+        selectedRequest?.createdBy,
+        selectedRequest?.technicianId,
+        selectedRequestTechnicians,
+    ]);
+    const canManageTechnicians =
+        role === "admin" ||
+        (Boolean(user?.id) && String(creatorTechnicianId) === String(user?.id));
 
     useEffect(() => {
         if (!selectedRequest) return;
@@ -635,6 +687,7 @@ export default function AdminRequestsPage() {
     const closeDetail = () => {
         setSelectedRequestId(null);
         setSaving(false);
+        setJobTechnicianModalOpen(false);
         setPhotoPreview({ open: false, url: "", label: "" });
         setBeforePhotoUrl(null);
         setProgressPhotoUrl(null);
@@ -780,12 +833,6 @@ export default function AdminRequestsPage() {
             if (progressPhotoUrl) payload.progress_photo_url = progressPhotoUrl;
             if (afterPhotoUrl) payload.after_photo_url = afterPhotoUrl;
 
-            // Add technician info if technician
-            if (role === "technician") {
-                payload.technician_id = user?.id ?? null;
-                payload.technician_name = getCurrentUserDisplayName(user);
-            }
-
             // Determine status automatically based on photos
             // Check current photos + newly uploaded ones
             const hasBefore = beforePhotoUrl || selectedRequest.beforePhotoUrl;
@@ -812,7 +859,7 @@ export default function AdminRequestsPage() {
             } else if (hasProgress && hasBefore) {
                 payload.status = "in_progress";
             } else if (hasBefore) {
-                payload.status = "pending";
+                payload.status = "requested";
             } else {
                 // Keep current status if no photos
                 payload.status = selectedRequest.status;
@@ -825,7 +872,22 @@ export default function AdminRequestsPage() {
 
             if (error) throw error;
 
+            if (role === "technician" && user?.id) {
+                await syncJobTechnicians({
+                    jobId: selectedRequest.id,
+                    creatorId: creatorTechnicianId || user.id,
+                    technicianIds: [
+                        ...selectedRequestTechnicians
+                            .filter((item) => item.role !== "creator")
+                            .map((item) => item.technician_id),
+                        user.id,
+                    ],
+                    addedBy: user.id,
+                });
+            }
+
             await loadRequests();
+            await reloadSelectedRequestTechnicians();
             setBeforePhotoUrl(null);
             setProgressPhotoUrl(null);
             setAfterPhotoUrl(null);
@@ -1002,57 +1064,83 @@ export default function AdminRequestsPage() {
                                 >
                                     <div className="grid grid-cols-1 md:grid-cols-[1fr_190px]">
                                         <div className="p-4 md:p-5">
-                                            <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
-                                                <div className="min-w-0">
-                                                    <h2 className="wrap-break-word text-lg font-semibold text-slate-900  md:text-xl">
-                                                        {item.title}
-                                                    </h2>
-                                                    <p className="mt-1 break-all text-xs text-slate-500">
-                                                        Order ID:{" "}
-                                                        <span
-                                                            title={
-                                                                item.id ?? "-"
-                                                            }
-                                                        >
-                                                            {formatOrderId(
-                                                                item.id,
-                                                            )}
-                                                        </span>
-                                                    </p>
-                                                    <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-slate-500 md:text-base">
-                                                        <MapPin size={16} />
-                                                        <span>
-                                                            {item.address}
-                                                        </span>
-                                                    </p>
-                                                    <p className="mt-1 text-xs text-slate-500">
-                                                        Ruangan:{" "}
-                                                        {previewText(
-                                                            item.roomLocation,
-                                                            48,
-                                                        )}
-                                                    </p>
-                                                    <p className="mt-1 text-xs text-slate-500">
-                                                        Deskripsi:{" "}
-                                                        {previewText(
-                                                            item.troubleDescription,
-                                                        )}
-                                                    </p>
-                                                </div>
+                                            {(() => {
+                                                const scopeSummary =
+                                                    getScopeSummaryMeta(
+                                                        item.jobScope,
+                                                        item.dynamicData,
+                                                        item.roomLocation,
+                                                    );
+                                                return (
+                                                    <>
+                                                        <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
+                                                            <div className="min-w-0">
+                                                                <h2 className="wrap-break-word text-lg font-semibold text-slate-900  md:text-xl">
+                                                                    {item.title}
+                                                                </h2>
+                                                                <p className="mt-1 break-all text-xs text-slate-500">
+                                                                    Order ID:{" "}
+                                                                    <span
+                                                                        title={
+                                                                            item.id ??
+                                                                            "-"
+                                                                        }
+                                                                    >
+                                                                        {formatOrderId(
+                                                                            item.id,
+                                                                        )}
+                                                                    </span>
+                                                                </p>
+                                                                <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-slate-500 md:text-base">
+                                                                    <MapPin
+                                                                        size={
+                                                                            16
+                                                                        }
+                                                                    />
+                                                                    <span>
+                                                                        {
+                                                                            item.address
+                                                                        }
+                                                                    </span>
+                                                                </p>
+                                                                <p className="mt-1 text-xs text-slate-500">
+                                                                    {
+                                                                        scopeSummary.label
+                                                                    }
+                                                                    :{" "}
+                                                                    {previewText(
+                                                                        scopeSummary.value,
+                                                                        48,
+                                                                    )}
+                                                                </p>
+                                                                <p className="mt-1 text-xs text-slate-500">
+                                                                    Deskripsi:{" "}
+                                                                    {previewText(
+                                                                        item.troubleDescription,
+                                                                    )}
+                                                                </p>
+                                                            </div>
 
-                                                <span
-                                                    className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                                        STATUS_STYLES[
-                                                            item.status
-                                                        ] ??
-                                                        STATUS_STYLES.pending
-                                                    }`}
-                                                >
-                                                    {STATUS_LABELS[
-                                                        item.status
-                                                    ] ?? "PENDING"}
-                                                </span>
-                                            </div>
+                                                            <span
+                                                                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                                                    STATUS_STYLES[
+                                                                        normalizeStatusKey(
+                                                                            item.status,
+                                                                        )
+                                                                    ] ??
+                                                                    STATUS_STYLES.pending
+                                                                }`}
+                                                            >
+                                                                {STATUS_LABELS[
+                                                                    normalizeStatusKey(
+                                                                        item.status,
+                                                                    )
+                                                                ] ?? "PENDING"}
+                                                            </span>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
 
                                             <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 md:gap-6 md:text-base">
                                                 <p className="inline-flex items-center text-base gap-2">
@@ -1226,49 +1314,163 @@ export default function AdminRequestsPage() {
                                     Status
                                 </p>
                                 <div className="mt-3 inline-flex rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 bg-slate-50">
-                                    {STATUS_LABELS[selectedRequest.status] ??
-                                        "PENDING"}
+                                    {STATUS_LABELS[
+                                        normalizeStatusKey(
+                                            selectedRequest.status,
+                                        )
+                                    ] ?? "PENDING"}
                                 </div>
                             </div>
                         </div>
 
                         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="rounded-2xl border border-slate-200 p-4">
-                                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    <Clock3 size={14} />
-                                    Detail Unit AC
-                                </p>
-                                <div className="mt-3 space-y-2 text-sm text-slate-700">
-                                    <p>
-                                        <span className="font-medium">
-                                            Merk AC:
-                                        </span>{" "}
-                                        {selectedRequest.acBrand}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Tipe AC:
-                                        </span>{" "}
-                                        {selectedRequest.acType}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Kapasitas AC:
-                                        </span>{" "}
-                                        {selectedRequest.acCapacityPk}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Lokasi Ruangan:
-                                        </span>{" "}
-                                        {selectedRequest.roomLocation}
-                                    </p>
-                                    <p>
-                                        <span className="font-medium">
-                                            Serial Number AC:
-                                        </span>{" "}
-                                        {selectedRequest.serialNumber}
-                                    </p>
+                                <ScopeDetailsCard
+                                    jobScope={selectedRequest.jobScope}
+                                    dynamicData={selectedRequest.dynamicData}
+                                    acDetails={{
+                                        brand: selectedRequest.acBrand,
+                                        type: selectedRequest.acType,
+                                        capacity: selectedRequest.acCapacityPk,
+                                        roomLocation:
+                                            selectedRequest.roomLocation,
+                                        serialNumber:
+                                            selectedRequest.serialNumber,
+                                    }}
+                                />
+                                <div className="mt-4 border-t border-slate-200 pt-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                <Users size={14} />
+                                                Teknisi Terlibat
+                                            </p>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Pembuat job diberi badge khusus.
+                                            </p>
+                                        </div>
+                                        {canManageTechnicians && (
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setJobTechnicianModalOpen(
+                                                        true,
+                                                    )
+                                                }
+                                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                            >
+                                                Kelola Teknisi
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-3 space-y-2">
+                                        {selectedRequestTechniciansLoading ? (
+                                            <p className="text-sm text-slate-500">
+                                                Memuat teknisi...
+                                            </p>
+                                        ) : selectedRequestTechnicians.length >
+                                          0 ? (
+                                            selectedRequestTechnicians.map(
+                                                (item) => {
+                                                    const isCreator =
+                                                        item.role === "creator";
+                                                    return (
+                                                        <div
+                                                            key={item.id}
+                                                            className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <p className="truncate text-sm font-medium text-slate-800">
+                                                                    {
+                                                                        item.technician_name
+                                                                    }
+                                                                </p>
+                                                                <p className="truncate text-xs text-slate-500">
+                                                                    {item
+                                                                        .technician
+                                                                        ?.email ??
+                                                                        "-"}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex shrink-0 items-center gap-2">
+                                                                {isCreator && (
+                                                                    <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                                                        Pembuat
+                                                                    </span>
+                                                                )}
+                                                                {!isCreator &&
+                                                                    canManageTechnicians && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    await syncJobTechnicians(
+                                                                                        {
+                                                                                            jobId: selectedRequest.id,
+                                                                                            creatorId:
+                                                                                                creatorTechnicianId ||
+                                                                                                selectedRequest.createdBy ||
+                                                                                                user?.id ||
+                                                                                                item.technician_id,
+                                                                                            technicianIds:
+                                                                                                selectedRequestTechnicians
+                                                                                                    .filter(
+                                                                                                        (
+                                                                                                            row,
+                                                                                                        ) =>
+                                                                                                            row.role !==
+                                                                                                            "creator",
+                                                                                                    )
+                                                                                                    .map(
+                                                                                                        (
+                                                                                                            row,
+                                                                                                        ) =>
+                                                                                                            row.technician_id,
+                                                                                                    )
+                                                                                                    .filter(
+                                                                                                        (
+                                                                                                            id,
+                                                                                                        ) =>
+                                                                                                            id !==
+                                                                                                            item.technician_id,
+                                                                                                    ),
+                                                                                            addedBy:
+                                                                                                user?.id ??
+                                                                                                null,
+                                                                                        },
+                                                                                    );
+                                                                                    await reloadSelectedRequestTechnicians();
+                                                                                } catch (error) {
+                                                                                    console.error(
+                                                                                        "Failed to remove technician:",
+                                                                                        error,
+                                                                                    );
+                                                                                    await showAlert(
+                                                                                        error?.message ??
+                                                                                            "Gagal menghapus teknisi.",
+                                                                                        {
+                                                                                            title: "Gagal",
+                                                                                        },
+                                                                                    );
+                                                                                }
+                                                                            }}
+                                                                            className="rounded-lg border border-rose-200 bg-white px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                                                                        >
+                                                                            Hapus
+                                                                        </button>
+                                                                    )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                },
+                                            )
+                                        ) : (
+                                            <p className="text-sm text-slate-500">
+                                                Belum ada teknisi terlibat.
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -1539,6 +1741,45 @@ export default function AdminRequestsPage() {
                     </div>
                 </div>
             )}
+
+            <JobTechnicianManagerModal
+                isOpen={jobTechnicianModalOpen}
+                title={`Kelola Teknisi - ${selectedRequest?.title ?? "Job"}`}
+                technicians={technicianDirectory}
+                selectedTechnicianIds={selectedRequestTechnicians
+                    .filter((item) => item.role !== "creator")
+                    .map((item) => item.technician_id)}
+                creatorTechnicianId={
+                    creatorTechnicianId || selectedRequest?.createdBy || null
+                }
+                creatorLabel="Pembuat"
+                saving={saving}
+                onClose={() => setJobTechnicianModalOpen(false)}
+                onSave={async (nextIds) => {
+                    if (!selectedRequest?.id) return;
+                    try {
+                        await syncJobTechnicians({
+                            jobId: selectedRequest.id,
+                            creatorId:
+                                creatorTechnicianId ||
+                                selectedRequest.createdBy ||
+                                user?.id ||
+                                null,
+                            technicianIds: nextIds,
+                            addedBy: user?.id ?? null,
+                        });
+                        await reloadSelectedRequestTechnicians();
+                        await loadRequests();
+                        setJobTechnicianModalOpen(false);
+                    } catch (error) {
+                        console.error("Failed to sync job technicians:", error);
+                        await showAlert(
+                            error?.message ?? "Gagal menyimpan teknisi.",
+                            { title: "Gagal" },
+                        );
+                    }
+                }}
+            />
 
             {photoPreview.open && (
                 <div className="fixed inset-0 z-55 flex items-center justify-center bg-slate-900/70 p-4">

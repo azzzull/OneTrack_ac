@@ -27,6 +27,20 @@ const STATUS_LABELS = {
     completed: "COMPLETED",
 };
 
+const normalizeStatusKey = (value) => {
+    const raw = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+    if (raw === "inprogress") return "in_progress";
+    if (raw === "in_progress") return "in_progress";
+    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "requested") return "pending";
+    if (raw === "pending" || raw === "") return "pending";
+    return "pending";
+};
+
 const formatOrderId = (id) => `#${String(id).padStart(6, "0")}`;
 
 const formatDate = (dateValue) => formatDateUniversal(dateValue);
@@ -87,9 +101,7 @@ export default function CustomerDashboard() {
         };
 
         for (const row of requests) {
-            const key = String(row.status ?? "pending")
-                .trim()
-                .toLowerCase();
+            const key = normalizeStatusKey(row.status);
             if (counts[key] !== undefined) {
                 counts[key] += 1;
             } else {
@@ -205,7 +217,7 @@ export default function CustomerDashboard() {
                 [
                     formatOrderId(row.id),
                     formatDate(row.created_at),
-                    STATUS_LABELS[row.status] ?? "PENDING",
+                    STATUS_LABELS[normalizeStatusKey(row.status)] ?? "PENDING",
                     row.title,
                     row.customer_name,
                     row.customer_phone,

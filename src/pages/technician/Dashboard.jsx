@@ -18,6 +18,7 @@ import {
     cleanupAllChannels,
     createUniqueChannelName,
 } from "../../utils/realtimeChannelManager";
+import { getTechnicianJobIds } from "../../services/jobTechniciansService";
 
 const STATUS_META = {
     pending: { label: "Pending", color: "#0ea5e9" },
@@ -34,6 +35,7 @@ const normalizeStatusKey = (value) => {
     if (raw === "inprogress") return "in_progress";
     if (raw === "in_progress") return "in_progress";
     if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "requested") return "pending";
     if (raw === "pending" || raw === "") return "pending";
     return "pending";
 };
@@ -102,10 +104,17 @@ export default function TechnicianDashboard() {
         if (!userIdRef.current) return;
 
         try {
+            const jobIds = await getTechnicianJobIds(userIdRef.current);
+            if (jobIds.length === 0) {
+                if (isMountedRef.current) {
+                    setTasks([]);
+                }
+                return;
+            }
             const { data, error } = await supabase
                 .from("requests")
                 .select("*")
-                .eq("technician_id", userIdRef.current)
+                .in("id", jobIds)
                 .order("created_at", { ascending: false });
 
             if (error) throw error;

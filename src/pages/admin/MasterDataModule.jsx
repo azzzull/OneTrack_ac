@@ -1,14 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Settings2, Trash2, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import CustomSelect from "../../components/ui/CustomSelect";
+import ScopeDetailFieldsManagerModal from "../../components/scope-detail-fields/ScopeDetailFieldsManagerModal";
+import useJobScopeOptions from "../../hooks/useJobScopeOptions";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useDialog } from "../../context/useDialog";
+import { JOB_SCOPES } from "../../hooks/useJobScope";
+import {
+    normalizeJobScope,
+    normalizeJobScopeCode,
+} from "../../utils/jobScopeCatalog";
 import supabase from "../../supabaseClient";
 
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
+
+const TECHNICIAN_TYPE_OPTIONS = [
+    { value: "internal", label: "Internal" },
+    { value: "external", label: "External" },
+];
 
 const resolveErrorMessage = async (error) => {
     if (error?.context && typeof error.context.json === "function") {
@@ -57,6 +69,7 @@ const moduleConfig = {
     roles: { title: "Role", table: "master_roles" },
     customers: { title: "Customer", table: "master_customers" },
     projects: { title: "Project", table: "master_projects" },
+    job_scopes: { title: "Scope Pekerjaan", table: "master_job_scopes" },
     ac_brands: { title: "Merk AC", table: "master_ac_brands" },
     ac_types: { title: "Tipe AC", table: "master_ac_types" },
     ac_pks: { title: "Jumlah PK", table: "master_ac_pks" },
@@ -66,6 +79,11 @@ export default function AdminMasterDataModulePage() {
     const { moduleKey } = useParams();
     const cfg = moduleConfig[moduleKey];
     const { alert: showAlert, confirm } = useDialog();
+    const {
+        options: projectScopeOptions,
+        labels: jobScopeLabels,
+        reload: reloadJobScopes,
+    } = useJobScopeOptions();
 
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -78,6 +96,7 @@ export default function AdminMasterDataModulePage() {
     const [openModal, setOpenModal] = useState(false);
     const [editUserId, setEditUserId] = useState(null);
     const [editSimpleId, setEditSimpleId] = useState(null);
+    const [manageFieldsScope, setManageFieldsScope] = useState(null);
     const [loading, setLoading] = useState(false);
 
     const [userForm, setUserForm] = useState({
@@ -87,18 +106,24 @@ export default function AdminMasterDataModulePage() {
         password: "",
         role: "customer",
         phone: "",
+        technicianType: "internal",
+        assignedCustomerId: "",
+        internalAssignments: [],
     });
     const [simpleForm, setSimpleForm] = useState({
         customerId: "",
         name: "",
         picName: "",
         projectName: "",
+        jobScope: JOB_SCOPES.AC,
         location: "",
         phone: "",
         email: "",
         password: "",
         address: "",
         label: "",
+        scopeCode: "",
+        scopeLabel: "",
     });
 
     const splitName = (fullName) => {
@@ -161,6 +186,8 @@ export default function AdminMasterDataModulePage() {
             query = query.order("created_at", { ascending: false });
         } else if (moduleKey === "projects") {
             query = query.order("created_at", { ascending: false });
+        } else if (moduleKey === "job_scopes") {
+            query = query.order("label", { ascending: true });
         } else if (moduleKey === "ac_pks") {
             query = query.order("label", { ascending: true });
         } else {
@@ -209,6 +236,219 @@ export default function AdminMasterDataModulePage() {
         return fromDb.length ? fromDb : ["admin", "customer", "technician"];
     }, [roles]);
 
+    const userCustomerAssignmentSummary = useCallback(
+        (item) => {
+            if (item.role !== "technician") return "-";
+            if (item.technician_type === "external") {
+                return item.customer_id
+                    ? (customerNameById.get(item.customer_id) ?? "1 customer")
+                    : "Belum ditentukan";
+            }
+            if (item.technician_type === "internal") {
+                return "Multi-customer";
+            }
+            return "Belum ditentukan";
+        },
+        [customerNameById],
+    );
+
+    const syncProjectMutation = useCallback(
+        async (mode, payload, projectId = null) => {
+            const candidates = [
+                payload,
+                { ...payload, pic_name: undefined },
+                { ...payload, job_scope: undefined },
+                { ...payload, pic_name: undefined, job_scope: undefined },
+            ].map((item) =>
+                Object.fromEntries(
+                    Object.entries(item).filter(
+                        ([, value]) => value !== undefined,
+                    ),
+                ),
+            );
+
+            const seen = new Set();
+            let lastError = null;
+
+            for (const nextPayload of candidates) {
+                const signature = JSON.stringify(
+                    Object.keys(nextPayload).sort(),
+                );
+                if (seen.has(signature)) continue;
+                seen.add(signature);
+
+                const query =
+                    mode === "insert"
+                        ? supabase.from("master_projects").insert(nextPayload)
+                        : supabase
+                              .from("master_projects")
+                              .update(nextPayload)
+                              .eq("id", projectId);
+
+                const { error } = await query;
+                if (!error) return;
+                if (error.code !== "42703") throw error;
+                lastError = error;
+            }
+
+            if (lastError) throw lastError;
+        },
+        [],
+    );
+
+    const fetchActiveInternalAssignments = useCallback(async (technicianId) => {
+        const { data, error } = await supabase
+            .from("technician_customer_assignments")
+            .select("customer_id, is_active")
+            .eq("technician_id", technicianId);
+        if (error) throw error;
+        return (data ?? [])
+            .filter((item) => item.is_active)
+            .map((item) => item.customer_id)
+            .filter(Boolean);
+    }, []);
+
+    const updateTechnicianTenantConfig = useCallback(
+        async ({
+            userId,
+            role,
+            technicianType,
+            assignedCustomerId,
+            internalAssignments,
+        }) => {
+            const normalizedTechnicianType =
+                role === "technician" ? technicianType || "internal" : null;
+            const targetCustomerId =
+                role === "technician" && normalizedTechnicianType === "external"
+                    ? assignedCustomerId || null
+                    : null;
+
+            if (
+                role === "technician" &&
+                normalizedTechnicianType === "external" &&
+                !targetCustomerId
+            ) {
+                throw new Error(
+                    "Technician external wajib punya tepat satu customer.",
+                );
+            }
+
+            const { error: profileError } = await supabase
+                .from("profiles")
+                .update({
+                    technician_type: normalizedTechnicianType,
+                    customer_id: targetCustomerId,
+                })
+                .eq("id", userId);
+            if (profileError) throw profileError;
+
+            const currentAssignments =
+                await fetchActiveInternalAssignments(userId);
+            const desiredAssignments = Array.from(
+                new Set((internalAssignments ?? []).filter(Boolean)),
+            );
+
+            if (
+                role !== "technician" ||
+                normalizedTechnicianType !== "internal"
+            ) {
+                for (const customerId of currentAssignments) {
+                    const { data, error } = await supabase.rpc(
+                        "unassign_technician_from_customer",
+                        {
+                            p_technician_id: userId,
+                            p_customer_id: customerId,
+                        },
+                    );
+                    if (error) throw error;
+                    if (data?.[0]?.success === false) {
+                        throw new Error(
+                            data?.[0]?.message || "Unassign gagal.",
+                        );
+                    }
+                }
+            }
+
+            if (role !== "technician") {
+                return;
+            }
+
+            if (normalizedTechnicianType === "external") {
+                if (targetCustomerId) {
+                    const { data, error } = await supabase.rpc(
+                        "assign_external_technician",
+                        {
+                            p_technician_id: userId,
+                            p_customer_id: targetCustomerId,
+                        },
+                    );
+                    if (error) throw error;
+                    if (data?.[0]?.success === false) {
+                        throw new Error(
+                            data?.[0]?.message ||
+                                "Assign external technician gagal.",
+                        );
+                    }
+                } else {
+                    const { data, error } = await supabase.rpc(
+                        "unassign_external_technician",
+                        {
+                            p_technician_id: userId,
+                        },
+                    );
+                    if (error) throw error;
+                    if (data?.[0]?.success === false) {
+                        throw new Error(
+                            data?.[0]?.message ||
+                                "Unassign external technician gagal.",
+                        );
+                    }
+                }
+                return;
+            }
+
+            const currentSet = new Set(currentAssignments);
+            const desiredSet = new Set(desiredAssignments);
+
+            for (const customerId of desiredAssignments) {
+                if (currentSet.has(customerId)) continue;
+                const { data, error } = await supabase.rpc(
+                    "assign_technician_to_customer",
+                    {
+                        p_technician_id: userId,
+                        p_customer_id: customerId,
+                    },
+                );
+                if (error) throw error;
+                if (data?.[0]?.success === false) {
+                    throw new Error(
+                        data?.[0]?.message ||
+                            "Assign internal technician gagal.",
+                    );
+                }
+            }
+
+            for (const customerId of currentAssignments) {
+                if (desiredSet.has(customerId)) continue;
+                const { data, error } = await supabase.rpc(
+                    "unassign_technician_from_customer",
+                    {
+                        p_technician_id: userId,
+                        p_customer_id: customerId,
+                    },
+                );
+                if (error) throw error;
+                if (data?.[0]?.success === false) {
+                    throw new Error(
+                        data?.[0]?.message ||
+                            "Hapus assignment internal technician gagal.",
+                    );
+                }
+            }
+        },
+        [fetchActiveInternalAssignments],
+    );
+
     const filteredItems = useMemo(() => {
         let data = items;
 
@@ -250,6 +490,41 @@ export default function AdminMasterDataModulePage() {
             phone: userForm.phone,
         });
         if (error) throw error;
+
+        const { data: createdProfile, error: profileLookupError } =
+            await supabase
+                .from("profiles")
+                .select("id")
+                .eq("email", userForm.email)
+                .maybeSingle();
+        if (profileLookupError) throw profileLookupError;
+        if (!createdProfile?.id) {
+            throw new Error("User dibuat tapi profile tidak ditemukan.");
+        }
+
+        // Auto-assign internal technicians to ALL customers
+        let assignmentsToUse = userForm.internalAssignments;
+        if (
+            userForm.role === "technician" &&
+            userForm.technicianType === "internal"
+        ) {
+            if (!assignmentsToUse || assignmentsToUse.length === 0) {
+                // Fetch all customers
+                const { data: allCustomers, error: customersError } =
+                    await supabase.from("master_customers").select("id");
+                if (customersError) throw customersError;
+                assignmentsToUse = (allCustomers || []).map((c) => c.id);
+            }
+        }
+
+        await updateTechnicianTenantConfig({
+            userId: createdProfile.id,
+            role: userForm.role,
+            technicianType: userForm.technicianType,
+            assignedCustomerId: userForm.assignedCustomerId,
+            internalAssignments: assignmentsToUse,
+        });
+
         setUserForm({
             firstName: "",
             lastName: "",
@@ -257,6 +532,9 @@ export default function AdminMasterDataModulePage() {
             password: "",
             role: "customer",
             phone: "",
+            technicianType: "internal",
+            assignedCustomerId: "",
+            internalAssignments: [],
         });
     };
 
@@ -276,6 +554,14 @@ export default function AdminMasterDataModulePage() {
             },
         );
         if (error) throw error;
+
+        await updateTechnicianTenantConfig({
+            userId: editUserId,
+            role: userForm.role,
+            technicianType: userForm.technicianType,
+            assignedCustomerId: userForm.assignedCustomerId,
+            internalAssignments: userForm.internalAssignments,
+        });
     };
 
     const addSimple = async () => {
@@ -339,31 +625,13 @@ export default function AdminMasterDataModulePage() {
             const baseProjectPayload = {
                 customer_id: createdCustomer.id,
                 project_name: simpleForm.projectName,
+                job_scope: normalizeJobScope(simpleForm.jobScope),
                 location: simpleForm.location,
                 phone: simpleForm.phone,
                 address: simpleForm.address,
                 pic_name: simpleForm.name,
             };
-
-            const { error: createProjectWithPicError } = await supabase
-                .from("master_projects")
-                .insert(baseProjectPayload);
-            if (createProjectWithPicError) {
-                if (createProjectWithPicError.code !== "42703") {
-                    throw createProjectWithPicError;
-                }
-
-                const { error: createProjectFallbackError } = await supabase
-                    .from("master_projects")
-                    .insert({
-                        customer_id: createdCustomer.id,
-                        project_name: simpleForm.projectName,
-                        location: simpleForm.location,
-                        phone: simpleForm.phone,
-                        address: simpleForm.address,
-                    });
-                if (createProjectFallbackError) throw createProjectFallbackError;
-            }
+            await syncProjectMutation("insert", baseProjectPayload);
         } else if (moduleKey === "projects") {
             if (!simpleForm.customerId) {
                 throw new Error("Customer wajib dipilih.");
@@ -374,6 +642,7 @@ export default function AdminMasterDataModulePage() {
             const basePayload = {
                 customer_id: simpleForm.customerId,
                 project_name: simpleForm.projectName,
+                job_scope: normalizeJobScope(simpleForm.jobScope),
                 location: simpleForm.location,
                 phone:
                     String(simpleForm.phone ?? "").trim() ||
@@ -388,26 +657,17 @@ export default function AdminMasterDataModulePage() {
                     String(selectedCustomer?.name ?? "").trim() ||
                     null,
             };
-
-            const { error: insertWithPicError } = await supabase
-                .from("master_projects")
-                .insert(basePayload);
-            if (!insertWithPicError) {
-                // no-op
-            } else if (insertWithPicError.code === "42703") {
-                const { error: fallbackInsertError } = await supabase
-                    .from("master_projects")
-                    .insert({
-                        customer_id: basePayload.customer_id,
-                        project_name: basePayload.project_name,
-                        location: basePayload.location,
-                        phone: basePayload.phone,
-                        address: basePayload.address,
-                    });
-                if (fallbackInsertError) throw fallbackInsertError;
-            } else {
-                throw insertWithPicError;
+            await syncProjectMutation("insert", basePayload);
+        } else if (moduleKey === "job_scopes") {
+            const code = normalizeJobScopeCode(simpleForm.scopeCode);
+            const label = String(simpleForm.scopeLabel ?? "").trim();
+            if (!code || !label) {
+                throw new Error("Kode dan label scope pekerjaan wajib diisi.");
             }
+            const { error } = await supabase
+                .from("master_job_scopes")
+                .insert({ code, label });
+            if (error) throw error;
         } else if (moduleKey === "ac_brands") {
             const { error } = await supabase
                 .from("master_ac_brands")
@@ -430,12 +690,15 @@ export default function AdminMasterDataModulePage() {
             name: "",
             picName: "",
             projectName: "",
+            jobScope: JOB_SCOPES.AC,
             location: "",
             phone: "",
             email: "",
             password: "",
             address: "",
             label: "",
+            scopeCode: "",
+            scopeLabel: "",
         });
     };
 
@@ -471,6 +734,7 @@ export default function AdminMasterDataModulePage() {
             const basePayload = {
                 customer_id: simpleForm.customerId,
                 project_name: simpleForm.projectName,
+                job_scope: normalizeJobScope(simpleForm.jobScope),
                 location: simpleForm.location,
                 phone:
                     String(simpleForm.phone ?? "").trim() ||
@@ -486,28 +750,18 @@ export default function AdminMasterDataModulePage() {
                     String(selectedCustomer?.name ?? "").trim() ||
                     null,
             };
-
-            const { error: updateWithPicError } = await supabase
-                .from("master_projects")
-                .update(basePayload)
-                .eq("id", editSimpleId);
-            if (!updateWithPicError) {
-                // no-op
-            } else if (updateWithPicError.code === "42703") {
-                const { error: fallbackUpdateError } = await supabase
-                    .from("master_projects")
-                    .update({
-                        customer_id: basePayload.customer_id,
-                        project_name: basePayload.project_name,
-                        location: basePayload.location,
-                        phone: basePayload.phone,
-                        address: basePayload.address,
-                    })
-                    .eq("id", editSimpleId);
-                if (fallbackUpdateError) throw fallbackUpdateError;
-            } else {
-                throw updateWithPicError;
+            await syncProjectMutation("update", basePayload, editSimpleId);
+        } else if (moduleKey === "job_scopes") {
+            const code = normalizeJobScopeCode(simpleForm.scopeCode);
+            const label = String(simpleForm.scopeLabel ?? "").trim();
+            if (!code || !label) {
+                throw new Error("Kode dan label scope pekerjaan wajib diisi.");
             }
+            const { error } = await supabase
+                .from("master_job_scopes")
+                .update({ code, label })
+                .eq("id", editSimpleId);
+            if (error) throw error;
         } else if (moduleKey === "ac_brands") {
             const { error } = await supabase
                 .from("master_ac_brands")
@@ -680,6 +934,9 @@ export default function AdminMasterDataModulePage() {
             }
 
             await loadItems();
+            if (moduleKey === "job_scopes") {
+                await reloadJobScopes();
+            }
         } catch (error) {
             console.error("Delete data failed:", error);
             await showAlert(await resolveErrorMessage(error), {
@@ -696,18 +953,24 @@ export default function AdminMasterDataModulePage() {
             password: "",
             role: "customer",
             phone: "",
+            technicianType: "internal",
+            assignedCustomerId: "",
+            internalAssignments: [],
         });
         setSimpleForm({
             customerId: "",
             name: "",
             picName: "",
             projectName: "",
+            jobScope: JOB_SCOPES.AC,
             location: "",
             phone: "",
             email: "",
             password: "",
             address: "",
             label: "",
+            scopeCode: "",
+            scopeLabel: "",
         });
     };
 
@@ -731,6 +994,9 @@ export default function AdminMasterDataModulePage() {
             setEditUserId(null);
             setEditSimpleId(null);
             await loadItems();
+            if (moduleKey === "job_scopes") {
+                await reloadJobScopes();
+            }
         } catch (error) {
             console.error("Add data failed:", error);
             await showAlert(await resolveErrorMessage(error), {
@@ -818,7 +1084,7 @@ export default function AdminMasterDataModulePage() {
                                     ? "Tambah User"
                                     : moduleKey === "projects"
                                       ? "Tambah Project"
-                                    : "Tambah Data"}
+                                      : "Tambah Data"}
                             </button>
                         </div>
                     </div>
@@ -855,6 +1121,12 @@ export default function AdminMasterDataModulePage() {
                                                     </th>
                                                     <th className="px-3 py-3">
                                                         Role
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Tipe Teknisi
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Akses Customer
                                                     </th>
                                                     <th className="px-3 py-3">
                                                         Phone
@@ -905,6 +1177,9 @@ export default function AdminMasterDataModulePage() {
                                                         Nama Proyek
                                                     </th>
                                                     <th className="px-3 py-3">
+                                                        Scope
+                                                    </th>
+                                                    <th className="px-3 py-3">
                                                         Lokasi
                                                     </th>
                                                     <th className="px-3 py-3">
@@ -915,6 +1190,19 @@ export default function AdminMasterDataModulePage() {
                                                     </th>
                                                     <th className="px-3 py-3">
                                                         PIC Proyek
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Aksi
+                                                    </th>
+                                                </>
+                                            )}
+                                            {moduleKey === "job_scopes" && (
+                                                <>
+                                                    <th className="px-3 py-3">
+                                                        Kode
+                                                    </th>
+                                                    <th className="px-3 py-3">
+                                                        Label
                                                     </th>
                                                     <th className="px-3 py-3">
                                                         Aksi
@@ -964,6 +1252,18 @@ export default function AdminMasterDataModulePage() {
                                                             {item.role ?? "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
+                                                            {item.role ===
+                                                            "technician"
+                                                                ? (item.technician_type ??
+                                                                  "-")
+                                                                : "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
+                                                            {userCustomerAssignmentSummary(
+                                                                item,
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
                                                             {item.phone ?? "-"}
                                                         </td>
                                                         <td className="px-3 py-3">
@@ -1005,8 +1305,50 @@ export default function AdminMasterDataModulePage() {
                                                                                 phone:
                                                                                     item.phone ??
                                                                                     "",
+                                                                                technicianType:
+                                                                                    item.technician_type ??
+                                                                                    "internal",
+                                                                                assignedCustomerId:
+                                                                                    item.customer_id ??
+                                                                                    "",
+                                                                                internalAssignments:
+                                                                                    [],
                                                                             },
                                                                         );
+                                                                        if (
+                                                                            item.role ===
+                                                                                "technician" &&
+                                                                            item.technician_type ===
+                                                                                "internal"
+                                                                        ) {
+                                                                            fetchActiveInternalAssignments(
+                                                                                item.id,
+                                                                            )
+                                                                                .then(
+                                                                                    (
+                                                                                        internalAssignments,
+                                                                                    ) => {
+                                                                                        setUserForm(
+                                                                                            (
+                                                                                                prev,
+                                                                                            ) => ({
+                                                                                                ...prev,
+                                                                                                internalAssignments,
+                                                                                            }),
+                                                                                        );
+                                                                                    },
+                                                                                )
+                                                                                .catch(
+                                                                                    (
+                                                                                        error,
+                                                                                    ) => {
+                                                                                        console.error(
+                                                                                            "Load technician assignments failed:",
+                                                                                            error,
+                                                                                        );
+                                                                                    },
+                                                                                );
+                                                                        }
                                                                         setOpenModal(
                                                                             true,
                                                                         );
@@ -1216,6 +1558,17 @@ export default function AdminMasterDataModulePage() {
                                                                 "-"}
                                                         </td>
                                                         <td className="px-3 py-3 text-slate-600">
+                                                            {jobScopeLabels[
+                                                                normalizeJobScope(
+                                                                    item.job_scope,
+                                                                )
+                                                            ] ??
+                                                                normalizeJobScope(
+                                                                    item.job_scope,
+                                                                ) ??
+                                                                "AC"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
                                                             {item.location ??
                                                                 "-"}
                                                         </td>
@@ -1259,6 +1612,11 @@ export default function AdminMasterDataModulePage() {
                                                                                 projectName:
                                                                                     item.project_name ??
                                                                                     "",
+                                                                                jobScope:
+                                                                                    normalizeJobScope(
+                                                                                        item.job_scope ??
+                                                                                            JOB_SCOPES.AC,
+                                                                                    ),
                                                                                 location:
                                                                                     item.location ??
                                                                                     "",
@@ -1302,6 +1660,105 @@ export default function AdminMasterDataModulePage() {
                                                                             14
                                                                         }
                                                                     />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </>
+                                                )}
+                                                {moduleKey === "job_scopes" && (
+                                                    <>
+                                                        <td className="px-3 py-3 font-medium text-slate-800">
+                                                            {item.code ?? "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600">
+                                                            {item.label ?? "-"}
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setEditUserId(
+                                                                            null,
+                                                                        );
+                                                                        setEditSimpleId(
+                                                                            item.id,
+                                                                        );
+                                                                        setSimpleForm(
+                                                                            {
+                                                                                customerId:
+                                                                                    "",
+                                                                                name: "",
+                                                                                picName:
+                                                                                    "",
+                                                                                projectName:
+                                                                                    "",
+                                                                                jobScope:
+                                                                                    JOB_SCOPES.AC,
+                                                                                location:
+                                                                                    "",
+                                                                                phone: "",
+                                                                                email: "",
+                                                                                password:
+                                                                                    "",
+                                                                                address:
+                                                                                    "",
+                                                                                label: "",
+                                                                                scopeCode:
+                                                                                    item.code ??
+                                                                                    "",
+                                                                                scopeLabel:
+                                                                                    item.label ??
+                                                                                    "",
+                                                                            },
+                                                                        );
+                                                                        setOpenModal(
+                                                                            true,
+                                                                        );
+                                                                    }}
+                                                                    className="inline-flex cursor-pointer rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                                                                    title="Edit"
+                                                                >
+                                                                    <Pencil
+                                                                        size={
+                                                                            14
+                                                                        }
+                                                                    />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        deleteItem(
+                                                                            item.id,
+                                                                        )
+                                                                    }
+                                                                    className="inline-flex cursor-pointer rounded-md p-1 text-rose-500 hover:bg-rose-50"
+                                                                    title="Hapus"
+                                                                >
+                                                                    <Trash2
+                                                                        size={
+                                                                            14
+                                                                        }
+                                                                    />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setManageFieldsScope(
+                                                                            item,
+                                                                        )
+                                                                    }
+                                                                    className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-sky-600 hover:bg-sky-50"
+                                                                    title="Manage Detail Fields"
+                                                                >
+                                                                    <Settings2
+                                                                        size={
+                                                                            14
+                                                                        }
+                                                                    />
+                                                                    <span className="text-xs font-semibold">
+                                                                        Fields
+                                                                    </span>
                                                                 </button>
                                                             </div>
                                                         </td>
@@ -1464,8 +1921,9 @@ export default function AdminMasterDataModulePage() {
             <MobileBottomNav />
 
             {openModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-                    <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-xl">
+                <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 p-4">
+                    <div className="flex min-h-full items-start justify-center py-6 md:items-center md:py-0">
+                        <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-xl">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-slate-900">
                                 {editUserId || editSimpleId
@@ -1520,7 +1978,7 @@ export default function AdminMasterDataModulePage() {
                                                 }))
                                             }
                                             className={inputClass}
-                                            required
+                                            placeholder="Boleh dikosongkan"
                                         />
                                     </label>
                                     <label>
@@ -1576,6 +2034,137 @@ export default function AdminMasterDataModulePage() {
                                             required
                                         />
                                     </label>
+                                    {userForm.role === "technician" && (
+                                        <>
+                                            <label>
+                                                <span className="text-sm font-medium text-slate-700">
+                                                    Tipe Teknisi
+                                                </span>
+                                                <CustomSelect
+                                                    value={
+                                                        userForm.technicianType
+                                                    }
+                                                    onChange={(nextValue) =>
+                                                        setUserForm((prev) => ({
+                                                            ...prev,
+                                                            technicianType:
+                                                                nextValue,
+                                                            assignedCustomerId:
+                                                                nextValue ===
+                                                                "external"
+                                                                    ? prev.assignedCustomerId
+                                                                    : "",
+                                                        }))
+                                                    }
+                                                    options={
+                                                        TECHNICIAN_TYPE_OPTIONS
+                                                    }
+                                                />
+                                            </label>
+                                            {userForm.technicianType ===
+                                            "external" ? (
+                                                <label>
+                                                    <span className="text-sm font-medium text-slate-700">
+                                                        Customer External
+                                                    </span>
+                                                    <CustomSelect
+                                                        value={
+                                                            userForm.assignedCustomerId
+                                                        }
+                                                        onChange={(nextValue) =>
+                                                            setUserForm(
+                                                                (prev) => ({
+                                                                    ...prev,
+                                                                    assignedCustomerId:
+                                                                        nextValue,
+                                                                }),
+                                                            )
+                                                        }
+                                                        options={[
+                                                            {
+                                                                value: "",
+                                                                label: "Pilih customer",
+                                                            },
+                                                            ...customerOptions,
+                                                        ]}
+                                                        placeholder="Pilih satu customer"
+                                                    />
+                                                </label>
+                                            ) : (
+                                                <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                                    <p className="text-sm font-medium text-slate-700">
+                                                        Assignment Customer
+                                                        Internal
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        Teknisi internal bisa
+                                                        di-assign ke lebih dari
+                                                        satu customer.
+                                                    </p>
+                                                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                                        {customers.map(
+                                                            (customer) => {
+                                                                const checked =
+                                                                    userForm.internalAssignments.includes(
+                                                                        customer.id,
+                                                                    );
+                                                                return (
+                                                                    <label
+                                                                        key={
+                                                                            customer.id
+                                                                        }
+                                                                        className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                                                    >
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={
+                                                                                checked
+                                                                            }
+                                                                            onChange={(
+                                                                                e,
+                                                                            ) =>
+                                                                                setUserForm(
+                                                                                    (
+                                                                                        prev,
+                                                                                    ) => ({
+                                                                                        ...prev,
+                                                                                        internalAssignments:
+                                                                                            e
+                                                                                                .target
+                                                                                                .checked
+                                                                                                ? Array.from(
+                                                                                                      new Set(
+                                                                                                          [
+                                                                                                              ...prev.internalAssignments,
+                                                                                                              customer.id,
+                                                                                                          ],
+                                                                                                      ),
+                                                                                                  )
+                                                                                                : prev.internalAssignments.filter(
+                                                                                                      (
+                                                                                                          id,
+                                                                                                      ) =>
+                                                                                                          id !==
+                                                                                                          customer.id,
+                                                                                                  ),
+                                                                                    }),
+                                                                                )
+                                                                            }
+                                                                            className="mt-1"
+                                                                        />
+                                                                        <span>
+                                                                            {customer.name ??
+                                                                                "-"}
+                                                                        </span>
+                                                                    </label>
+                                                                );
+                                                            },
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
                                     <label>
                                         <span className="text-sm font-medium text-slate-700">
                                             {editUserId
@@ -1664,6 +2253,21 @@ export default function AdminMasterDataModulePage() {
                                                 required
                                             />
                                         )}
+                                    </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Scope Proyek
+                                        </span>
+                                        <CustomSelect
+                                            value={simpleForm.jobScope}
+                                            onChange={(nextValue) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    jobScope: nextValue,
+                                                }))
+                                            }
+                                            options={projectScopeOptions}
+                                        />
                                     </label>
                                     <label>
                                         <span className="text-sm font-medium text-slate-700">
@@ -1790,6 +2394,21 @@ export default function AdminMasterDataModulePage() {
                                     </label>
                                     <label>
                                         <span className="text-sm font-medium text-slate-700">
+                                            Scope Proyek
+                                        </span>
+                                        <CustomSelect
+                                            value={simpleForm.jobScope}
+                                            onChange={(nextValue) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    jobScope: nextValue,
+                                                }))
+                                            }
+                                            options={projectScopeOptions}
+                                        />
+                                    </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
                                             Lokasi
                                         </span>
                                         <input
@@ -1855,6 +2474,47 @@ export default function AdminMasterDataModulePage() {
                                 </>
                             )}
 
+                            {moduleKey === "job_scopes" && (
+                                <>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Kode Scope
+                                        </span>
+                                        <input
+                                            value={simpleForm.scopeCode}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    scopeCode:
+                                                        e.target.value,
+                                                }))
+                                            }
+                                            className={inputClass}
+                                            placeholder="Contoh: SECURITY_SYSTEM"
+                                            required
+                                        />
+                                    </label>
+                                    <label>
+                                        <span className="text-sm font-medium text-slate-700">
+                                            Label Scope
+                                        </span>
+                                        <input
+                                            value={simpleForm.scopeLabel}
+                                            onChange={(e) =>
+                                                setSimpleForm((prev) => ({
+                                                    ...prev,
+                                                    scopeLabel:
+                                                        e.target.value,
+                                                }))
+                                            }
+                                            className={inputClass}
+                                            placeholder="Contoh: Security System"
+                                            required
+                                        />
+                                    </label>
+                                </>
+                            )}
+
                             {(moduleKey === "ac_brands" ||
                                 moduleKey === "ac_types") && (
                                 <label className="md:col-span-2">
@@ -1904,8 +2564,17 @@ export default function AdminMasterDataModulePage() {
                                     : "Simpan"}
                             </button>
                         </form>
+                        </div>
                     </div>
                 </div>
+            )}
+
+            {manageFieldsScope && (
+                <ScopeDetailFieldsManagerModal
+                    isOpen={Boolean(manageFieldsScope)}
+                    scope={manageFieldsScope}
+                    onClose={() => setManageFieldsScope(null)}
+                />
             )}
         </div>
     );

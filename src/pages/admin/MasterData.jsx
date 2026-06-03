@@ -1,7 +1,7 @@
 import {
     AirVent,
-    Bolt,
     Building2,
+    ClipboardList,
     MemoryStick,
     Shield,
     Tag,
@@ -40,6 +40,13 @@ const moduleCards = [
         desc: "Kelola daftar proyek per customer.",
         icon: Building2,
         tone: "bg-cyan-100 text-cyan-600",
+    },
+    {
+        key: "job_scopes",
+        title: "Scope Pekerjaan",
+        desc: "Kelola scope pekerjaan yang tersedia untuk project.",
+        icon: ClipboardList,
+        tone: "bg-teal-100 text-teal-600",
     },
     {
         key: "ac_brands",

@@ -93,12 +93,12 @@ Deno.serve(async (req) => {
     const firstName = String(body.first_name ?? body.firstName ?? "").trim();
     const lastName = String(body.last_name ?? body.lastName ?? "").trim();
     const phone = String(body.phone ?? "").trim();
-    const fullName = `${firstName} ${lastName}`.trim() || email || null;
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || firstName || email || null;
 
-    if (!userId || !email || !firstName || !lastName) {
+    if (!userId || !email || !firstName) {
         return new Response(
             JSON.stringify({
-                error: "user_id, email, first_name, dan last_name wajib diisi",
+                error: "user_id, email, dan first_name wajib diisi",
             }),
             {
                 status: 400,

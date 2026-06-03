@@ -4,8 +4,20 @@ import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
+import useJobScopeOptions from "../../hooks/useJobScopeOptions";
+import useScopeDetailFields from "../../hooks/useScopeDetailFields";
 import CustomSelect from "../../components/ui/CustomSelect";
+import ScopeDetailFieldsRenderer from "../../components/scope-detail-fields/ScopeDetailFieldsRenderer";
 import supabase from "../../supabaseClient";
+import {
+    JOB_SCOPES,
+    JOB_SCOPE_LABELS,
+    normalizeJobScope,
+} from "../../utils/jobScopeCatalog";
+import {
+    buildScopeDetailValuesPayload,
+    validateScopeDetailValues,
+} from "../../services/scopeDetailFieldsService";
 
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
@@ -15,6 +27,7 @@ export default function CustomerRequestFormPage() {
         useSidebarCollapsed();
     const { user } = useAuth();
     const { alert: showAlert } = useDialog();
+    const { labels: jobScopeLabels } = useJobScopeOptions();
 
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -31,6 +44,7 @@ export default function CustomerRequestFormPage() {
         acCapacityPk: "",
         roomLocation: "",
         troubleDescription: "",
+        scopeDetails: {},
     });
 
     const availableProjects = useMemo(() => {
@@ -43,6 +57,47 @@ export default function CustomerRequestFormPage() {
             null,
         [availableProjects, form.projectId],
     );
+    const activeJobScope = normalizeJobScope(
+        selectedProject?.job_scope ?? JOB_SCOPES.AC,
+    );
+    const {
+        fields: activeScopeDetailFields,
+        checklist: activeScopeChecklist,
+        loading: scopeFieldsLoading,
+    } =
+        useScopeDetailFields(activeJobScope);
+    const activeScopeChecklistItems = useMemo(
+        () =>
+            activeScopeChecklist.map((item) =>
+                typeof item === "object" && item
+                    ? {
+                          key: String(item.id ?? item.item_label ?? ""),
+                          label: String(item.item_label ?? "").trim(),
+                      }
+                    : {
+                          key: String(item ?? ""),
+                          label: String(item ?? "").trim(),
+                      },
+            ),
+        [activeScopeChecklist],
+    );
+    const scopeFieldSelectOptions = useMemo(
+        () => ({
+            ac_brand: acBrands.map((item) => ({
+                value: item.name,
+                label: item.name,
+            })),
+            ac_type: acTypes.map((item) => ({
+                value: item.name,
+                label: item.name,
+            })),
+            ac_capacity_pk: acPks.map((item) => ({
+                value: item.label,
+                label: item.label,
+            })),
+        }),
+        [acBrands, acTypes, acPks],
+    );
 
     const selectedCustomer = useMemo(
         () =>
@@ -53,6 +108,18 @@ export default function CustomerRequestFormPage() {
             ) ?? null,
         [form.customerId, linkedCustomers, selectedProject?.customer_id],
     );
+
+    useEffect(() => {
+        setForm((prev) => {
+            if (!prev.scopeDetails || Object.keys(prev.scopeDetails).length === 0) {
+                return prev;
+            }
+            return {
+                ...prev,
+                scopeDetails: {},
+            };
+        });
+    }, [activeJobScope]);
 
     const fetchCustomerContext = useCallback(async () => {
         if (!user?.id) return;
@@ -143,19 +210,44 @@ export default function CustomerRequestFormPage() {
     }, [fetchCustomerContext]);
 
     useEffect(() => {
-        if (availableProjects.length === 0) return;
         const isValid = availableProjects.some(
             (item) => item.id === form.projectId,
         );
-        if (!isValid) {
-            const firstProject = availableProjects[0];
+        if (!isValid && form.projectId) {
             setForm((prev) => ({
                 ...prev,
-                projectId: firstProject.id,
-                customerId: firstProject.customer_id ?? prev.customerId,
+                projectId: "",
             }));
         }
     }, [availableProjects, form.projectId]);
+
+    const setScopeDetail = useCallback((key, value) => {
+        setForm((prev) => ({
+            ...prev,
+            scopeDetails: {
+                ...(prev.scopeDetails ?? {}),
+                [key]: value,
+            },
+        }));
+    }, []);
+
+    const toggleScopeChecklist = useCallback((item) => {
+        setForm((prev) => {
+            const current = Array.isArray(prev.scopeDetails?.checklist)
+                ? prev.scopeDetails.checklist
+                : [];
+            const nextChecklist = current.includes(item)
+                ? current.filter((value) => value !== item)
+                : [...current, item];
+            return {
+                ...prev,
+                scopeDetails: {
+                    ...(prev.scopeDetails ?? {}),
+                    checklist: nextChecklist,
+                },
+            };
+        });
+    }, []);
 
     const submitRequest = async (event) => {
         event.preventDefault();
@@ -167,23 +259,40 @@ export default function CustomerRequestFormPage() {
             return;
         }
 
-        if (
-            !form.acBrand ||
-            !form.acType ||
-            !form.acCapacityPk ||
-            !form.roomLocation
-        ) {
-            await showAlert("Lengkapi merk, tipe, PK, dan lokasi ruangan.", {
-                title: "Data Belum Lengkap",
+        if (scopeFieldsLoading) {
+            await showAlert("Konfigurasi field scope masih dimuat.", {
+                title: "Mohon Tunggu",
             });
+            return;
+        }
+
+        const missingFields = validateScopeDetailValues(
+            activeScopeDetailFields,
+            form.scopeDetails,
+        );
+
+        if (missingFields.length > 0) {
+            await showAlert(
+                `Lengkapi field berikut: ${missingFields
+                    .map((field) => field.field_label)
+                    .join(", ")}`,
+                {
+                    title: "Data Belum Lengkap",
+                },
+            );
             return;
         }
 
         setSubmitting(true);
         try {
+            const detailValues = buildScopeDetailValuesPayload(
+                activeScopeDetailFields,
+                form.scopeDetails,
+            );
             const payload = {
                 title: selectedProject?.project_name ?? "",
-                status: "pending",
+                status: "requested",
+                job_scope: activeJobScope,
                 location:
                     selectedProject?.location ??
                     selectedCustomer?.location ??
@@ -196,11 +305,19 @@ export default function CustomerRequestFormPage() {
                     selectedProject?.address ?? selectedCustomer?.address ?? "",
                 customer_id: selectedCustomer.id,
                 project_id: selectedProject?.id ?? null,
-                ac_brand: form.acBrand,
-                ac_type: form.acType,
-                ac_capacity_pk: form.acCapacityPk,
-                room_location: form.roomLocation,
+                ac_brand: detailValues.ac_brand ?? null,
+                ac_type: detailValues.ac_type ?? null,
+                ac_capacity_pk: detailValues.ac_capacity_pk ?? null,
+                room_location: detailValues.room_location ?? null,
+                serial_number: detailValues.serial_number ?? null,
                 trouble_description: form.troubleDescription,
+                dynamic_data: {
+                    ...detailValues,
+                    ...(Array.isArray(form.scopeDetails?.checklist) &&
+                    form.scopeDetails.checklist.length > 0
+                        ? { checklist: form.scopeDetails.checklist }
+                        : {}),
+                },
                 created_by: user?.id ?? null,
             };
 
@@ -214,6 +331,7 @@ export default function CustomerRequestFormPage() {
                 acCapacityPk: "",
                 roomLocation: "",
                 troubleDescription: "",
+                scopeDetails: {},
             }));
 
             await showAlert("Request pekerjaan berhasil dikirim.", {
@@ -293,90 +411,72 @@ export default function CustomerRequestFormPage() {
                                         placeholder="Pilih proyek customer"
                                     />
                                 </label>
-
-                                <label>
+                                <label className="md:col-span-2">
                                     <span className="text-sm font-medium text-slate-700">
-                                        Merk AC
-                                    </span>
-                                    <CustomSelect
-                                        value={form.acBrand}
-                                        onChange={(nextValue) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                acBrand: nextValue,
-                                            }))
-                                        }
-                                        options={[
-                                            { value: "", label: "Pilih Merk" },
-                                            ...acBrands.map((item) => ({
-                                                value: item.name,
-                                                label: item.name,
-                                            })),
-                                        ]}
-                                    />
-                                </label>
-
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Tipe AC
-                                    </span>
-                                    <CustomSelect
-                                        value={form.acType}
-                                        onChange={(nextValue) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                acType: nextValue,
-                                            }))
-                                        }
-                                        options={[
-                                            { value: "", label: "Pilih Tipe" },
-                                            ...acTypes.map((item) => ({
-                                                value: item.name,
-                                                label: item.name,
-                                            })),
-                                        ]}
-                                    />
-                                </label>
-
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Kapasitas AC (PK)
-                                    </span>
-                                    <CustomSelect
-                                        value={form.acCapacityPk}
-                                        onChange={(nextValue) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                acCapacityPk: nextValue,
-                                            }))
-                                        }
-                                        options={[
-                                            { value: "", label: "Pilih PK" },
-                                            ...acPks.map((item) => ({
-                                                value: item.label,
-                                                label: item.label,
-                                            })),
-                                        ]}
-                                    />
-                                </label>
-
-                                <label>
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Lokasi Ruangan
+                                        Scope Proyek
                                     </span>
                                     <input
-                                        value={form.roomLocation}
-                                        onChange={(e) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                roomLocation: e.target.value,
-                                            }))
+                                        value={
+                                            jobScopeLabels[activeJobScope] ??
+                                            JOB_SCOPE_LABELS[activeJobScope] ??
+                                            activeJobScope
                                         }
+                                        readOnly
                                         className={inputClass}
-                                        placeholder="Contoh: Ruang Meeting A"
-                                        required
                                     />
                                 </label>
+
+                                <div className="md:col-span-2">
+                                    <ScopeDetailFieldsRenderer
+                                        scopeCode={activeJobScope}
+                                        fields={activeScopeDetailFields}
+                                        values={form.scopeDetails}
+                                        onChange={setScopeDetail}
+                                        selectOptionsByFieldKey={
+                                            scopeFieldSelectOptions
+                                        }
+                                        supabaseClient={supabase}
+                                        loading={scopeFieldsLoading}
+                                    />
+                                </div>
+
+                                {activeScopeChecklist.length > 0 && (
+                                    <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-sm font-medium text-slate-700">
+                                            Checklist Pekerjaan
+                                        </p>
+                                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                            {activeScopeChecklistItems.map((item) => {
+                                                const checked =
+                                                    Array.isArray(
+                                                        form.scopeDetails
+                                                            ?.checklist,
+                                                    ) &&
+                                                    form.scopeDetails.checklist.includes(
+                                                        item.label,
+                                                    );
+                                                return (
+                                                    <label
+                                                        key={item.key}
+                                                        className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={() =>
+                                                                toggleScopeChecklist(
+                                                                    item.label,
+                                                                )
+                                                            }
+                                                            className="mt-1"
+                                                        />
+                                                        <span>{item.label}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
 
                                 <label className="md:col-span-2">
                                     <span className="text-sm font-medium text-slate-700">
@@ -398,7 +498,7 @@ export default function CustomerRequestFormPage() {
 
                                 <button
                                     type="submit"
-                                    disabled={submitting}
+                                    disabled={submitting || scopeFieldsLoading}
                                     className="md:col-span-2 inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     <List size={16} />
