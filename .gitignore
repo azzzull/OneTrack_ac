@@ -22,3 +22,21 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Exclude deployment docs from build
+# Exclude deploy docs (SQL/MD)
+docs/*.sql
+docs/*.md
+docs/**/*.md
+docs/**/*.sql
+
+supabase/migrations/*.sql
+
+# Ignore ad-hoc markdown files, keep README files
+*.md
+!README.md
+!README.*.md
+!**/README.md
+!**/README.*.md
+
+# Secrets
+supabase.txt
