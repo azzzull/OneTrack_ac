@@ -191,17 +191,6 @@ const hasValidSerialNumber = (value) => {
     return normalized !== "-" && normalized.toLowerCase() !== "null";
 };
 
-const getCurrentUserDisplayName = (user) => {
-    const composed =
-        `${user?.user_metadata?.first_name ?? ""} ${user?.user_metadata?.last_name ?? ""}`.trim();
-    return (
-        composed ||
-        String(user?.user_metadata?.full_name ?? "").trim() ||
-        String(user?.email ?? "").trim() ||
-        "Teknisi"
-    );
-};
-
 const sortRequestsByDateDesc = (items) =>
     [...items].sort((a, b) => new Date(b?.date ?? 0) - new Date(a?.date ?? 0));
 
@@ -262,8 +251,7 @@ export default function AdminRequestsPage() {
         url: "",
         label: "",
     });
-    const [jobTechnicianModalOpen, setJobTechnicianModalOpen] =
-        useState(false);
+    const [jobTechnicianModalOpen, setJobTechnicianModalOpen] = useState(false);
     const [hasDeferredRefresh, setHasDeferredRefresh] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 5;
@@ -287,7 +275,7 @@ export default function AdminRequestsPage() {
         };
     }, [role, user?.id, authLoading]);
 
-    const loadRequests = async () => {
+    const loadRequests = useCallback(async () => {
         try {
             let query = supabase
                 .from("requests")
@@ -361,7 +349,7 @@ export default function AdminRequestsPage() {
                 setLoading(false);
             }
         }
-    };
+    }, []);
 
     // ✅ Setup channel with proper lifecycle management
     useEffect(() => {
@@ -540,7 +528,7 @@ export default function AdminRequestsPage() {
                 console.log("[AdminRequests] Channel cleaned up");
             }
         };
-    }, [user?.id]); // ✅ Only depends on user.id - recreates when user changes
+    }, [user?.id, loadRequests]); // ✅ Depends on user.id and stable loadRequests - recreates when user changes
 
     useEffect(() => {
         deferRefreshRef.current = Boolean(cameraOpen || saving);
@@ -661,19 +649,23 @@ export default function AdminRequestsPage() {
     const { technicians: technicianDirectory } = useTechnicianDirectory();
     const creatorTechnicianId = useMemo(() => {
         const creatorRow =
-            selectedRequestTechnicians.find((item) => item.role === "creator") ??
-            null;
+            selectedRequestTechnicians.find(
+                (item) => item.role === "creator",
+            ) ?? null;
         return (
             creatorRow?.technician_id ??
             selectedRequest?.createdBy ??
             selectedRequest?.technicianId ??
             ""
         );
-    }, [selectedRequest?.createdBy, selectedRequest?.technicianId, selectedRequestTechnicians]);
+    }, [
+        selectedRequest?.createdBy,
+        selectedRequest?.technicianId,
+        selectedRequestTechnicians,
+    ]);
     const canManageTechnicians =
         role === "admin" ||
-        (Boolean(user?.id) &&
-            String(creatorTechnicianId) === String(user?.id));
+        (Boolean(user?.id) && String(creatorTechnicianId) === String(user?.id));
 
     useEffect(() => {
         if (!selectedRequest) return;
@@ -1081,61 +1073,71 @@ export default function AdminRequestsPage() {
                                                     );
                                                 return (
                                                     <>
-                                            <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
-                                                <div className="min-w-0">
-                                                    <h2 className="wrap-break-word text-lg font-semibold text-slate-900  md:text-xl">
-                                                        {item.title}
-                                                    </h2>
-                                                    <p className="mt-1 break-all text-xs text-slate-500">
-                                                        Order ID:{" "}
-                                                        <span
-                                                            title={
-                                                                item.id ?? "-"
-                                                            }
-                                                        >
-                                                            {formatOrderId(
-                                                                item.id,
-                                                            )}
-                                                        </span>
-                                                    </p>
-                                                    <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-slate-500 md:text-base">
-                                                        <MapPin size={16} />
-                                                        <span>
-                                                            {item.address}
-                                                        </span>
-                                                    </p>
-                                                    <p className="mt-1 text-xs text-slate-500">
-                                                        {scopeSummary.label}:{" "}
-                                                        {previewText(
-                                                            scopeSummary.value,
-                                                            48,
-                                                        )}
-                                                    </p>
-                                                    <p className="mt-1 text-xs text-slate-500">
-                                                        Deskripsi:{" "}
-                                                        {previewText(
-                                                            item.troubleDescription,
-                                                        )}
-                                                    </p>
-                                                </div>
+                                                        <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
+                                                            <div className="min-w-0">
+                                                                <h2 className="wrap-break-word text-lg font-semibold text-slate-900  md:text-xl">
+                                                                    {item.title}
+                                                                </h2>
+                                                                <p className="mt-1 break-all text-xs text-slate-500">
+                                                                    Order ID:{" "}
+                                                                    <span
+                                                                        title={
+                                                                            item.id ??
+                                                                            "-"
+                                                                        }
+                                                                    >
+                                                                        {formatOrderId(
+                                                                            item.id,
+                                                                        )}
+                                                                    </span>
+                                                                </p>
+                                                                <p className="mt-2 flex items-start gap-2 wrap-break-word text-sm text-slate-500 md:text-base">
+                                                                    <MapPin
+                                                                        size={
+                                                                            16
+                                                                        }
+                                                                    />
+                                                                    <span>
+                                                                        {
+                                                                            item.address
+                                                                        }
+                                                                    </span>
+                                                                </p>
+                                                                <p className="mt-1 text-xs text-slate-500">
+                                                                    {
+                                                                        scopeSummary.label
+                                                                    }
+                                                                    :{" "}
+                                                                    {previewText(
+                                                                        scopeSummary.value,
+                                                                        48,
+                                                                    )}
+                                                                </p>
+                                                                <p className="mt-1 text-xs text-slate-500">
+                                                                    Deskripsi:{" "}
+                                                                    {previewText(
+                                                                        item.troubleDescription,
+                                                                    )}
+                                                                </p>
+                                                            </div>
 
-                                                <span
-                                                    className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                                        STATUS_STYLES[
-                                                            normalizeStatusKey(
-                                                                item.status,
-                                                            )
-                                                        ] ??
-                                                        STATUS_STYLES.pending
-                                                    }`}
-                                                >
-                                                    {STATUS_LABELS[
-                                                        normalizeStatusKey(
-                                                            item.status,
-                                                        )
-                                                    ] ?? "PENDING"}
-                                                </span>
-                                            </div>
+                                                            <span
+                                                                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                                                    STATUS_STYLES[
+                                                                        normalizeStatusKey(
+                                                                            item.status,
+                                                                        )
+                                                                    ] ??
+                                                                    STATUS_STYLES.pending
+                                                                }`}
+                                                            >
+                                                                {STATUS_LABELS[
+                                                                    normalizeStatusKey(
+                                                                        item.status,
+                                                                    )
+                                                                ] ?? "PENDING"}
+                                                            </span>
+                                                        </div>
                                                     </>
                                                 );
                                             })()}
@@ -1367,12 +1369,12 @@ export default function AdminRequestsPage() {
                                             <p className="text-sm text-slate-500">
                                                 Memuat teknisi...
                                             </p>
-                                        ) : selectedRequestTechnicians.length > 0 ? (
+                                        ) : selectedRequestTechnicians.length >
+                                          0 ? (
                                             selectedRequestTechnicians.map(
                                                 (item) => {
                                                     const isCreator =
-                                                        item.role ===
-                                                        "creator";
+                                                        item.role === "creator";
                                                     return (
                                                         <div
                                                             key={item.id}
@@ -1380,10 +1382,13 @@ export default function AdminRequestsPage() {
                                                         >
                                                             <div className="min-w-0">
                                                                 <p className="truncate text-sm font-medium text-slate-800">
-                                                                    {item.technician_name}
+                                                                    {
+                                                                        item.technician_name
+                                                                    }
                                                                 </p>
                                                                 <p className="truncate text-xs text-slate-500">
-                                                                    {item.technician
+                                                                    {item
+                                                                        .technician
                                                                         ?.email ??
                                                                         "-"}
                                                                 </p>
@@ -1400,33 +1405,41 @@ export default function AdminRequestsPage() {
                                                                             type="button"
                                                                             onClick={async () => {
                                                                                 try {
-                                                                                    await syncJobTechnicians({
-                                                                                        jobId: selectedRequest.id,
-                                                                                        creatorId:
-                                                                                            creatorTechnicianId ||
-                                                                                            selectedRequest.createdBy ||
-                                                                                            user?.id ||
-                                                                                            item.technician_id,
-                                                                                        technicianIds:
-                                                                                            selectedRequestTechnicians
-                                                                                                .filter(
-                                                                                                    (row) =>
-                                                                                                        row.role !==
-                                                                                                        "creator",
-                                                                                                )
-                                                                                                .map(
-                                                                                                    (row) =>
-                                                                                                        row.technician_id,
-                                                                                                )
-                                                                                                .filter(
-                                                                                                    (id) =>
-                                                                                                        id !==
-                                                                                                        item.technician_id,
-                                                                                                ),
-                                                                                        addedBy:
-                                                                                            user?.id ??
-                                                                                            null,
-                                                                                    });
+                                                                                    await syncJobTechnicians(
+                                                                                        {
+                                                                                            jobId: selectedRequest.id,
+                                                                                            creatorId:
+                                                                                                creatorTechnicianId ||
+                                                                                                selectedRequest.createdBy ||
+                                                                                                user?.id ||
+                                                                                                item.technician_id,
+                                                                                            technicianIds:
+                                                                                                selectedRequestTechnicians
+                                                                                                    .filter(
+                                                                                                        (
+                                                                                                            row,
+                                                                                                        ) =>
+                                                                                                            row.role !==
+                                                                                                            "creator",
+                                                                                                    )
+                                                                                                    .map(
+                                                                                                        (
+                                                                                                            row,
+                                                                                                        ) =>
+                                                                                                            row.technician_id,
+                                                                                                    )
+                                                                                                    .filter(
+                                                                                                        (
+                                                                                                            id,
+                                                                                                        ) =>
+                                                                                                            id !==
+                                                                                                            item.technician_id,
+                                                                                                    ),
+                                                                                            addedBy:
+                                                                                                user?.id ??
+                                                                                                null,
+                                                                                        },
+                                                                                    );
                                                                                     await reloadSelectedRequestTechnicians();
                                                                                 } catch (error) {
                                                                                     console.error(
