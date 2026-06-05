@@ -46,6 +46,11 @@ const menuByRole = {
         { label: "Daftar Pekerjaan", path: "/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
         { label: "Accommodation", path: "/admin/accommodation", icon: Wallet },
+        {
+            label: "Accommodation Reports",
+            path: "/admin/accommodation/reports",
+            icon: BarChart3,
+        },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
     ],
@@ -126,8 +131,20 @@ const usePendingAccommodationCount = (role, userId) => {
 
         channel.subscribe();
 
+        const intervalId = setInterval(loadPendingCount, 5000);
+        const handleFocus = () => {
+            if (document.visibilityState === "visible") {
+                loadPendingCount();
+            }
+        };
+        document.addEventListener("visibilitychange", handleFocus);
+        window.addEventListener("focus", handleFocus);
+
         return () => {
             mounted = false;
+            clearInterval(intervalId);
+            document.removeEventListener("visibilitychange", handleFocus);
+            window.removeEventListener("focus", handleFocus);
             if (channel) {
                 supabase.removeChannel(channel);
             }
@@ -146,9 +163,13 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         user?.id,
     );
     const [newRequestToast, setNewRequestToast] = useState("");
+    const [accommodationToast, setAccommodationToast] = useState("");
     const toastTimerRef = useRef(null);
+    const accommodationToastTimerRef = useRef(null);
     const notifiedRequestIdsRef = useRef(new Set());
+    const notifiedAccommodationIdsRef = useRef(new Set());
     const channelRef = useRef(null);
+    const accommodationNotifyChannelRef = useRef(null);
     const isMountedRef = useRef(true);
     const menus = getMenus(role, profile).map((menu) => {
         const badgeByPath = {
@@ -189,6 +210,9 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             isMountedRef.current = false;
             if (toastTimerRef.current) {
                 clearTimeout(toastTimerRef.current);
+            }
+            if (accommodationToastTimerRef.current) {
+                clearTimeout(accommodationToastTimerRef.current);
             }
         };
     }, []);
@@ -303,6 +327,107 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
                 console.log("[Sidebar] Channel cleaned up");
+            }
+        };
+    }, [loading, role, user?.id]);
+
+    useEffect(() => {
+        if (
+            loading ||
+            !["admin", "management"].includes(role) ||
+            !user?.id
+        ) {
+            return;
+        }
+
+        const channelName = createUniqueChannelName(
+            "accommodation-new-notify",
+            user.id,
+        );
+
+        const existingChannels = supabase.getChannels();
+        const existing = existingChannels.find(
+            (ch) => ch.topic === `realtime:${channelName}`,
+        );
+
+        if (existing) {
+            accommodationNotifyChannelRef.current = existing;
+            return;
+        }
+
+        accommodationNotifyChannelRef.current = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                {
+                    event: "INSERT",
+                    schema: "public",
+                    table: "accommodation_requests",
+                },
+                (payload) => {
+                    if (!isMountedRef.current) return;
+
+                    const row = payload?.new;
+                    if (!row) return;
+
+                    const status = String(row.status ?? "pending")
+                        .toLowerCase()
+                        .replaceAll("-", "_")
+                        .replaceAll(" ", "_");
+                    if (status !== "pending") return;
+
+                    const requestId =
+                        row.id ?? `${row.created_at}-${row.technician_id ?? ""}`;
+                    if (notifiedAccommodationIdsRef.current.has(requestId)) {
+                        return;
+                    }
+                    notifiedAccommodationIdsRef.current.add(requestId);
+
+                    const title = String(row.request_title ?? "").trim();
+                    const message = title
+                        ? `Pengajuan akomodasi baru: ${title}`
+                        : "Ada pengajuan akomodasi baru";
+
+                    if (accommodationToastTimerRef.current) {
+                        clearTimeout(accommodationToastTimerRef.current);
+                    }
+                    setAccommodationToast(message);
+                    accommodationToastTimerRef.current = setTimeout(() => {
+                        if (isMountedRef.current) {
+                            setAccommodationToast("");
+                        }
+                    }, 5500);
+
+                    if ("Notification" in window) {
+                        if (Notification.permission === "granted") {
+                            new Notification("OneTrack", {
+                                body: message,
+                            });
+                        } else if (Notification.permission === "default") {
+                            Notification.requestPermission().then(
+                                (permission) => {
+                                    if (permission === "granted") {
+                                        new Notification("OneTrack", {
+                                            body: message,
+                                        });
+                                    }
+                                },
+                            );
+                        }
+                    }
+                },
+            );
+
+        accommodationNotifyChannelRef.current.subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+                console.log("[Sidebar] Subscribed to:", channelName);
+            }
+        });
+
+        return () => {
+            if (accommodationNotifyChannelRef.current) {
+                supabase.removeChannel(accommodationNotifyChannelRef.current);
+                accommodationNotifyChannelRef.current = null;
             }
         };
     }, [loading, role, user?.id]);
@@ -451,6 +576,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             {newRequestToast && (
                 <div className="fixed right-4 top-4 z-80 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700 shadow-lg">
                     {newRequestToast}
+                </div>
+            )}
+            {accommodationToast && (
+                <div className="fixed right-4 top-4 z-80 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-lg">
+                    {accommodationToast}
                 </div>
             )}
         </>

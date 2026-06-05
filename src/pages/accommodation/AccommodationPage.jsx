@@ -17,6 +17,7 @@ import {
     Plus,
     Receipt,
     Search,
+    Trash2,
     Upload,
     X,
     XCircle,
@@ -33,6 +34,7 @@ import {
     addAccommodationRealization,
     approveAccommodationRequest,
     createAccommodationRequest,
+    deleteAccommodationRequest,
     formatCurrency,
     getDisplayName,
     loadAccommodationLookups,
@@ -376,6 +378,27 @@ export default function AccommodationPage({ mode = "technician" }) {
         }
     };
 
+    const handleDeleteRequest = async (request) => {
+        const confirmed = window.confirm(
+            `Hapus pengajuan "${request.request_title}" beserta semua bukti transfer dan receipt?`,
+        );
+        if (!confirmed) return;
+
+        try {
+            setSaving(true);
+            await deleteAccommodationRequest(request);
+            setSelectedId(null);
+            await loadData();
+        } catch (error) {
+            await showAlert(
+                error?.message ?? "Gagal menghapus pengajuan akomodasi.",
+                { title: "Gagal" },
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-sky-50">
             <div className="flex min-h-screen">
@@ -700,6 +723,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                     onApprove={() => setApprovalMode("approve")}
                     onReject={() => setApprovalMode("reject")}
                     onAddRealization={() => setRealizationOpen(true)}
+                    onDelete={() => handleDeleteRequest(selectedRequest)}
                 />
             )}
 
@@ -823,6 +847,7 @@ function DetailDrawer({
     onApprove,
     onReject,
     onAddRealization,
+    onDelete,
 }) {
     return (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40">
@@ -882,6 +907,16 @@ function DetailDrawer({
                         >
                             <Upload size={16} />
                             Add Realization
+                        </button>
+                    )}
+                    {mode === "admin" && (
+                        <button
+                            type="button"
+                            onClick={onDelete}
+                            className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-3 py-2 text-sm font-semibold text-white hover:bg-red-600"
+                        >
+                            <Trash2 size={16} />
+                            Delete
                         </button>
                     )}
                 </div>
@@ -1020,8 +1055,8 @@ function DetailDrawer({
 
                 {mode === "admin" && (
                     <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                        Admin memiliki akses baca. Approval hanya untuk role
-                        management.
+                        Admin dapat monitoring dan menghapus pengajuan.
+                        Approval tetap hanya untuk role management.
                     </p>
                 )}
             </aside>

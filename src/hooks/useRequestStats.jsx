@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import supabase from "../supabaseClient";
 import { useAuth } from "../context/useAuth";
-import {
-    cleanupAllChannels,
-    createUniqueChannelName,
-} from "../utils/realtimeChannelManager";
+import { createUniqueChannelName } from "../utils/realtimeChannelManager";
 import { getTechnicianJobIds } from "../services/jobTechniciansService";
 
 const INITIAL_STATS = {
@@ -109,8 +106,6 @@ export default function useRequestStats() {
             try {
                 // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
                 // This prevents "cannot add postgres_changes callbacks after subscribe()" error
-                await cleanupAllChannels();
-
                 // ✅ CRITICAL FIX: Use unique channel name with user ID
                 const channelName = createUniqueChannelName(
                     "requests-stats",

@@ -76,6 +76,14 @@ function App() {
                 }
             />
             <Route
+                path="/admin/accommodation/reports"
+                element={
+                    <ProtectedRoute allowedRoles={["admin", "management"]}>
+                        <AccommodationReports />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
                 path="/accommodation"
                 element={
                     <ProtectedRoute allowedRoles={["technician"]}>

@@ -257,6 +257,55 @@ export const uploadAccommodationFile = async ({ file, folder, requestId }) => {
     return data.publicUrl;
 };
 
+const getAccommodationStoragePath = (url) => {
+    const raw = String(url ?? "").trim();
+    if (!raw) return "";
+
+    const marker = `/${ACCOMMODATION_BUCKET}/`;
+    try {
+        const parsed = new URL(raw);
+        const markerIndex = parsed.pathname.indexOf(marker);
+        if (markerIndex >= 0) {
+            return decodeURIComponent(
+                parsed.pathname.slice(markerIndex + marker.length),
+            );
+        }
+    } catch {
+        const markerIndex = raw.indexOf(marker);
+        if (markerIndex >= 0) return raw.slice(markerIndex + marker.length);
+    }
+
+    return raw.startsWith("transfer-proofs/") || raw.startsWith("receipts/")
+        ? raw
+        : "";
+};
+
+export const deleteAccommodationRequest = async (request) => {
+    if (!request?.id) throw new Error("Request tidak valid.");
+
+    const paths = [
+        getAccommodationStoragePath(request.transfer_proof_url),
+        ...(request.realizations ?? []).map((item) =>
+            getAccommodationStoragePath(item.receipt_photo_url),
+        ),
+    ].filter(Boolean);
+
+    if (paths.length > 0) {
+        const { error: storageError } = await supabase.storage
+            .from(ACCOMMODATION_BUCKET)
+            .remove([...new Set(paths)]);
+
+        if (storageError) throw storageError;
+    }
+
+    const { error } = await supabase
+        .from("accommodation_requests")
+        .delete()
+        .eq("id", request.id);
+
+    if (error) throw error;
+};
+
 export const approveAccommodationRequest = async ({
     requestId,
     approvedAmount,
