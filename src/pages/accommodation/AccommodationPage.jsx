@@ -8,10 +8,12 @@ import {
 } from "react";
 import {
     Banknote,
+    Camera,
     CheckCircle2,
     Clock3,
     Download,
     FileImage,
+    FolderOpen,
     Plus,
     Receipt,
     Search,
@@ -51,6 +53,14 @@ const filters = [
 
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300";
+
+const onlyDigits = (value) => String(value ?? "").replace(/\D/g, "");
+
+const formatNumberInput = (value) => {
+    const digits = onlyDigits(value);
+    if (!digits) return "";
+    return new Intl.NumberFormat("en-US").format(Number(digits));
+};
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -114,6 +124,7 @@ export default function AccommodationPage({ mode = "technician" }) {
     });
     const [approvalMode, setApprovalMode] = useState(null);
     const [realizationOpen, setRealizationOpen] = useState(false);
+    const [receiptPhotoFile, setReceiptPhotoFile] = useState(null);
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
 
@@ -338,7 +349,7 @@ export default function AccommodationPage({ mode = "technician" }) {
 
         try {
             setSaving(true);
-            const file = formData.get("receipt_photo");
+            const file = receiptPhotoFile;
             if (!file?.name) throw new Error("Receipt photo wajib diupload.");
             const receiptPhotoUrl = await uploadAccommodationFile({
                 file,
@@ -354,6 +365,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                 createdBy: user.id,
             });
             setRealizationOpen(false);
+            setReceiptPhotoFile(null);
             await loadData();
         } catch (error) {
             await showAlert(error?.message ?? "Gagal upload realisasi.", {
@@ -609,11 +621,9 @@ export default function AccommodationPage({ mode = "technician" }) {
                             label="Request Title"
                             required
                         />
-                        <TextInput
+                        <CurrencyInput
                             name="requested_amount"
                             label="Requested Amount"
-                            type="number"
-                            min="1"
                             required
                         />
                         <label className="md:col-span-2">
@@ -705,11 +715,9 @@ export default function AccommodationPage({ mode = "technician" }) {
                     <form onSubmit={submitApproval} className="grid gap-3">
                         {approvalMode === "approve" ? (
                             <>
-                                <TextInput
+                                <CurrencyInput
                                     name="approved_amount"
                                     label="Approved Amount"
-                                    type="number"
-                                    min="1"
                                     defaultValue={
                                         selectedRequest.requested_amount
                                     }
@@ -762,19 +770,20 @@ export default function AccommodationPage({ mode = "technician" }) {
             {realizationOpen && selectedRequest && (
                 <Modal
                     title="Add Realization"
-                    onClose={() => setRealizationOpen(false)}
+                    onClose={() => {
+                        setReceiptPhotoFile(null);
+                        setRealizationOpen(false);
+                    }}
                 >
                     <form onSubmit={submitRealization} className="grid gap-3">
-                        <FileInput
-                            name="receipt_photo"
+                        <ReceiptPhotoInput
                             label="Receipt Photo"
-                            required
+                            file={receiptPhotoFile}
+                            onChange={setReceiptPhotoFile}
                         />
-                        <TextInput
+                        <CurrencyInput
                             name="amount"
                             label="Amount"
-                            type="number"
-                            min="1"
                             required
                         />
                         <TextInput
@@ -918,10 +927,6 @@ function DetailDrawer({
                             {getProjectLabel(request.project) ?? "-"}
                         </p>
                         <p>
-                            <span className="font-medium">Job Scope:</span>{" "}
-                            {request.job_scope ?? "-"}
-                        </p>
-                        <p>
                             <span className="font-medium">Notes:</span>{" "}
                             {request.notes ?? "-"}
                         </p>
@@ -1057,6 +1062,30 @@ function TextInput({ label, name, ...props }) {
     );
 }
 
+function CurrencyInput({ label, name, defaultValue = "", required = false }) {
+    const [displayValue, setDisplayValue] = useState(
+        formatNumberInput(defaultValue),
+    );
+    const rawValue = onlyDigits(displayValue);
+
+    return (
+        <label>
+            <span className="text-sm font-medium text-slate-700">{label}</span>
+            <input type="hidden" name={name} value={rawValue} />
+            <input
+                value={displayValue}
+                onChange={(event) =>
+                    setDisplayValue(formatNumberInput(event.target.value))
+                }
+                inputMode="numeric"
+                required={required}
+                className={inputClass}
+                placeholder="1,000,000"
+            />
+        </label>
+    );
+}
+
 function FileInput({ label, name, required }) {
     return (
         <label>
@@ -1069,6 +1098,202 @@ function FileInput({ label, name, required }) {
                 className="mt-1 w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700"
             />
         </label>
+    );
+}
+
+function ReceiptPhotoInput({ label, file, onChange }) {
+    const [cameraOpen, setCameraOpen] = useState(false);
+    const [cameraReady, setCameraReady] = useState(false);
+    const [cameraError, setCameraError] = useState("");
+    const [previewUrl, setPreviewUrl] = useState("");
+    const videoRef = useRef(null);
+    const canvasRef = useRef(null);
+    const streamRef = useRef(null);
+
+    const stopCamera = useCallback(() => {
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+        }
+        setCameraReady(false);
+        setCameraOpen(false);
+    }, []);
+
+    useEffect(() => {
+        if (!file || !String(file.type ?? "").startsWith("image/")) {
+            setPreviewUrl("");
+            return undefined;
+        }
+
+        const url = URL.createObjectURL(file);
+        setPreviewUrl(url);
+        return () => URL.revokeObjectURL(url);
+    }, [file]);
+
+    useEffect(() => () => stopCamera(), [stopCamera]);
+
+    useEffect(() => {
+        if (!cameraOpen || !streamRef.current || !videoRef.current) return;
+
+        const video = videoRef.current;
+        video.srcObject = streamRef.current;
+        const playPromise = video.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch((error) => {
+                console.error("Receipt camera preview failed:", error);
+                setCameraError(
+                    "Preview kamera belum bisa diputar. Coba tutup lalu buka kamera lagi.",
+                );
+            });
+        }
+    }, [cameraOpen]);
+
+    const openCamera = async () => {
+        try {
+            setCameraError("");
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "environment" },
+                audio: false,
+            });
+            streamRef.current = stream;
+            setCameraOpen(true);
+        } catch (error) {
+            console.error("Receipt camera failed:", error);
+            setCameraError(
+                "Kamera tidak bisa dibuka. Gunakan upload file sebagai alternatif.",
+            );
+        }
+    };
+
+    const capturePhoto = () => {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas) return;
+        if (!video.videoWidth || !video.videoHeight) {
+            setCameraError("Preview kamera belum siap. Tunggu sebentar lalu capture lagi.");
+            return;
+        }
+
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0, width, height);
+        canvas.toBlob(
+            (blob) => {
+                if (!blob) return;
+                const nextFile = new File(
+                    [blob],
+                    `receipt-${Date.now()}.jpg`,
+                    { type: "image/jpeg" },
+                );
+                onChange(nextFile);
+                stopCamera();
+            },
+            "image/jpeg",
+            0.9,
+        );
+    };
+
+    return (
+        <div>
+            <span className="text-sm font-medium text-slate-700">{label}</span>
+            <div className="mt-1 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3">
+                <div className="grid grid-cols-2 gap-2">
+                    <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+                        <FolderOpen size={16} />
+                        File
+                        <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(event) => {
+                                const nextFile = event.target.files?.[0];
+                                if (nextFile) onChange(nextFile);
+                                event.target.value = "";
+                            }}
+                        />
+                    </label>
+                    <button
+                        type="button"
+                        onClick={openCamera}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                        <Camera size={16} />
+                        Camera
+                    </button>
+                </div>
+
+                {file && (
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-sm font-semibold text-emerald-700">
+                            {file.name}
+                        </p>
+                        <p className="mt-1 text-xs text-emerald-600">
+                            Siap diupload dan akan dikompres otomatis.
+                        </p>
+                    </div>
+                )}
+
+                {previewUrl && (
+                    <img
+                        src={previewUrl}
+                        alt="Preview receipt"
+                        className="mt-3 max-h-56 w-full rounded-xl object-contain bg-black"
+                    />
+                )}
+
+                {cameraOpen && (
+                    <div className="mt-3 overflow-hidden rounded-xl bg-black">
+                        <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            onLoadedMetadata={() => {
+                                setCameraReady(true);
+                                videoRef.current?.play?.();
+                            }}
+                            className="h-72 w-full object-cover"
+                        />
+                        {!cameraReady && (
+                            <div className="bg-slate-900 px-3 py-2 text-center text-sm font-medium text-white">
+                                Menyiapkan kamera...
+                            </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-2 bg-white p-2">
+                            <button
+                                type="button"
+                                onClick={stopCamera}
+                                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={capturePhoto}
+                                disabled={!cameraReady}
+                                className="rounded-xl bg-sky-500 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                Capture
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {cameraError && (
+                    <p className="mt-2 text-sm font-medium text-red-600">
+                        {cameraError}
+                    </p>
+                )}
+
+                <canvas ref={canvasRef} className="hidden" />
+            </div>
+        </div>
     );
 }
 

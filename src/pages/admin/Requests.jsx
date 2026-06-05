@@ -194,6 +194,37 @@ const hasValidSerialNumber = (value) => {
 const sortRequestsByDateDesc = (items) =>
     [...items].sort((a, b) => new Date(b?.date ?? 0) - new Date(a?.date ?? 0));
 
+const getCompactPagination = (currentPage, totalPages) => {
+    if (totalPages <= 5) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    if (currentPage <= 3) {
+        return [1, 2, 3, 4, "end-ellipsis", totalPages];
+    }
+
+    if (currentPage >= totalPages - 2) {
+        return [
+            1,
+            "start-ellipsis",
+            totalPages - 3,
+            totalPages - 2,
+            totalPages - 1,
+            totalPages,
+        ];
+    }
+
+    return [
+        1,
+        "start-ellipsis",
+        currentPage - 1,
+        currentPage,
+        currentPage + 1,
+        "end-ellipsis",
+        totalPages,
+    ];
+};
+
 const upsertNormalizedRequest = (items, nextItem) => {
     const next = [...items];
     const index = next.findIndex((item) => item.id === nextItem.id);
@@ -624,6 +655,10 @@ export default function AdminRequestsPage() {
         const endIdx = startIdx + ITEMS_PER_PAGE;
         return filteredRequests.slice(startIdx, endIdx);
     }, [filteredRequests, currentPage]);
+    const paginationItems = useMemo(
+        () => getCompactPagination(currentPage, totalPages),
+        [currentPage, totalPages],
+    );
 
     // Reset to page 1 when filters change
     useEffect(() => {
@@ -1212,25 +1247,31 @@ export default function AdminRequestsPage() {
                                         <ChevronLeft size={18} />
                                     </button>
 
-                                    <div className="flex gap-1">
-                                        {Array.from(
-                                            { length: totalPages },
-                                            (_, i) => i + 1,
-                                        ).map((page) => (
-                                            <button
-                                                key={page}
-                                                onClick={() =>
-                                                    setCurrentPage(page)
-                                                }
-                                                className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
-                                                    currentPage === page
-                                                        ? "bg-sky-500 text-white"
-                                                        : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                                                }`}
-                                            >
-                                                {page}
-                                            </button>
-                                        ))}
+                                    <div className="flex max-w-full flex-wrap justify-center gap-1">
+                                        {paginationItems.map((item) =>
+                                            typeof item === "number" ? (
+                                                <button
+                                                    key={item}
+                                                    onClick={() =>
+                                                        setCurrentPage(item)
+                                                    }
+                                                    className={`inline-flex min-w-10 items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                                        currentPage === item
+                                                            ? "bg-sky-500 text-white"
+                                                            : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                                    }`}
+                                                >
+                                                    {item}
+                                                </button>
+                                            ) : (
+                                                <span
+                                                    key={item}
+                                                    className="inline-flex min-w-8 items-center justify-center px-1 text-sm font-semibold text-slate-400"
+                                                >
+                                                    ...
+                                                </span>
+                                            ),
+                                        )}
                                     </div>
 
                                     <button

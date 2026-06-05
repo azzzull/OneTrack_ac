@@ -24,6 +24,37 @@ import AttendanceMapModal from "../../components/AttendanceMapModal";
 import supabase from "../../supabaseClient";
 import { getLocationLabel, hasLocationData } from "../../utils/nominatim";
 
+const getCompactPagination = (currentPage, totalPages) => {
+    if (totalPages <= 5) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    if (currentPage <= 3) {
+        return [1, 2, 3, 4, "end-ellipsis", totalPages];
+    }
+
+    if (currentPage >= totalPages - 2) {
+        return [
+            1,
+            "start-ellipsis",
+            totalPages - 3,
+            totalPages - 2,
+            totalPages - 1,
+            totalPages,
+        ];
+    }
+
+    return [
+        1,
+        "start-ellipsis",
+        currentPage - 1,
+        currentPage,
+        currentPage + 1,
+        "end-ellipsis",
+        totalPages,
+    ];
+};
+
 const AttendanceLog = () => {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -71,11 +102,25 @@ const AttendanceLog = () => {
 
     useEffect(() => {
         const loadInitialData = async () => {
-            const { data, error } = await supabase
-                .from("profiles")
-                .select("id, first_name, last_name, role")
-                .in("role", ["technician", "admin"])
-                .order("first_name", { ascending: true });
+            const { data: rpcProfiles, error: rpcError } =
+                await supabase.rpc("get_attendance_profiles");
+
+            let data = rpcProfiles;
+            let error = rpcError;
+
+            if (rpcError) {
+                console.warn(
+                    "Attendance profile RPC fallback:",
+                    rpcError.message,
+                );
+                const fallback = await supabase
+                    .from("profiles")
+                    .select("id, first_name, last_name, role")
+                    .in("role", ["technician", "admin", "management"])
+                    .order("first_name", { ascending: true });
+                data = fallback.data;
+                error = fallback.error;
+            }
 
             if (!error && data) {
                 setTechnicians(data);
@@ -411,6 +456,7 @@ const AttendanceLog = () => {
               currentPage * ITEMS_PER_PAGE,
           )
         : filteredData;
+    const paginationItems = getCompactPagination(currentPage, totalPages);
 
     const handleExportCSV = () => {
         if (filteredData.length === 0) {
@@ -1284,28 +1330,36 @@ const AttendanceLog = () => {
                                                     </svg>
                                                 </button>
 
-                                                <div className="flex gap-1">
-                                                    {Array.from(
-                                                        { length: totalPages },
-                                                        (_, i) => i + 1,
-                                                    ).map((page) => (
-                                                        <button
-                                                            key={page}
-                                                            onClick={() =>
-                                                                setCurrentPage(
-                                                                    page,
-                                                                )
-                                                            }
-                                                            className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
-                                                                currentPage ===
-                                                                page
-                                                                    ? "bg-sky-500 text-white"
-                                                                    : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                                                            }`}
-                                                        >
-                                                            {page}
-                                                        </button>
-                                                    ))}
+                                                <div className="flex max-w-full flex-wrap justify-center gap-1">
+                                                    {paginationItems.map(
+                                                        (item) =>
+                                                            typeof item ===
+                                                            "number" ? (
+                                                                <button
+                                                                    key={item}
+                                                                    onClick={() =>
+                                                                        setCurrentPage(
+                                                                            item,
+                                                                        )
+                                                                    }
+                                                                    className={`inline-flex min-w-10 items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                                                        currentPage ===
+                                                                        item
+                                                                            ? "bg-sky-500 text-white"
+                                                                            : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                                                    }`}
+                                                                >
+                                                                    {item}
+                                                                </button>
+                                                            ) : (
+                                                                <span
+                                                                    key={item}
+                                                                    className="inline-flex min-w-8 items-center justify-center px-1 text-sm font-semibold text-slate-400"
+                                                                >
+                                                                    ...
+                                                                </span>
+                                                            ),
+                                                    )}
                                                 </div>
 
                                                 <button

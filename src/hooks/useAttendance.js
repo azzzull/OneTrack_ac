@@ -299,36 +299,13 @@ export const useAttendance = () => {
             setError(null);
 
             try {
-                let query = supabase.from("attendance").select(`
-          *,
-          profiles:technician_id (id, first_name, last_name, email)
-        `);
-
-                if (technicianIdFilter) {
-                    query = query.eq("technician_id", technicianIdFilter);
-                }
-
-                if (dateFrom && dateTo) {
-                    query = query
-                        .gte("attendance_date", dateFrom)
-                        .lte("attendance_date", dateTo);
-                }
-
-                // Status filter
-                if (statusFilter === "check_in_only") {
-                    query = query
-                        .not("check_in_time", "is", null)
-                        .is("check_out_time", null);
-                } else if (statusFilter === "checked_in_and_out") {
-                    query = query
-                        .not("check_in_time", "is", null)
-                        .not("check_out_time", "is", null);
-                }
-
-                const { data, error: selectError } = await query.order(
-                    "attendance_date",
+                const { data, error: selectError } = await supabase.rpc(
+                    "get_admin_attendance_log",
                     {
-                        ascending: false,
+                        p_technician_id: technicianIdFilter || null,
+                        p_date_from: dateFrom || null,
+                        p_date_to: dateTo || null,
+                        p_status: statusFilter || null,
                     },
                 );
 

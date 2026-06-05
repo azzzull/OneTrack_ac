@@ -1,7 +1,5 @@
 import { createElement, useEffect, useRef, useState } from "react";
 import {
-    Wrench,
-    Users,
     LayoutDashboard,
     List,
     Plus,
@@ -16,7 +14,6 @@ import {
     CalendarDays,
     Wallet,
     BarChart3,
-    Settings,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
@@ -30,9 +27,7 @@ import {
 const menuByRole = {
     management: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
-        { label: "Customers", path: "/master-data/customers", icon: Users },
         { label: "Requests", path: "/requests", icon: List },
-        { label: "Technicians", path: "/master-data/users", icon: Wrench },
         {
             label: "Accommodation",
             path: "/management/accommodation",
@@ -44,8 +39,7 @@ const menuByRole = {
             icon: BarChart3,
         },
         { label: "Master Data", path: "/master-data", icon: Database },
-        { label: "Users", path: "/master-data/users", icon: Users },
-        { label: "Settings", path: "/profile", icon: Settings },
+        { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
     ],
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },

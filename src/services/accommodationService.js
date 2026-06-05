@@ -1,4 +1,5 @@
 import supabase from "../supabaseClient";
+import { compressJobPhotoFile } from "./jobPhotoService";
 
 export const ACCOMMODATION_BUCKET = "accommodation-proofs";
 
@@ -68,6 +69,25 @@ export const summarizeAccommodation = (request) => {
 const loadProfileMap = async (ids) => {
     const uniqueIds = [...new Set(ids.filter(Boolean))];
     if (!uniqueIds.length) return {};
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "get_accommodation_profiles",
+        {
+            p_profile_ids: uniqueIds,
+        },
+    );
+
+    if (!rpcError) {
+        return (rpcData ?? []).reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+        }, {});
+    }
+
+    console.warn(
+        "Accommodation profile RPC lookup fallback:",
+        rpcError.message,
+    );
 
     const { data, error } = await supabase
         .from("profiles")
@@ -211,13 +231,23 @@ export const createAccommodationRequest = async (payload) => {
 };
 
 export const uploadAccommodationFile = async ({ file, folder, requestId }) => {
-    const extension = file.name?.split(".").pop() || "jpg";
+    const fileToUpload = String(file?.type ?? "").startsWith("image/")
+        ? await compressJobPhotoFile(file, {
+              maxBytes: 180 * 1024,
+              maxDimension: 1600,
+              minQuality: 0.45,
+          })
+        : file;
+    const extension =
+        String(fileToUpload?.type ?? "").startsWith("image/")
+            ? "jpg"
+            : fileToUpload.name?.split(".").pop() || "bin";
     const fileName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
     const path = `${folder}/${requestId}/${fileName}`;
 
     const { error } = await supabase.storage
         .from(ACCOMMODATION_BUCKET)
-        .upload(path, file, { upsert: false });
+        .upload(path, fileToUpload, { upsert: false });
     if (error) throw error;
 
     const { data } = supabase.storage
