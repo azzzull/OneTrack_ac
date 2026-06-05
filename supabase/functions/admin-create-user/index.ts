@@ -35,7 +35,9 @@ async function isAdmin(authHeader: string) {
         .single();
 
     if (profileError) return { ok: false, message: "Forbidden" };
-    if (profile?.role !== "admin") return { ok: false, message: "Forbidden" };
+    if (!["admin", "management"].includes(String(profile?.role ?? ""))) {
+        return { ok: false, message: "Forbidden" };
+    }
     return { ok: true, message: "ok" };
 }
 

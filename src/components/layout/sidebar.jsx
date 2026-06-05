@@ -1,6 +1,7 @@
 import { createElement, useEffect, useRef, useState } from "react";
 import {
     Wrench,
+    Users,
     LayoutDashboard,
     List,
     Plus,
@@ -13,6 +14,9 @@ import {
     MoreHorizontal,
     X,
     CalendarDays,
+    Wallet,
+    BarChart3,
+    Settings,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
@@ -24,10 +28,30 @@ import {
 } from "../../utils/realtimeChannelManager";
 
 const menuByRole = {
+    management: [
+        { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
+        { label: "Customers", path: "/master-data/customers", icon: Users },
+        { label: "Requests", path: "/requests", icon: List },
+        { label: "Technicians", path: "/master-data/users", icon: Wrench },
+        {
+            label: "Accommodation",
+            path: "/management/accommodation",
+            icon: Wallet,
+        },
+        {
+            label: "Accommodation Reports",
+            path: "/management/accommodation/reports",
+            icon: BarChart3,
+        },
+        { label: "Master Data", path: "/master-data", icon: Database },
+        { label: "Users", path: "/master-data/users", icon: Users },
+        { label: "Settings", path: "/profile", icon: Settings },
+    ],
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
         { label: "Daftar Pekerjaan", path: "/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
+        { label: "Accommodation", path: "/admin/accommodation", icon: Wallet },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
     ],
@@ -48,7 +72,15 @@ const menuByRole = {
     ],
 };
 
-const getMenus = (role) => menuByRole[role] ?? [];
+const getMenus = (role, profile) => {
+    const menus = menuByRole[role] ?? [];
+    if (role !== "technician") return menus;
+    if (profile?.technician_type !== "internal") return menus;
+    return [
+        ...menus,
+        { label: "Accommodation", path: "/accommodation", icon: Wallet },
+    ];
+};
 
 export default function Sidebar({ collapsed = false, onToggle }) {
     const { user, role, profile, loading } = useAuth();
@@ -59,7 +91,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     const notifiedRequestIdsRef = useRef(new Set());
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
-    const menus = getMenus(role).map((menu) => {
+    const menus = getMenus(role, profile).map((menu) => {
         const badgeByPath = {
             "/requests": stats.pending,
             "/technician/requests": stats.pending,
@@ -84,7 +116,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         user?.user_metadata?.full_name?.trim() ||
         user?.email ||
         "admin@onetrack.com";
-    const canOpenProfile = role === "customer" || role === "technician";
+    const canOpenProfile =
+        role === "customer" ||
+        role === "technician" ||
+        role === "admin" ||
+        role === "management";
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -369,7 +405,7 @@ export function MobileBottomNav() {
     const [showTopNav, setShowTopNav] = useState(true);
     const lastScrollRef = useRef(0);
     const MOBILE_TOP_NAV_HEIGHT = 72;
-    const menus = getMenus(role).map((menu) => {
+    const menus = getMenus(role, profile).map((menu) => {
         const badgeByPath = {
             "/requests": stats.pending,
             "/technician/requests": stats.pending,
@@ -386,7 +422,11 @@ export function MobileBottomNav() {
     const primaryCount = 4;
     const primaryMenus = menus.slice(0, primaryCount);
     const extraMenus = menus.slice(primaryCount);
-    const canOpenProfile = role === "customer" || role === "technician";
+    const canOpenProfile =
+        role === "customer" ||
+        role === "technician" ||
+        role === "admin" ||
+        role === "management";
     const identityLabel =
         `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() ||
         profile?.email ||

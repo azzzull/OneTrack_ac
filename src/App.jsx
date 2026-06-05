@@ -9,6 +9,8 @@ import AdminMasterDataModulePage from "@/pages/admin/MasterDataModule";
 import AdminNewJobPage from "@/pages/admin/NewJob";
 import AdminRequestsPage from "@/pages/admin/Requests";
 import AdminAttendanceLogPage from "@/pages/admin/AttendanceLog";
+import AccommodationPage from "@/pages/accommodation/AccommodationPage";
+import AccommodationReports from "@/pages/accommodation/AccommodationReports";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
 import TechnicianAttendanceHistoryPage from "@/pages/technician/AttendanceHistory";
 import CustomerDashboard from "@/pages/customer/Dashboard";
@@ -28,7 +30,7 @@ function App() {
             <Route
                 path="/admin"
                 element={
-                    <ProtectedRoute allowedRoles={["admin"]}>
+                    <ProtectedRoute allowedRoles={["admin", "management"]}>
                         <AdminDashboard />
                     </ProtectedRoute>
                 }
@@ -50,9 +52,41 @@ function App() {
                 }
             />
             <Route
+                path="/management/accommodation"
+                element={
+                    <ProtectedRoute allowedRoles={["management"]}>
+                        <AccommodationPage mode="management" />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/management/accommodation/reports"
+                element={
+                    <ProtectedRoute allowedRoles={["management"]}>
+                        <AccommodationReports />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/admin/accommodation"
+                element={
+                    <ProtectedRoute allowedRoles={["admin", "management"]}>
+                        <AccommodationPage mode="admin" />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/accommodation"
+                element={
+                    <ProtectedRoute allowedRoles={["technician"]}>
+                        <AccommodationPage mode="technician" />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
                 path="/requests"
                 element={
-                    <ProtectedRoute allowedRoles={["admin"]}>
+                    <ProtectedRoute allowedRoles={["admin", "management"]}>
                         <AdminRequestsPage />
                     </ProtectedRoute>
                 }
@@ -60,7 +94,7 @@ function App() {
             <Route
                 path="/jobs/new"
                 element={
-                    <ProtectedRoute allowedRoles={["admin", "technician"]}>
+                    <ProtectedRoute allowedRoles={["admin", "management", "technician"]}>
                         <AdminNewJobPage />
                     </ProtectedRoute>
                 }
@@ -68,7 +102,7 @@ function App() {
             <Route
                 path="/master-data"
                 element={
-                    <ProtectedRoute allowedRoles={["admin"]}>
+                    <ProtectedRoute allowedRoles={["admin", "management"]}>
                         <AdminMasterDataPage />
                     </ProtectedRoute>
                 }
@@ -76,7 +110,7 @@ function App() {
             <Route
                 path="/master-data/:moduleKey"
                 element={
-                    <ProtectedRoute allowedRoles={["admin"]}>
+                    <ProtectedRoute allowedRoles={["admin", "management"]}>
                         <AdminMasterDataModulePage />
                     </ProtectedRoute>
                 }
@@ -114,7 +148,7 @@ function App() {
             <Route
                 path="/profile"
                 element={
-                    <ProtectedRoute allowedRoles={["customer", "technician"]}>
+                    <ProtectedRoute allowedRoles={["customer", "technician", "management", "admin"]}>
                         <ProfilePage />
                     </ProtectedRoute>
                 }
@@ -130,7 +164,7 @@ function App() {
             <Route
                 path="/admin/attendance"
                 element={
-                    <ProtectedRoute allowedRoles={["admin"]}>
+                    <ProtectedRoute allowedRoles={["admin", "management"]}>
                         <AdminAttendanceLogPage />
                     </ProtectedRoute>
                 }

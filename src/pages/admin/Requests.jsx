@@ -665,6 +665,7 @@ export default function AdminRequestsPage() {
     ]);
     const canManageTechnicians =
         role === "admin" ||
+        role === "management" ||
         (Boolean(user?.id) && String(creatorTechnicianId) === String(user?.id));
 
     useEffect(() => {
@@ -1261,7 +1262,7 @@ export default function AdminRequestsPage() {
                                 Detail Pekerjaan
                             </h2>
                             <div className="flex items-center gap-2">
-                                {role === "admin" && (
+                                {(role === "admin" || role === "management") && (
                                     <button
                                         type="button"
                                         onClick={deleteRequest}

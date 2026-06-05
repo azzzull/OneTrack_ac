@@ -233,7 +233,9 @@ export default function AdminMasterDataModulePage() {
 
     const roleOptions = useMemo(() => {
         const fromDb = roles.map((r) => r.name);
-        return fromDb.length ? fromDb : ["admin", "customer", "technician"];
+        return fromDb.length
+            ? fromDb
+            : ["management", "admin", "customer", "technician"];
     }, [roles]);
 
     const userCustomerAssignmentSummary = useCallback(

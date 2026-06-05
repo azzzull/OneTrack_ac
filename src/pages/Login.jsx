@@ -16,7 +16,8 @@ function Login() {
 
     useEffect(() => {
         if (user && role) {
-            if (role === "admin") navigate("/admin");
+            if (role === "management") navigate("/admin");
+            else if (role === "admin") navigate("/admin");
             else if (role === "technician") navigate("/technician");
             else if (role === "customer") navigate("/customer");
         }
