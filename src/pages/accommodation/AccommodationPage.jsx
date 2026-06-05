@@ -12,7 +12,6 @@ import {
     Clock3,
     Download,
     FileImage,
-    ListFilter,
     Plus,
     Receipt,
     Search,
@@ -21,6 +20,7 @@ import {
     XCircle,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
@@ -108,6 +108,10 @@ export default function AccommodationPage({ mode = "technician" }) {
     const [search, setSearch] = useState("");
     const [selectedId, setSelectedId] = useState(null);
     const [createOpen, setCreateOpen] = useState(false);
+    const [createForm, setCreateForm] = useState({
+        customerId: "",
+        projectId: "",
+    });
     const [approvalMode, setApprovalMode] = useState(null);
     const [realizationOpen, setRealizationOpen] = useState(false);
     const channelRef = useRef(null);
@@ -193,6 +197,22 @@ export default function AccommodationPage({ mode = "technician" }) {
         });
     }, [filter, requests, search]);
 
+    const requestCounts = useMemo(() => {
+        const counts = filters.reduce(
+            (acc, item) => ({ ...acc, [item.key]: 0 }),
+            {},
+        );
+        counts.all = requests.length;
+
+        for (const item of requests) {
+            if (counts[item.status] !== undefined) {
+                counts[item.status] += 1;
+            }
+        }
+
+        return counts;
+    }, [requests]);
+
     const selectedRequest = useMemo(
         () => requests.find((item) => item.id === selectedId) ?? null,
         [requests, selectedId],
@@ -214,6 +234,31 @@ export default function AccommodationPage({ mode = "technician" }) {
         };
     }, [requests]);
 
+    const customerOptions = useMemo(
+        () =>
+            customers.map((customer) => ({
+                value: customer.id,
+                label: customer.name ?? "-",
+            })),
+        [customers],
+    );
+
+    const projectOptions = useMemo(() => {
+        if (!createForm.customerId) return [];
+
+        return projects
+            .filter((project) => project.customer_id === createForm.customerId)
+            .map((project) => ({
+                value: project.id,
+                label: getProjectLabel(project),
+            }));
+    }, [createForm.customerId, projects]);
+
+    const openCreateModal = () => {
+        setCreateForm({ customerId: "", projectId: "" });
+        setCreateOpen(true);
+    };
+
     const submitCreate = async (event) => {
         event.preventDefault();
         const formData = new FormData(event.currentTarget);
@@ -224,11 +269,10 @@ export default function AccommodationPage({ mode = "technician" }) {
                 request_title: formData.get("request_title"),
                 purpose: formData.get("purpose"),
                 requested_amount: formData.get("requested_amount"),
-                customer_id: formData.get("customer_id"),
-                project_id: formData.get("project_id"),
-                job_scope: formData.get("job_scope"),
-                notes: formData.get("notes"),
+                customer_id: createForm.customerId,
+                project_id: createForm.projectId,
             });
+            setCreateForm({ customerId: "", projectId: "" });
             setCreateOpen(false);
             await loadData();
         } catch (error) {
@@ -328,7 +372,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                     onToggle={toggleSidebar}
                 />
                 <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
                             <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
                                 {mode === "management"
@@ -340,16 +384,29 @@ export default function AccommodationPage({ mode = "technician" }) {
                                 realisasi operasional teknisi.
                             </p>
                         </div>
-                        {canCreate && (
-                            <button
-                                type="button"
-                                onClick={() => setCreateOpen(true)}
-                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600"
-                            >
-                                <Plus size={16} />
-                                New Request
-                            </button>
-                        )}
+                        <div className="flex w-full flex-col gap-2 md:max-w-xl md:flex-row md:items-center md:justify-end">
+                            <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:max-w-sm md:px-4 md:py-3">
+                                <Search size={16} />
+                                <input
+                                    value={search}
+                                    onChange={(event) =>
+                                        setSearch(event.target.value)
+                                    }
+                                    className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 md:text-base"
+                                    placeholder="Cari title atau purpose..."
+                                />
+                            </label>
+                            {canCreate && (
+                                <button
+                                    type="button"
+                                    onClick={openCreateModal}
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 md:py-3"
+                                >
+                                    <Plus size={16} />
+                                    New Request
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {mode === "management" && (
@@ -389,41 +446,36 @@ export default function AccommodationPage({ mode = "technician" }) {
                         </section>
                     )}
 
-                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                            <div className="flex flex-wrap gap-2">
-                                {filters.map((item) => (
-                                    <button
-                                        key={item.key}
-                                        type="button"
-                                        onClick={() => setFilter(item.key)}
-                                        className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
+                    <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:mt-6 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
+                        {filters.map((item) => (
+                            <button
+                                key={item.key}
+                                type="button"
+                                onClick={() => setFilter(item.key)}
+                                className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-6 md:text-sm ${
+                                    filter === item.key
+                                        ? "bg-sky-500 font-semibold text-white"
+                                        : "font-medium text-slate-600 hover:bg-slate-100"
+                                }`}
+                            >
+                                <span className="inline-flex items-center gap-2">
+                                    <span>{item.label}</span>
+                                    <span
+                                        className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                                             filter === item.key
-                                                ? "bg-sky-500 text-white"
-                                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                                ? "bg-white/20 text-white"
+                                                : "bg-slate-200 text-slate-700"
                                         }`}
                                     >
-                                        {item.label}
-                                    </button>
-                                ))}
-                            </div>
-                            <label className="relative block w-full lg:max-w-xs">
-                                <Search
-                                    size={16}
-                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                                />
-                                <input
-                                    value={search}
-                                    onChange={(event) =>
-                                        setSearch(event.target.value)
-                                    }
-                                    className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-sky-300"
-                                    placeholder="Search title or purpose"
-                                />
-                            </label>
-                        </div>
+                                        {requestCounts[item.key] ?? 0}
+                                    </span>
+                                </span>
+                            </button>
+                        ))}
+                    </div>
 
-                        <div className="mt-4 overflow-x-auto">
+                    <section className="mt-6 rounded-2xl bg-white p-3 shadow-sm">
+                        <div className="overflow-x-auto">
                             <table className="min-w-full text-left text-sm">
                                 <thead className="text-xs uppercase text-slate-500">
                                     <tr className="border-b border-slate-200">
@@ -543,7 +595,10 @@ export default function AccommodationPage({ mode = "technician" }) {
             {createOpen && (
                 <Modal
                     title="Create Accommodation Request"
-                    onClose={() => setCreateOpen(false)}
+                    onClose={() => {
+                        setCreateForm({ customerId: "", projectId: "" });
+                        setCreateOpen(false);
+                    }}
                 >
                     <form
                         onSubmit={submitCreate}
@@ -572,34 +627,48 @@ export default function AccommodationPage({ mode = "technician" }) {
                                 className={inputClass}
                             />
                         </label>
-                        <SelectInput name="customer_id" label="Customer">
-                            <option value="">Optional</option>
-                            {customers.map((customer) => (
-                                <option key={customer.id} value={customer.id}>
-                                    {customer.name}
-                                </option>
-                            ))}
-                        </SelectInput>
-                        <SelectInput name="project_id" label="Project">
-                            <option value="">Optional</option>
-                            {projects.map((project) => (
-                                <option key={project.id} value={project.id}>
-                                    {getProjectLabel(project)}
-                                </option>
-                            ))}
-                        </SelectInput>
-                        <TextInput name="job_scope" label="Job Scope" />
                         <label>
                             <span className="text-sm font-medium text-slate-700">
-                                Notes
+                                Customer
                             </span>
-                            <textarea
-                                name="notes"
-                                rows={2}
-                                className={inputClass}
+                            <CustomSelect
+                                value={createForm.customerId}
+                                onChange={(value) =>
+                                    setCreateForm({
+                                        customerId: value,
+                                        projectId: "",
+                                    })
+                                }
+                                options={customerOptions}
+                                placeholder="Optional"
                             />
                         </label>
-                        <SubmitButton saving={saving} label="Submit Request" />
+                        <label>
+                            <span className="text-sm font-medium text-slate-700">
+                                Project
+                            </span>
+                            <CustomSelect
+                                value={createForm.projectId}
+                                onChange={(value) =>
+                                    setCreateForm((prev) => ({
+                                        ...prev,
+                                        projectId: value,
+                                    }))
+                                }
+                                options={projectOptions}
+                                placeholder={
+                                    createForm.customerId
+                                        ? "Optional"
+                                        : "Pilih customer dulu"
+                                }
+                                disabled={!createForm.customerId}
+                            />
+                        </label>
+                        <SubmitButton
+                            saving={saving}
+                            label="Submit Request"
+                            className="md:col-span-2"
+                        />
                     </form>
                 </Modal>
             )}
@@ -958,8 +1027,8 @@ function DetailDrawer({
 function Modal({ title, children, onClose }) {
     return (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 p-4">
-            <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl md:p-6">
-                <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 md:px-6">
                     <h2 className="text-lg font-semibold text-slate-900">
                         {title}
                     </h2>
@@ -971,7 +1040,9 @@ function Modal({ title, children, onClose }) {
                         <X size={18} />
                     </button>
                 </div>
-                {children}
+                <div className="min-h-0 overflow-y-auto p-4 md:p-6">
+                    {children}
+                </div>
             </div>
         </div>
     );
@@ -982,17 +1053,6 @@ function TextInput({ label, name, ...props }) {
         <label>
             <span className="text-sm font-medium text-slate-700">{label}</span>
             <input name={name} className={inputClass} {...props} />
-        </label>
-    );
-}
-
-function SelectInput({ label, name, children }) {
-    return (
-        <label>
-            <span className="text-sm font-medium text-slate-700">{label}</span>
-            <select name={name} className={inputClass}>
-                {children}
-            </select>
         </label>
     );
 }
@@ -1012,12 +1072,12 @@ function FileInput({ label, name, required }) {
     );
 }
 
-function SubmitButton({ saving, label }) {
+function SubmitButton({ saving, label, className = "" }) {
     return (
         <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
         >
             {saving ? "Saving..." : label}
         </button>
