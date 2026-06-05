@@ -76,10 +76,75 @@ const getMenus = (role, profile) => {
     ];
 };
 
+const usePendingAccommodationCount = (role, userId) => {
+    const [pendingCount, setPendingCount] = useState(0);
+
+    useEffect(() => {
+        if (!userId || !["admin", "management"].includes(role)) {
+            setPendingCount(0);
+            return undefined;
+        }
+
+        let mounted = true;
+        let channel = null;
+
+        const loadPendingCount = async () => {
+            const { count, error } = await supabase
+                .from("accommodation_requests")
+                .select("id", { count: "exact", head: true })
+                .eq("status", "pending");
+
+            if (error) {
+                console.warn(
+                    "[Sidebar] Accommodation pending count skipped:",
+                    error.message,
+                );
+                if (mounted) setPendingCount(0);
+                return;
+            }
+
+            if (mounted) setPendingCount(count ?? 0);
+        };
+
+        loadPendingCount();
+
+        const channelName = createUniqueChannelName(
+            "accommodation-pending-badge",
+            userId,
+        );
+        channel = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "accommodation_requests",
+                },
+                loadPendingCount,
+            );
+
+        channel.subscribe();
+
+        return () => {
+            mounted = false;
+            if (channel) {
+                supabase.removeChannel(channel);
+            }
+        };
+    }, [role, userId]);
+
+    return pendingCount;
+};
+
 export default function Sidebar({ collapsed = false, onToggle }) {
     const { user, role, profile, loading } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
+    const pendingAccommodationCount = usePendingAccommodationCount(
+        role,
+        user?.id,
+    );
     const [newRequestToast, setNewRequestToast] = useState("");
     const toastTimerRef = useRef(null);
     const notifiedRequestIdsRef = useRef(new Set());
@@ -91,6 +156,8 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             "/technician/requests": stats.pending,
             "/services": stats.active,
             "/customer/request": null,
+            "/management/accommodation": pendingAccommodationCount,
+            "/admin/accommodation": pendingAccommodationCount,
         };
 
         const count = badgeByPath[menu.path] ?? 0;
@@ -394,6 +461,10 @@ export function MobileBottomNav() {
     const { role, profile, user } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
+    const pendingAccommodationCount = usePendingAccommodationCount(
+        role,
+        user?.id,
+    );
     const [menuOpen, setMenuOpen] = useState(false);
     const [moreOpen, setMoreOpen] = useState(false);
     const [showTopNav, setShowTopNav] = useState(true);
@@ -405,6 +476,8 @@ export function MobileBottomNav() {
             "/technician/requests": stats.pending,
             "/services": stats.active,
             "/customer/request": null,
+            "/management/accommodation": pendingAccommodationCount,
+            "/admin/accommodation": pendingAccommodationCount,
         };
 
         const count = badgeByPath[menu.path] ?? 0;
