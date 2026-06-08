@@ -19,7 +19,7 @@ console.log("");
 
 console.log("Steps to generate icons:");
 console.log(
-    "1. Use an image editing tool or online converter to convert saplogo.svg to PNG format",
+    "1. Use an image editing tool or online converter to convert OneTrackLogo.svg to PNG format",
 );
 console.log("2. Generate each required size while maintaining aspect ratio");
 console.log(

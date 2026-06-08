@@ -16,7 +16,7 @@ const URLS_TO_CACHE = [
     "/saplogo-square-96x96.png",
     "/saplogo-square-72x72.png",
     "/saplogo-maskable-512x512.png",
-    "/saplogo.svg",
+    "/OneTrackLogo.svg",
 ];
 
 // Install event - cache static assets

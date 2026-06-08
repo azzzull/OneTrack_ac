@@ -47,8 +47,8 @@ function Login() {
         "
                 >
                     <img
-                        src="/saplogo.svg"
-                        alt="SAP Logo"
+                        src="/OneTrackLogo.svg"
+                        alt="OneTrack"
                         className="h-14 w-14 object-contain"
                     />
                     <div>

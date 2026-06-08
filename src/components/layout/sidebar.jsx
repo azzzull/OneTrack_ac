@@ -116,17 +116,15 @@ const usePendingAccommodationCount = (role, userId) => {
             "accommodation-pending-badge",
             userId,
         );
-        channel = supabase
-            .channel(channelName)
-            .on(
-                "postgres_changes",
-                {
-                    event: "*",
-                    schema: "public",
-                    table: "accommodation_requests",
-                },
-                loadPendingCount,
-            );
+        channel = supabase.channel(channelName).on(
+            "postgres_changes",
+            {
+                event: "*",
+                schema: "public",
+                table: "accommodation_requests",
+            },
+            loadPendingCount,
+        );
 
         channel.subscribe();
 
@@ -255,9 +253,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
 
                         const row = payload?.new;
                         if (!row) return;
-                        const status = String(
-                            row.status ?? "pending",
-                        )
+                        const status = String(row.status ?? "pending")
                             .toLowerCase()
                             .replaceAll("-", "_")
                             .replaceAll(" ", "_");
@@ -331,11 +327,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     }, [loading, role, user?.id]);
 
     useEffect(() => {
-        if (
-            loading ||
-            !["admin", "management"].includes(role) ||
-            !user?.id
-        ) {
+        if (loading || !["admin", "management"].includes(role) || !user?.id) {
             return;
         }
 
@@ -376,7 +368,8 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                     if (status !== "pending") return;
 
                     const requestId =
-                        row.id ?? `${row.created_at}-${row.technician_id ?? ""}`;
+                        row.id ??
+                        `${row.created_at}-${row.technician_id ?? ""}`;
                     if (notifiedAccommodationIdsRef.current.has(requestId)) {
                         return;
                     }
@@ -451,8 +444,8 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             }`}
                         >
                             <img
-                                src="/saplogo.svg"
-                                alt="SAP Logo"
+                                src="/OneTrackLogo.svg"
+                                alt="OneTrack"
                                 className={
                                     collapsed
                                         ? "h-10 w-10 object-contain"
@@ -683,7 +676,7 @@ export function MobileBottomNav() {
                 <div className="flex min-h-18 items-center justify-between px-3 py-3">
                     <div className="inline-flex items-center gap-2">
                         <img
-                            src="/saplogo.svg"
+                            src="/OneTrackLogo.svg"
                             alt="SAP Logo"
                             className="h-9 w-9 object-contain"
                         />

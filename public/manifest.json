@@ -50,7 +50,7 @@
             "purpose": "maskable"
         },
         {
-            "src": "/saplogo.svg",
+            "src": "/OneTrackLogo.svg",
             "sizes": "any",
             "type": "image/svg+xml"
         }
