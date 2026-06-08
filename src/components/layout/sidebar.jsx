@@ -86,7 +86,6 @@ const usePendingAccommodationCount = (role, userId) => {
 
     useEffect(() => {
         if (!userId || !["admin", "management"].includes(role)) {
-            setPendingCount(0);
             return undefined;
         }
 

@@ -1140,10 +1140,13 @@ function ReceiptPhotoInput({ label, file, onChange }) {
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraReady, setCameraReady] = useState(false);
     const [cameraError, setCameraError] = useState("");
-    const [previewUrl, setPreviewUrl] = useState("");
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const streamRef = useRef(null);
+    const previewUrl = useMemo(() => {
+        if (!file || !String(file.type ?? "").startsWith("image/")) return "";
+        return URL.createObjectURL(file);
+    }, [file]);
 
     const stopCamera = useCallback(() => {
         if (videoRef.current) {
@@ -1157,16 +1160,12 @@ function ReceiptPhotoInput({ label, file, onChange }) {
         setCameraOpen(false);
     }, []);
 
-    useEffect(() => {
-        if (!file || !String(file.type ?? "").startsWith("image/")) {
-            setPreviewUrl("");
-            return undefined;
-        }
-
-        const url = URL.createObjectURL(file);
-        setPreviewUrl(url);
-        return () => URL.revokeObjectURL(url);
-    }, [file]);
+    useEffect(
+        () => () => {
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+        },
+        [previewUrl],
+    );
 
     useEffect(() => () => stopCamera(), [stopCamera]);
 
