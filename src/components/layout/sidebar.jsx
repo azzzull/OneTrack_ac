@@ -587,9 +587,11 @@ export function MobileBottomNav() {
         role,
         user?.id,
     );
+    const navRef = useRef(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const [moreOpen, setMoreOpen] = useState(false);
     const [showTopNav, setShowTopNav] = useState(true);
+    const [primaryCount, setPrimaryCount] = useState(4);
     const lastScrollRef = useRef(0);
     const MOBILE_TOP_NAV_HEIGHT = 72;
     const menus = getMenus(role, profile).map((menu) => {
@@ -608,7 +610,6 @@ export function MobileBottomNav() {
             badge: count > 0 ? count : null,
         };
     });
-    const primaryCount = 4;
     const primaryMenus = menus.slice(0, primaryCount);
     const extraMenus = menus.slice(primaryCount);
     const canOpenProfile =
@@ -622,6 +623,14 @@ export function MobileBottomNav() {
         user?.user_metadata?.full_name?.trim() ||
         user?.email ||
         "User";
+
+    const estimateMenuWidth = (menu) => {
+        const badgeWidth = menu.badge ? 20 : 0;
+        const labelWidth = Math.max(28, menu.label.length * 6.2);
+        return 16 + 20 + 6 + labelWidth + badgeWidth;
+    };
+
+    const estimateMoreWidth = () => 82;
 
     useEffect(() => {
         const onScroll = () => {
@@ -660,6 +669,71 @@ export function MobileBottomNav() {
             document.body.style.paddingTop = "";
         };
     }, []);
+
+    useEffect(() => {
+        const recomputePrimaryCount = () => {
+            const width = navRef.current?.clientWidth ?? window.innerWidth;
+            const availableWidth = Math.max(0, width - 8);
+            if (!menus.length) {
+                setPrimaryCount(0);
+                return;
+            }
+
+            let nextPrimaryCount = 1;
+            for (let count = 1; count <= menus.length; count += 1) {
+                const primaryWidth = menus
+                    .slice(0, count)
+                    .reduce(
+                        (total, menu) => total + estimateMenuWidth(menu),
+                        0,
+                    );
+                const hasOverflow = count < menus.length;
+                const totalWidth =
+                    primaryWidth +
+                    (hasOverflow ? estimateMoreWidth() : 0) +
+                    Math.max(0, count - 1) * 4;
+
+                if (totalWidth <= availableWidth) {
+                    nextPrimaryCount = count;
+                } else {
+                    break;
+                }
+            }
+
+            if (menus.length > 1) {
+                nextPrimaryCount = Math.max(1, nextPrimaryCount);
+            }
+            setPrimaryCount(nextPrimaryCount);
+        };
+
+        recomputePrimaryCount();
+        window.addEventListener("resize", recomputePrimaryCount);
+        window.addEventListener("orientationchange", recomputePrimaryCount);
+
+        const observer =
+            typeof ResizeObserver !== "undefined" && navRef.current
+                ? new ResizeObserver(() => recomputePrimaryCount())
+                : null;
+        if (observer && navRef.current) {
+            observer.observe(navRef.current);
+        }
+
+        return () => {
+            window.removeEventListener("resize", recomputePrimaryCount);
+            window.removeEventListener(
+                "orientationchange",
+                recomputePrimaryCount,
+            );
+            if (observer) observer.disconnect();
+        };
+    }, [
+        role,
+        profile?.technician_type,
+        stats.pending,
+        stats.active,
+        pendingAccommodationCount,
+        menus,
+    ]);
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -721,15 +795,18 @@ export function MobileBottomNav() {
                 )}
             </header>
 
-            <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white md:hidden">
-                <ul className="flex items-center justify-around gap-0">
+            <nav
+                ref={navRef}
+                className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-1 md:hidden"
+            >
+                <ul className="flex items-stretch gap-1 overflow-hidden">
                     {primaryMenus.map(({ label, path, icon, badge }) => (
-                        <li key={label} className="flex-1">
+                        <li key={label} className="min-w-0 flex-1">
                             <NavLink
                                 end
                                 to={path}
                                 className={({ isActive }) =>
-                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! relative block px-2 py-2.5 transition-colors duration-200 ${
+                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! relative flex h-full w-full items-center justify-center px-1 py-2.5 transition-colors duration-200 ${
                                         isActive
                                             ? "text-sky-500 border-b-2 border-sky-500 font-semibold"
                                             : "text-slate-500 border-b-2 border-transparent hover:text-slate-700"
@@ -737,7 +814,7 @@ export function MobileBottomNav() {
                                 }
                                 style={{ textDecoration: "none" }}
                             >
-                                <div className="flex flex-col items-center gap-1">
+                                <div className="flex min-w-0 flex-col items-center gap-1">
                                     <span className="relative inline-flex">
                                         {createElement(icon, { size: 20 })}
                                         {badge && (
@@ -754,11 +831,11 @@ export function MobileBottomNav() {
                         </li>
                     ))}
                     {extraMenus.length > 0 && (
-                        <li className="flex-1">
+                        <li className="min-w-0">
                             <button
                                 type="button"
                                 onClick={() => setMoreOpen(true)}
-                                className="no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! block w-full px-2 py-2.5 text-slate-500 transition-colors duration-200 hover:text-slate-700"
+                                className="no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex h-full w-20.5 items-center justify-center px-1 py-2.5 text-slate-500 transition-colors duration-200 hover:text-slate-700"
                             >
                                 <div className="flex flex-col items-center gap-1">
                                     <MoreHorizontal size={20} />

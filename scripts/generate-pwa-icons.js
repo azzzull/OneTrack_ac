@@ -31,9 +31,9 @@ console.log(
 console.log("");
 
 console.log("Example filenames:");
-console.log("- saplogo-square-192x192.png");
-console.log("- saplogo-square-512x512.png");
-console.log("- saplogo-maskable-512x512.png");
+console.log("- OneTrackLogo-square-192x192.png");
+console.log("- OneTrackLogo-square-512x512.png");
+console.log("- OneTrackLogo-maskable-512x512.png");
 console.log("");
 
 console.log(

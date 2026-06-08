@@ -11,7 +11,6 @@ import {
     Camera,
     CheckCircle2,
     Clock3,
-    Download,
     FileImage,
     FolderOpen,
     Plus,
@@ -23,6 +22,7 @@ import {
     XCircle,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import ImagePreviewModal from "../../components/ImagePreviewModal";
 import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
@@ -79,6 +79,15 @@ const formatDate = (value) => {
 
 const getProjectLabel = (project) =>
     project?.project_name || project?.name || "Project";
+
+const getAccommodationCustomerLabel = (request) =>
+    request?.customer_name || request?.customer?.name || "-";
+
+const getAccommodationProjectLabel = (request) =>
+    request?.project_name ||
+    request?.project?.project_name ||
+    request?.project?.name ||
+    "-";
 
 const StatusBadge = ({ status }) => (
     <span
@@ -275,6 +284,12 @@ export default function AccommodationPage({ mode = "technician" }) {
     const submitCreate = async (event) => {
         event.preventDefault();
         const formData = new FormData(event.currentTarget);
+        const selectedCustomer = customers.find(
+            (customer) => customer.id === createForm.customerId,
+        );
+        const selectedProject = projects.find(
+            (project) => project.id === createForm.projectId,
+        );
         try {
             setSaving(true);
             await createAccommodationRequest({
@@ -284,6 +299,8 @@ export default function AccommodationPage({ mode = "technician" }) {
                 requested_amount: formData.get("requested_amount"),
                 customer_id: createForm.customerId,
                 project_id: createForm.projectId,
+                customer_name: selectedCustomer?.name ?? null,
+                project_name: selectedProject?.project_name ?? null,
             });
             setCreateForm({ customerId: "", projectId: "" });
             setCreateOpen(false);
@@ -849,6 +866,31 @@ function DetailDrawer({
     onAddRealization,
     onDelete,
 }) {
+    const [imagePreview, setImagePreview] = useState({
+        open: false,
+        url: "",
+        label: "",
+    });
+
+    const isImagePreviewableUrl = (url) =>
+        /\.(png|jpe?g|webp|gif|bmp|avif|svg)(\?.*)?$/i.test(
+            String(url ?? ""),
+        );
+
+    const openImagePreview = (url, label) => {
+        if (!url) return;
+        if (!isImagePreviewableUrl(url)) {
+            window.open(url, "_blank", "noopener,noreferrer");
+            return;
+        }
+
+        setImagePreview({
+            open: true,
+            url,
+            label,
+        });
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40">
             <button
@@ -955,11 +997,11 @@ function DetailDrawer({
                         </p>
                         <p>
                             <span className="font-medium">Customer:</span>{" "}
-                            {request.customer?.name ?? "-"}
+                            {getAccommodationCustomerLabel(request)}
                         </p>
                         <p>
                             <span className="font-medium">Project:</span>{" "}
-                            {getProjectLabel(request.project) ?? "-"}
+                            {getAccommodationProjectLabel(request)}
                         </p>
                         <p>
                             <span className="font-medium">Notes:</span>{" "}
@@ -990,15 +1032,19 @@ function DetailDrawer({
                             </p>
                         )}
                         {request.transfer_proof_url && (
-                            <a
-                                href={request.transfer_proof_url}
-                                target="_blank"
-                                rel="noreferrer"
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    openImagePreview(
+                                        request.transfer_proof_url,
+                                        "Transfer Proof",
+                                    )
+                                }
                                 className="inline-flex w-fit items-center gap-2 rounded-xl border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-700 no-underline hover:bg-sky-50"
                             >
-                                <Download size={16} />
-                                Download Transfer Proof
-                            </a>
+                                <FileImage size={16} />
+                                Preview Transfer Proof
+                            </button>
                         )}
                     </div>
                 </section>
@@ -1030,15 +1076,19 @@ function DetailDrawer({
                                                 )}
                                             </p>
                                         </div>
-                                        <a
-                                            href={item.receipt_photo_url}
-                                            target="_blank"
-                                            rel="noreferrer"
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                openImagePreview(
+                                                    item.receipt_photo_url,
+                                                    "Receipt",
+                                                )
+                                            }
                                             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 no-underline hover:bg-slate-50"
                                         >
                                             <FileImage size={16} />
-                                            View Receipt
-                                        </a>
+                                            Preview Receipt
+                                        </button>
                                     </div>
                                     <p className="mt-2 text-sm text-slate-600">
                                         {item.description ?? "-"}
@@ -1058,6 +1108,20 @@ function DetailDrawer({
                         Admin dapat monitoring dan menghapus pengajuan.
                         Approval tetap hanya untuk role management.
                     </p>
+                )}
+                {imagePreview.open && (
+                    <ImagePreviewModal
+                        title={`Preview Foto ${imagePreview.label}`}
+                        src={imagePreview.url}
+                        alt={`Foto ${imagePreview.label}`}
+                        onClose={() =>
+                            setImagePreview({
+                                open: false,
+                                url: "",
+                                label: "",
+                            })
+                        }
+                    />
                 )}
             </aside>
         </div>

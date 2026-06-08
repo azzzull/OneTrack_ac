@@ -7,15 +7,6 @@ const URLS_TO_CACHE = [
     "/",
     "/index.html",
     "/manifest.json",
-    "/saplogo-square-192x192.png",
-    "/saplogo-square-512x512.png",
-    "/saplogo-square-180x180.png",
-    "/saplogo-square-152x152.png",
-    "/saplogo-square-167x167.png",
-    "/saplogo-square-144x144.png",
-    "/saplogo-square-96x96.png",
-    "/saplogo-square-72x72.png",
-    "/saplogo-maskable-512x512.png",
     "/OneTrackLogo.svg",
 ];
 

@@ -9,13 +9,13 @@ import {
 import {
     Banknote,
     Clock3,
-    Download,
     FileImage,
     Receipt,
     Wallet,
     X,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import ImagePreviewModal from "../../components/ImagePreviewModal";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
@@ -48,6 +48,15 @@ const daysSince = (value) => {
         Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24)),
     );
 };
+
+const getAccommodationCustomerLabel = (request) =>
+    request?.customer_name || request?.customer?.name || "-";
+
+const getAccommodationProjectLabel = (request) =>
+    request?.project_name ||
+    request?.project?.project_name ||
+    request?.project?.name ||
+    "-";
 
 const SummaryCard = ({ title, value, icon: Icon }) => (
     <div className="rounded-2xl bg-white p-4 shadow-sm">
@@ -112,8 +121,30 @@ export default function AccommodationReports() {
     const [yearFilter, setYearFilter] = useState(getYearKey());
     const [reportView, setReportView] = useState("overall");
     const [selectedRequestId, setSelectedRequestId] = useState(null);
+    const [imagePreview, setImagePreview] = useState({
+        open: false,
+        url: "",
+        label: "",
+    });
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
+
+    const isImagePreviewableUrl = (url) =>
+        /\.(png|jpe?g|webp|gif|bmp|avif|svg)(\?.*)?$/i.test(String(url ?? ""));
+
+    const openImagePreview = (url, label) => {
+        if (!url) return;
+        if (!isImagePreviewableUrl(url)) {
+            window.open(url, "_blank", "noopener,noreferrer");
+            return;
+        }
+
+        setImagePreview({
+            open: true,
+            url,
+            label,
+        });
+    };
 
     const loadData = useCallback(async () => {
         try {
@@ -348,7 +379,7 @@ export default function AccommodationReports() {
                                 onClick={exportCsv}
                                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
                             >
-                                <Download size={16} />
+                                <Receipt size={16} />
                                 Export CSV
                             </button>
                             <p className="text-sm font-medium text-slate-500">
@@ -710,7 +741,18 @@ export default function AccommodationReports() {
             {selectedRequest && (
                 <ReportDetailDrawer
                     request={selectedRequest}
+                    onPreview={openImagePreview}
                     onClose={() => setSelectedRequestId(null)}
+                />
+            )}
+            {imagePreview.open && (
+                <ImagePreviewModal
+                    title={`Preview Foto ${imagePreview.label}`}
+                    src={imagePreview.url}
+                    alt={`Foto ${imagePreview.label}`}
+                    onClose={() =>
+                        setImagePreview({ open: false, url: "", label: "" })
+                    }
                 />
             )}
             <MobileBottomNav />
@@ -718,7 +760,7 @@ export default function AccommodationReports() {
     );
 }
 
-function ReportDetailDrawer({ request, onClose }) {
+function ReportDetailDrawer({ request, onClose, onPreview }) {
     return (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40">
             <button
@@ -792,13 +834,11 @@ function ReportDetailDrawer({ request, onClose }) {
                         </p>
                         <p>
                             <span className="font-medium">Customer:</span>{" "}
-                            {request.customer?.name ?? "-"}
+                            {getAccommodationCustomerLabel(request)}
                         </p>
                         <p>
                             <span className="font-medium">Project:</span>{" "}
-                            {request.project?.project_name ??
-                                request.project?.name ??
-                                "-"}
+                            {getAccommodationProjectLabel(request)}
                         </p>
                         <p>
                             <span className="font-medium">Request Date:</span>{" "}
@@ -829,15 +869,19 @@ function ReportDetailDrawer({ request, onClose }) {
                             </p>
                         )}
                         {request.transfer_proof_url && (
-                            <a
-                                href={request.transfer_proof_url}
-                                target="_blank"
-                                rel="noreferrer"
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    onPreview(
+                                        request.transfer_proof_url,
+                                        "Transfer Proof",
+                                    )
+                                }
                                 className="inline-flex w-fit items-center gap-2 rounded-xl border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-700 no-underline hover:bg-sky-50"
                             >
-                                <Download size={16} />
-                                Download Transfer Proof
-                            </a>
+                                <FileImage size={16} />
+                                Preview Transfer Proof
+                            </button>
                         )}
                     </div>
                 </section>
@@ -869,15 +913,19 @@ function ReportDetailDrawer({ request, onClose }) {
                                                 )}
                                             </p>
                                         </div>
-                                        <a
-                                            href={item.receipt_photo_url}
-                                            target="_blank"
-                                            rel="noreferrer"
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                onPreview(
+                                                    item.receipt_photo_url,
+                                                    "Receipt",
+                                                )
+                                            }
                                             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 no-underline hover:bg-slate-50"
                                         >
                                             <FileImage size={16} />
-                                            View Receipt
-                                        </a>
+                                            Preview Receipt
+                                        </button>
                                     </div>
                                     <p className="mt-2 text-sm text-slate-600">
                                         {item.description ?? "-"}

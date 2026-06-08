@@ -176,6 +176,8 @@ export const loadAccommodationRequests = async ({ role, userId } = {}) => {
             ),
             technician: profileMap[row.technician_id] ?? null,
             reviewer: profileMap[row.reviewed_by] ?? null,
+            customer_name: row.customer_name ?? null,
+            project_name: row.project_name ?? null,
             customer: customerMap[row.customer_id] ?? null,
             project: projectMap[row.project_id] ?? null,
         };
@@ -215,6 +217,8 @@ export const createAccommodationRequest = async (payload) => {
             technician_id: payload.technician_id,
             customer_id: payload.customer_id || null,
             project_id: payload.project_id || null,
+            customer_name: payload.customer_name || null,
+            project_name: payload.project_name || null,
             request_title: payload.request_title,
             purpose: payload.purpose,
             job_scope: payload.job_scope || null,

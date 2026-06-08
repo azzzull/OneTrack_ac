@@ -555,7 +555,7 @@ export default function TechnicianDashboard() {
                         <p className="text-sm font-semibold uppercase tracking-wide text-sky-100">
                             Ringkasan Penyelesaian
                         </p>
-                        <p className="mt-2 text-5xl font-bold">
+                        <p className="mt-2 text-3xl font-bold md:text-5xl">
                             {completionRate}%
                         </p>
                         <p className="mt-2 text-lg text-sky-100">
