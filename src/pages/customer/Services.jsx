@@ -435,8 +435,8 @@ function CustomerServicesPage() {
                                 ))}
 
                                 {filteredRequests.length > ITEMS_PER_PAGE && (
-                                    <div className="mt-6 flex flex-col items-center justify-between gap-4 sm:flex-row">
-                                        <div className="text-sm text-slate-600">
+                                    <div className="mt-6 flex items-center justify-center sm:justify-between">
+                                        <div className="hidden text-sm text-slate-600 sm:block">
                                             Page{" "}
                                             <span className="font-semibold">
                                                 {currentPage}
@@ -456,7 +456,7 @@ function CustomerServicesPage() {
                                             results
                                         </div>
 
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex max-w-full items-center gap-1 sm:gap-2">
                                             <button
                                                 type="button"
                                                 onClick={() =>
@@ -468,13 +468,13 @@ function CustomerServicesPage() {
                                                     )
                                                 }
                                                 disabled={currentPage === 1}
-                                                className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:h-auto sm:w-auto sm:p-2"
                                                 title="Previous page"
                                             >
-                                                <ChevronLeft size={18} />
+                                                <ChevronLeft size={16} />
                                             </button>
 
-                                            <div className="flex gap-1">
+                                            <div className="flex max-w-full flex-nowrap gap-1 overflow-hidden">
                                                 {Array.from(
                                                     { length: totalPages },
                                                     (_, index) => index + 1,
@@ -487,7 +487,7 @@ function CustomerServicesPage() {
                                                                 page,
                                                             )
                                                         }
-                                                        className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                                        className={`inline-flex h-8 min-w-7 shrink-0 items-center justify-center rounded-lg px-1.5 py-1.5 text-xs font-medium transition sm:h-auto sm:min-w-10 sm:px-3 sm:py-2 sm:text-sm ${
                                                             currentPage ===
                                                             page
                                                                 ? "bg-sky-500 text-white"
@@ -512,10 +512,10 @@ function CustomerServicesPage() {
                                                 disabled={
                                                     currentPage === totalPages
                                                 }
-                                                className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:h-auto sm:w-auto sm:p-2"
                                                 title="Next page"
                                             >
-                                                <ChevronRight size={18} />
+                                                <ChevronRight size={16} />
                                             </button>
                                         </div>
                                     </div>

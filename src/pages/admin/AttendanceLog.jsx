@@ -1283,8 +1283,8 @@ const AttendanceLog = () => {
                                 {/* Pagination */}
                                 {shouldPaginate &&
                                     filteredData.length > ITEMS_PER_PAGE && (
-                                        <div className="flex flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-6">
-                                            <div className="text-sm text-slate-600">
+                                        <div className="flex items-center justify-center px-4 py-4 sm:justify-between sm:px-6">
+                                            <div className="hidden text-sm text-slate-600 sm:block">
                                                 Halaman{" "}
                                                 <span className="font-semibold">
                                                     {currentPage}
@@ -1304,7 +1304,7 @@ const AttendanceLog = () => {
                                                 data
                                             </div>
 
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex max-w-full items-center gap-1 sm:gap-2">
                                                 <button
                                                     onClick={() =>
                                                         setCurrentPage((p) =>
@@ -1312,11 +1312,11 @@ const AttendanceLog = () => {
                                                         )
                                                     }
                                                     disabled={currentPage === 1}
-                                                    className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50 sm:h-auto sm:w-auto sm:p-2"
                                                     title="Halaman sebelumnya"
                                                 >
                                                     <svg
-                                                        className="w-4 h-4"
+                                                        className="h-4 w-4"
                                                         fill="none"
                                                         stroke="currentColor"
                                                         viewBox="0 0 24 24"
@@ -1330,7 +1330,7 @@ const AttendanceLog = () => {
                                                     </svg>
                                                 </button>
 
-                                                <div className="flex max-w-full flex-wrap justify-center gap-1">
+                                                <div className="flex max-w-full flex-nowrap justify-center gap-1 overflow-hidden">
                                                     {paginationItems.map(
                                                         (item) =>
                                                             typeof item ===
@@ -1342,7 +1342,7 @@ const AttendanceLog = () => {
                                                                             item,
                                                                         )
                                                                     }
-                                                                    className={`inline-flex min-w-10 items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                                                    className={`inline-flex h-8 min-w-7 shrink-0 items-center justify-center rounded-lg px-1.5 py-1.5 text-xs font-medium transition sm:h-auto sm:min-w-10 sm:px-3 sm:py-2 sm:text-sm ${
                                                                         currentPage ===
                                                                         item
                                                                             ? "bg-sky-500 text-white"
@@ -1354,7 +1354,7 @@ const AttendanceLog = () => {
                                                             ) : (
                                                                 <span
                                                                     key={item}
-                                                                    className="inline-flex min-w-8 items-center justify-center px-1 text-sm font-semibold text-slate-400"
+                                                                    className="inline-flex h-8 min-w-5 shrink-0 items-center justify-center px-0.5 text-xs font-semibold text-slate-400 sm:min-w-8 sm:px-1 sm:text-sm"
                                                                 >
                                                                     ...
                                                                 </span>
@@ -1375,11 +1375,11 @@ const AttendanceLog = () => {
                                                         currentPage ===
                                                         totalPages
                                                     }
-                                                    className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50 sm:h-auto sm:w-auto sm:p-2"
                                                     title="Halaman berikutnya"
                                                 >
                                                     <svg
-                                                        className="w-4 h-4"
+                                                        className="h-4 w-4"
                                                         fill="none"
                                                         stroke="currentColor"
                                                         viewBox="0 0 24 24"

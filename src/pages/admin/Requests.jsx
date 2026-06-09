@@ -1212,8 +1212,8 @@ export default function AdminRequestsPage() {
                         )}
 
                         {filteredRequests.length > ITEMS_PER_PAGE && (
-                            <div className="mt-6 flex flex-col items-center justify-between gap-4 sm:flex-row">
-                                <div className="text-sm text-slate-600">
+                            <div className="mt-6 flex items-center justify-center sm:justify-between">
+                                <div className="hidden text-sm text-slate-600 sm:block">
                                     Page{" "}
                                     <span className="font-semibold">
                                         {currentPage}
@@ -1233,7 +1233,7 @@ export default function AdminRequestsPage() {
                                     results
                                 </div>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex max-w-full items-center gap-1 sm:gap-2">
                                     <button
                                         onClick={() =>
                                             setCurrentPage((p) =>
@@ -1241,13 +1241,13 @@ export default function AdminRequestsPage() {
                                             )
                                         }
                                         disabled={currentPage === 1}
-                                        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50 sm:h-auto sm:w-auto sm:p-2"
                                         title="Previous page"
                                     >
-                                        <ChevronLeft size={18} />
+                                        <ChevronLeft size={16} />
                                     </button>
 
-                                    <div className="flex max-w-full flex-wrap justify-center gap-1">
+                                    <div className="flex max-w-full flex-nowrap justify-center gap-1 overflow-hidden">
                                         {paginationItems.map((item) =>
                                             typeof item === "number" ? (
                                                 <button
@@ -1255,7 +1255,7 @@ export default function AdminRequestsPage() {
                                                     onClick={() =>
                                                         setCurrentPage(item)
                                                     }
-                                                    className={`inline-flex min-w-10 items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                                    className={`inline-flex h-8 min-w-7 shrink-0 items-center justify-center rounded-lg px-1.5 py-1.5 text-xs font-medium transition sm:h-auto sm:min-w-10 sm:px-3 sm:py-2 sm:text-sm ${
                                                         currentPage === item
                                                             ? "bg-sky-500 text-white"
                                                             : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
@@ -1266,7 +1266,7 @@ export default function AdminRequestsPage() {
                                             ) : (
                                                 <span
                                                     key={item}
-                                                    className="inline-flex min-w-8 items-center justify-center px-1 text-sm font-semibold text-slate-400"
+                                                    className="inline-flex h-8 min-w-5 shrink-0 items-center justify-center px-0.5 text-xs font-semibold text-slate-400 sm:min-w-8 sm:px-1 sm:text-sm"
                                                 >
                                                     ...
                                                 </span>
@@ -1281,10 +1281,10 @@ export default function AdminRequestsPage() {
                                             )
                                         }
                                         disabled={currentPage === totalPages}
-                                        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50 sm:h-auto sm:w-auto sm:p-2"
                                         title="Next page"
                                     >
-                                        <ChevronRight size={18} />
+                                        <ChevronRight size={16} />
                                     </button>
                                 </div>
                             </div>

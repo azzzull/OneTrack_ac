@@ -143,6 +143,7 @@ export default function AccommodationPage({ mode = "technician" }) {
     const isTechnician = role === "technician";
     const isInternalTechnician =
         isTechnician && profile?.technician_type === "internal";
+    const showTechnicianColumn = mode !== "technician";
     const canApprove = isManagement && mode === "management";
     const canCreate = mode === "technician" && isInternalTechnician;
     const canAddRealization = mode === "technician" && isInternalTechnician;
@@ -531,7 +532,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                             <table className="min-w-full text-left text-sm">
                                 <thead className="text-xs uppercase text-slate-500">
                                     <tr className="border-b border-slate-200">
-                                        {mode === "management" && (
+                                        {showTechnicianColumn && (
                                             <th className="px-3 py-3">
                                                 Technician
                                             </th>
@@ -550,9 +551,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         <tr>
                                             <td
                                                 colSpan={
-                                                    mode === "management"
-                                                        ? 8
-                                                        : 7
+                                                    showTechnicianColumn ? 8 : 7
                                                 }
                                                 className="px-3 py-8 text-center text-slate-500"
                                             >
@@ -569,7 +568,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                                 }
                                                 className="cursor-pointer border-b border-slate-100 hover:bg-sky-50"
                                             >
-                                                {mode === "management" && (
+                                                {showTechnicianColumn && (
                                                     <td className="px-3 py-3 text-slate-700">
                                                         {getDisplayName(
                                                             item.technician,
@@ -625,9 +624,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         <tr>
                                             <td
                                                 colSpan={
-                                                    mode === "management"
-                                                        ? 8
-                                                        : 7
+                                                    showTechnicianColumn ? 8 : 7
                                                 }
                                                 className="px-3 py-8 text-center text-slate-500"
                                             >
