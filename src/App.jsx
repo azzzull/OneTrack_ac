@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/routes/ProtectedRoute";
+import { registerPushNotifications } from "@/services/pushNotifications";
 import { useAuth } from "@/context/useAuth";
 import AuthLoadingScreen from "@/components/AuthLoadingScreen";
 
@@ -20,7 +22,12 @@ import ProfilePage from "@/pages/Profile";
 import Login from "@/pages/Login";
 
 function App() {
-    const { loading } = useAuth();
+    const { loading, user } = useAuth();
+
+    useEffect(() => {
+        if (loading || !user?.id) return;
+        registerPushNotifications(user.id);
+    }, [loading, user?.id]);
 
     if (loading) return <AuthLoadingScreen />;
 
@@ -102,7 +109,9 @@ function App() {
             <Route
                 path="/jobs/new"
                 element={
-                    <ProtectedRoute allowedRoles={["admin", "management", "technician"]}>
+                    <ProtectedRoute
+                        allowedRoles={["admin", "management", "technician"]}
+                    >
                         <AdminNewJobPage />
                     </ProtectedRoute>
                 }
@@ -123,12 +132,7 @@ function App() {
                     </ProtectedRoute>
                 }
             />
-            <Route
-                path="/reports"
-                element={
-                    <Navigate to="/admin" replace />
-                }
-            />
+            <Route path="/reports" element={<Navigate to="/admin" replace />} />
             <Route
                 path="/customer"
                 element={
@@ -156,7 +160,14 @@ function App() {
             <Route
                 path="/profile"
                 element={
-                    <ProtectedRoute allowedRoles={["customer", "technician", "management", "admin"]}>
+                    <ProtectedRoute
+                        allowedRoles={[
+                            "customer",
+                            "technician",
+                            "management",
+                            "admin",
+                        ]}
+                    >
                         <ProfilePage />
                     </ProtectedRoute>
                 }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "770014277176",
+    "project_id": "onetrack-ca832",
+    "storage_bucket": "onetrack-ca832.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:770014277176:android:ae76c09309fcf9783480cd",
+        "android_client_info": {
+          "package_name": "com.onetrack.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB4BtD6MWWnW1_MRMAMpjSoufTN_o4s06s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
