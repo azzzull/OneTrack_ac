@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useId, useRef, useState, useCallback } from "react";
 import supabase from "../supabaseClient";
 import { useAuth } from "../context/useAuth";
 import { createUniqueChannelName } from "../utils/realtimeChannelManager";
@@ -39,6 +39,7 @@ export default function useRequestStats() {
     const [stats, setStats] = useState(INITIAL_STATS);
 
     const channelRef = useRef(null);
+    const instanceId = useId().replaceAll(":", "");
     const isMountedRef = useRef(true);
     const roleRef = useRef(role);
     const loadingRef = useRef(loading);
@@ -98,8 +99,7 @@ export default function useRequestStats() {
 
         isMountedRef.current = true;
 
-        // Immediate stats load
-        loadStats();
+        const initialLoadTimerId = setTimeout(loadStats, 0);
 
         // Async channel setup with unique name
         const setupChannel = async () => {
@@ -108,7 +108,7 @@ export default function useRequestStats() {
                 // This prevents "cannot add postgres_changes callbacks after subscribe()" error
                 // ✅ CRITICAL FIX: Use unique channel name with user ID
                 const channelName = createUniqueChannelName(
-                    "requests-stats",
+                    `requests-stats-${instanceId}`,
                     user.id,
                 );
 
@@ -184,6 +184,7 @@ export default function useRequestStats() {
             isMountedRef.current = false;
 
             // Clear intervals and event listeners
+            clearTimeout(initialLoadTimerId);
             clearInterval(intervalId);
             document.removeEventListener("visibilitychange", handleFocus);
             window.removeEventListener("focus", handleFocus);
@@ -196,7 +197,7 @@ export default function useRequestStats() {
                 console.log("[useRequestStats] Channel cleaned up");
             }
         };
-    }, [loading, user?.id, loadStats]); // ✅ Only depends on auth
+    }, [instanceId, loading, user?.id, loadStats]); // ✅ Only depends on auth
 
     return stats;
 }

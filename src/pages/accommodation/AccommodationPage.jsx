@@ -176,7 +176,10 @@ export default function AccommodationPage({ mode = "technician" }) {
 
     useEffect(() => {
         if (!user?.id) return;
-        const channelName = createUniqueChannelName("accommodation", user.id);
+        const channelName = `${createUniqueChannelName(
+            "accommodation",
+            user.id,
+        )}-${Date.now()}`;
         channelRef.current = supabase
             .channel(channelName)
             .on(
@@ -198,7 +201,11 @@ export default function AccommodationPage({ mode = "technician" }) {
                 () => loadData(),
             );
 
-        channelRef.current.subscribe();
+        channelRef.current.subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+                loadData();
+            }
+        });
 
         return () => {
             if (channelRef.current) {
@@ -295,6 +302,7 @@ export default function AccommodationPage({ mode = "technician" }) {
             setSaving(true);
             await createAccommodationRequest({
                 technician_id: user.id,
+                technician_name: getDisplayName(profile),
                 request_title: formData.get("request_title"),
                 purpose: formData.get("purpose"),
                 requested_amount: formData.get("requested_amount"),
@@ -333,6 +341,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                     requestId: selectedRequest.id,
                     rejectionReason,
                     reviewedBy: user.id,
+                    technicianName: getDisplayName(selectedRequest.technician),
                 });
             } else {
                 const file = formData.get("transfer_proof");
@@ -349,6 +358,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                     transferProofUrl,
                     reviewedBy: user.id,
                     notes: formData.get("approval_notes"),
+                    technicianName: getDisplayName(selectedRequest.technician),
                 });
             }
             setApprovalMode(null);
@@ -383,6 +393,9 @@ export default function AccommodationPage({ mode = "technician" }) {
                 description: formData.get("description"),
                 transactionDate: formData.get("transaction_date"),
                 createdBy: user.id,
+                technicianName: getDisplayName(
+                    selectedRequest.technician ?? profile,
+                ),
             });
             setRealizationOpen(false);
             setReceiptPhotoFile(null);

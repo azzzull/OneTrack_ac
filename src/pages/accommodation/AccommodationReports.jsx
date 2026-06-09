@@ -177,7 +177,7 @@ export default function AccommodationReports() {
             user.id,
         );
         channelRef.current = supabase
-            .channel(channelName)
+            .channel(`${channelName}-${Date.now()}`)
             .on(
                 "postgres_changes",
                 {
@@ -197,7 +197,11 @@ export default function AccommodationReports() {
                 loadData,
             );
 
-        channelRef.current.subscribe();
+        channelRef.current.subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+                loadData();
+            }
+        });
 
         const intervalId = setInterval(loadData, 30000);
         const handleFocus = () => {

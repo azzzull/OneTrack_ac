@@ -14,10 +14,7 @@ import Card from "../../components/card";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
-import {
-    cleanupAllChannels,
-    createUniqueChannelName,
-} from "../../utils/realtimeChannelManager";
+import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import { getTechnicianJobIds } from "../../services/jobTechniciansService";
 
 const STATUS_META = {
@@ -152,8 +149,6 @@ export default function TechnicianDashboard() {
         // Async channel setup with proper cleanup
         const setupChannel = async () => {
             // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
-            await cleanupAllChannels();
-
             // ✅ CRITICAL FIX: Use unique channel name with user ID
             const channelName = createUniqueChannelName(
                 "technician-dashboard",
@@ -180,6 +175,19 @@ export default function TechnicianDashboard() {
                 .on(
                     "postgres_changes",
                     { event: "*", schema: "public", table: "requests" },
+                    () => {
+                        if (isMountedRef.current) {
+                            loadTasks();
+                        }
+                    },
+                )
+                .on(
+                    "postgres_changes",
+                    {
+                        event: "*",
+                        schema: "public",
+                        table: "job_technicians",
+                    },
                     () => {
                         if (isMountedRef.current) {
                             loadTasks();

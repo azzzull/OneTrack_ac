@@ -33,7 +33,11 @@ const getNotificationTargetPath = (notification, role) => {
         return "/requests";
     }
 
-    if (table === "accommodation_requests" || table === "accommodations") {
+    if (
+        table === "accommodation_requests" ||
+        table === "accommodation_realizations" ||
+        table === "accommodations"
+    ) {
         if (role === "management") return "/management/accommodation";
         if (role === "technician") return "/accommodation";
         return "/admin/accommodation";
@@ -243,7 +247,13 @@ export default function NotificationCenter({ compact = false, align = "right" })
             )}
 
             {toastNotification && !open && (
-                <div className="fixed bottom-24 right-4 z-80 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-sky-200 bg-white p-4 text-left shadow-2xl md:bottom-6">
+                <div
+                    className={`fixed right-3 top-17 z-80 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-sky-200 bg-white p-4 text-left shadow-2xl sm:absolute sm:top-full sm:mt-2 ${
+                        align === "left"
+                            ? "sm:left-0 sm:right-auto"
+                            : "sm:left-auto sm:right-0"
+                    }`}
+                >
                     <div className="flex items-start gap-3">
                         <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600">
                             <Bell size={17} />

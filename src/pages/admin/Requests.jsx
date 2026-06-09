@@ -34,10 +34,7 @@ import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
 import { formatDateUniversal } from "../../utils/dateFormatter";
-import {
-    cleanupAllChannels,
-    createUniqueChannelName,
-} from "../../utils/realtimeChannelManager";
+import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
 import {
     getTechnicianJobIds,
@@ -357,6 +354,22 @@ export default function AdminRequestsPage() {
                     console.warn(
                         "Profiles lookup skipped due to RLS:",
                         profilesError.message,
+                    )
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "*",
+                            schema: "public",
+                            table: "job_technicians",
+                        },
+                        () => {
+                            if (!isMountedRef.current) return;
+                            if (deferRefreshRef.current) {
+                                setHasDeferredRefresh(true);
+                                return;
+                            }
+                            loadRequests();
+                        },
                     );
                 } else {
                     creatorMap = (profiles ?? []).reduce((acc, profile) => {
@@ -413,8 +426,6 @@ export default function AdminRequestsPage() {
             try {
                 // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
                 // This prevents "cannot add postgres_changes callbacks after subscribe()" error
-                await cleanupAllChannels();
-
                 // ✅ CRITICAL FIX: Use unique channel name with user ID
                 const channelName = createUniqueChannelName(
                     "admin-requests",

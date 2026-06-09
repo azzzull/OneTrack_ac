@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import {
     CalendarDays,
     MapPin,
@@ -100,39 +100,56 @@ const AttendanceLog = () => {
     // Unchecked technicians modal
     const [uncheckedModal, setUncheckedModal] = useState(false);
 
-    useEffect(() => {
-        const loadInitialData = async () => {
-            const { data: rpcProfiles, error: rpcError } =
-                await supabase.rpc("get_attendance_profiles");
+    const loadInitialData = useCallback(async () => {
+        const { data: rpcProfiles, error: rpcError } = await supabase.rpc(
+            "get_attendance_profiles",
+        );
 
-            let data = rpcProfiles;
-            let error = rpcError;
+        let data = rpcProfiles;
+        let error = rpcError;
 
-            if (rpcError) {
-                console.warn(
-                    "Attendance profile RPC fallback:",
-                    rpcError.message,
-                );
-                const fallback = await supabase
-                    .from("profiles")
-                    .select("id, first_name, last_name, role")
-                    .in("role", ["technician", "admin", "management"])
-                    .order("first_name", { ascending: true });
-                data = fallback.data;
-                error = fallback.error;
-            }
+        if (rpcError) {
+            console.warn("Attendance profile RPC fallback:", rpcError.message);
+            const fallback = await supabase
+                .from("profiles")
+                .select("id, first_name, last_name, role")
+                .in("role", ["technician", "admin", "management"])
+                .order("first_name", { ascending: true });
+            data = fallback.data;
+            error = fallback.error;
+        }
 
-            if (!error && data) {
-                setTechnicians(data);
-            }
+        if (!error && data) {
+            setTechnicians(data);
+        }
 
-            const result = await getAdminAttendanceLog(null, null, null, null);
-            if (result.success) {
-                setAttendanceData(result.data || []);
-            }
-        };
-        loadInitialData();
+        const result = await getAdminAttendanceLog(null, null, null, null);
+        if (result.success) {
+            setAttendanceData(result.data || []);
+        }
     }, [getAdminAttendanceLog]);
+
+    useEffect(() => {
+        loadInitialData();
+    }, [loadInitialData]);
+
+    useEffect(() => {
+        const channel = supabase
+            .channel(`attendance-admin-log-${Date.now()}`)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "attendance" },
+                () => loadInitialData(),
+            );
+
+        channel.subscribe((status) => {
+            if (status === "SUBSCRIBED") loadInitialData();
+        });
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [loadInitialData]);
 
     useEffect(() => {
         const applyFilter = () => {

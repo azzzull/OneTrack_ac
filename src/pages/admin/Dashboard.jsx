@@ -15,10 +15,7 @@ import Card from "../../components/card";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
-import {
-    cleanupAllChannels,
-    createUniqueChannelName,
-} from "../../utils/realtimeChannelManager";
+import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 
 const STATUS_META = {
     pending: { label: "Pending", color: "#0ea5e9" },
@@ -150,8 +147,6 @@ export default function AdminDashboard() {
         // Async channel setup with proper cleanup
         const setupChannel = async () => {
             // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
-            await cleanupAllChannels();
-
             // ✅ CRITICAL FIX: Use unique channel name with user ID
             const channelName = createUniqueChannelName(
                 "admin-dashboard",
@@ -178,6 +173,19 @@ export default function AdminDashboard() {
                 .on(
                     "postgres_changes",
                     { event: "*", schema: "public", table: "requests" },
+                    () => {
+                        if (isMountedRef.current) {
+                            loadRequests();
+                        }
+                    },
+                )
+                .on(
+                    "postgres_changes",
+                    {
+                        event: "*",
+                        schema: "public",
+                        table: "job_technicians",
+                    },
                     () => {
                         if (isMountedRef.current) {
                             loadRequests();

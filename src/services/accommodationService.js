@@ -5,6 +5,7 @@ import {
     buildNotificationPayload,
     createNotification,
     notifyByRoles,
+    notifyByRolesAlways,
 } from "./notificationService";
 
 export const ACCOMMODATION_BUCKET = "accommodation-proofs";
@@ -58,6 +59,13 @@ export const getDisplayName = (profile) => {
     return composed || profile?.name || profile?.email || "-";
 };
 
+const getNotificationTechnicianName = (profile, fallback) => {
+    const rawFallbackName = String(fallback ?? "").trim();
+    const fallbackName = rawFallbackName === "-" ? "" : rawFallbackName;
+    const profileName = getDisplayName(profile);
+    return profileName && profileName !== "-" ? profileName : fallbackName || "Teknisi";
+};
+
 export const summarizeAccommodation = (request) => {
     const realizations = request?.realizations ?? [];
     const approvedAmount = Number(request?.approved_amount ?? 0);
@@ -109,6 +117,12 @@ const loadProfileMap = async (ids) => {
         acc[profile.id] = profile;
         return acc;
     }, {});
+};
+
+const loadProfileById = async (id) => {
+    if (!id) return null;
+    const profileMap = await loadProfileMap([id]);
+    return profileMap[id] ?? null;
 };
 
 const loadCustomerMap = async (ids) => {
@@ -237,17 +251,23 @@ export const createAccommodationRequest = async (payload) => {
 
     if (error) throw error;
     await sendAccommodationNotification("request_created", data);
+    const technician = await loadProfileById(data.technician_id);
+    const technicianName = getNotificationTechnicianName(
+        technician,
+        payload.technician_name,
+    );
     await notifyByRoles(
         ["admin", "management"],
         buildNotificationPayload({
             type: NOTIFICATION_TYPES.ACCOMMODATION_REQUESTED,
             title: "Pengajuan akomodasi baru",
-            body: "Teknisi mengajukan akomodasi dan menunggu approval.",
+            body: `${technicianName} mengajukan akomodasi dan menunggu approval.`,
             referenceTable: "accommodation_requests",
             referenceId: data.id,
             data: {
                 accommodation_request_id: data.id,
                 technician_id: data.technician_id,
+                technician_name: technicianName,
             },
         }),
     );
@@ -336,6 +356,7 @@ export const approveAccommodationRequest = async ({
     transferProofUrl,
     reviewedBy,
     notes,
+    technicianName: fallbackTechnicianName,
 }) => {
     if (!transferProofUrl) {
         throw new Error("Transfer proof wajib diupload.");
@@ -358,31 +379,23 @@ export const approveAccommodationRequest = async ({
 
     if (error) throw error;
     await sendAccommodationNotification("request_approved", data);
+    const technician = await loadProfileById(data.technician_id);
+    const technicianName = getNotificationTechnicianName(
+        technician,
+        fallbackTechnicianName,
+    );
     await createNotification(
         data.technician_id,
         buildNotificationPayload({
             type: NOTIFICATION_TYPES.ACCOMMODATION_APPROVED,
             title: "Akomodasi disetujui",
-            body: "Pengajuan akomodasi kamu telah disetujui.",
+            body: `Pengajuan akomodasi ${technicianName} telah disetujui.`,
             referenceTable: "accommodation_requests",
             referenceId: data.id,
             data: {
                 accommodation_request_id: data.id,
                 reviewed_by: reviewedBy,
-            },
-        }),
-    );
-    await createNotification(
-        data.technician_id,
-        buildNotificationPayload({
-            type: NOTIFICATION_TYPES.TRANSFER_PROOF_UPLOADED,
-            title: "Bukti transfer diupload",
-            body: "Bukti transfer akomodasi telah diupload.",
-            referenceTable: "accommodation_requests",
-            referenceId: data.id,
-            data: {
-                accommodation_request_id: data.id,
-                reviewed_by: reviewedBy,
+                technician_name: technicianName,
             },
         }),
     );
@@ -393,6 +406,7 @@ export const rejectAccommodationRequest = async ({
     requestId,
     rejectionReason,
     reviewedBy,
+    technicianName: fallbackTechnicianName,
 }) => {
     const { data, error } = await supabase
         .from("accommodation_requests")
@@ -408,17 +422,23 @@ export const rejectAccommodationRequest = async ({
 
     if (error) throw error;
     await sendAccommodationNotification("request_rejected", data);
+    const technician = await loadProfileById(data.technician_id);
+    const technicianName = getNotificationTechnicianName(
+        technician,
+        fallbackTechnicianName,
+    );
     await createNotification(
         data.technician_id,
         buildNotificationPayload({
             type: NOTIFICATION_TYPES.ACCOMMODATION_REJECTED,
             title: "Akomodasi ditolak",
-            body: "Pengajuan akomodasi kamu ditolak. Silakan cek catatan approval.",
+            body: `Pengajuan akomodasi ${technicianName} ditolak. Silakan cek catatan approval.`,
             referenceTable: "accommodation_requests",
             referenceId: data.id,
             data: {
                 accommodation_request_id: data.id,
                 reviewed_by: reviewedBy,
+                technician_name: technicianName,
             },
         }),
     );
@@ -432,6 +452,7 @@ export const addAccommodationRealization = async ({
     description,
     transactionDate,
     createdBy,
+    technicianName: fallbackTechnicianName,
 }) => {
     const { data, error } = await supabase
         .from("accommodation_realizations")
@@ -448,18 +469,24 @@ export const addAccommodationRealization = async ({
 
     if (error) throw error;
     await sendAccommodationNotification("realization_created", data);
-    await notifyByRoles(
+    const technician = await loadProfileById(createdBy);
+    const technicianName = getNotificationTechnicianName(
+        technician,
+        fallbackTechnicianName,
+    );
+    await notifyByRolesAlways(
         ["admin", "management"],
         buildNotificationPayload({
             type: NOTIFICATION_TYPES.REALIZATION_NEED_REVIEW,
             title: "Realisasi perlu dicek",
-            body: "Teknisi telah mengupload bukti realisasi akomodasi.",
-            referenceTable: "accommodation_requests",
-            referenceId: requestId,
+            body: `${technicianName} telah mengupload bukti realisasi akomodasi.`,
+            referenceTable: "accommodation_realizations",
+            referenceId: data.id,
             data: {
                 accommodation_request_id: requestId,
                 realization_id: data.id,
                 created_by: createdBy,
+                technician_name: technicianName,
             },
         }),
     );
@@ -467,15 +494,8 @@ export const addAccommodationRealization = async ({
 };
 
 export const sendAccommodationNotification = async (event, payload) => {
-    try {
-        const { error } = await supabase.functions.invoke(
-            "send-accommodation-notification",
-            { body: { event, payload } },
-        );
-        if (error) {
-            console.warn("Accommodation notification skipped:", error.message);
-        }
-    } catch (error) {
-        console.warn("Accommodation notification failed:", error.message);
-    }
+    console.info("[Accommodation] Edge notification skipped in Phase 1:", {
+        event,
+        id: payload?.id ?? payload?.accommodation_request_id ?? null,
+    });
 };

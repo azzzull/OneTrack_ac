@@ -19,10 +19,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
 import useRequestStats from "../../hooks/useRequestStats";
-import {
-    cleanupAllChannels,
-    createUniqueChannelName,
-} from "../../utils/realtimeChannelManager";
+import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import NotificationCenter from "../notifications/NotificationCenter";
 
 const menuByRole = {
@@ -221,8 +218,6 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         // Async channel setup with proper cleanup
         const setupChannel = async () => {
             // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
-            await cleanupAllChannels();
-
             // ✅ CRITICAL FIX: Use unique channel name with user ID
             const channelName = createUniqueChannelName(
                 "requests-new-notify",

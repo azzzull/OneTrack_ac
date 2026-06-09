@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import supabase from "../supabaseClient";
-import { cleanupAllChannels } from "../utils/realtimeChannelManager";
 
 const sortByCreatedAtDesc = (items) =>
     [...items].sort(
@@ -92,8 +91,6 @@ export default function useCustomerRequests(user) {
                 onVisibilityChange,
             );
         };
-        // Intentionally no deps to preserve original lifecycle
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // ✅ Setup realtime subscription with proper lifecycle management
@@ -102,8 +99,6 @@ export default function useCustomerRequests(user) {
 
         const setupChannel = async () => {
             try {
-                await cleanupAllChannels();
-
                 const channelName = `customer-requests-${userRef.current.id}`;
 
                 // ✅ Skip if channel already exists

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { CalendarDays, MapPin, Loader, Filter } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
@@ -12,11 +12,13 @@ import {
 } from "../../hooks/useAttendance";
 import AttendanceMapModal from "../../components/AttendanceMapModal";
 import { getLocationLabel, hasLocationData } from "../../utils/nominatim";
+import supabase from "../../supabaseClient";
 
 const AttendanceHistory = () => {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const { user } = useAuth();
+    const userId = user?.id;
     const { getAttendanceHistory, loading } = useAttendance();
 
     const [attendanceData, setAttendanceData] = useState([]);
@@ -40,16 +42,43 @@ const AttendanceHistory = () => {
         });
     };
 
+    const loadData = useCallback(async () => {
+        if (!userId) return;
+        const result = await getAttendanceHistory(userId, null, null);
+        if (result.success) {
+            setAttendanceData(result.data || []);
+        }
+    }, [getAttendanceHistory, userId]);
+
     useEffect(() => {
-        if (!user?.id) return;
-        const loadData = async () => {
-            const result = await getAttendanceHistory(user.id, null, null);
-            if (result.success) {
-                setAttendanceData(result.data || []);
-            }
+        const timerId = setTimeout(loadData, 0);
+        return () => clearTimeout(timerId);
+    }, [loadData]);
+
+    useEffect(() => {
+        if (!userId) return undefined;
+
+        const channel = supabase
+            .channel(`attendance-history-${userId}-${Date.now()}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "attendance",
+                    filter: `technician_id=eq.${userId}`,
+                },
+                () => loadData(),
+            );
+
+        channel.subscribe((status) => {
+            if (status === "SUBSCRIBED") loadData();
+        });
+
+        return () => {
+            supabase.removeChannel(channel);
         };
-        loadData();
-    }, [user?.id, getAttendanceHistory]);
+    }, [loadData, userId]);
 
     useEffect(() => {
         const applyFilter = () => {

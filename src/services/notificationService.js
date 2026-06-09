@@ -8,7 +8,6 @@ export const NOTIFICATION_TYPES = {
     ACCOMMODATION_REQUESTED: "accommodation_requested",
     ACCOMMODATION_APPROVED: "accommodation_approved",
     ACCOMMODATION_REJECTED: "accommodation_rejected",
-    TRANSFER_PROOF_UPLOADED: "transfer_proof_uploaded",
     REALIZATION_NEED_REVIEW: "realization_need_review",
 };
 
@@ -75,6 +74,19 @@ export const notifyByRoles = async (roles, payload) => {
     });
 
     warnNotificationError("notifyByRoles", error);
+    return error ? [] : data ?? [];
+};
+
+export const notifyByRolesAlways = async (roles, payload) => {
+    const normalizedRoles = [...new Set((roles ?? []).filter(Boolean))];
+    if (!normalizedRoles.length) return [];
+
+    const { data, error } = await supabase.rpc("notify_by_roles_always", {
+        p_roles: normalizedRoles,
+        ...buildRpcPayload(payload),
+    });
+
+    warnNotificationError("notifyByRolesAlways", error);
     return error ? [] : data ?? [];
 };
 
