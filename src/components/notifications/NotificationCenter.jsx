@@ -100,8 +100,10 @@ export default function NotificationCenter({ compact = false, align = "right" })
 
             {open && (
                 <div
-                    className={`absolute z-70 mt-2 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl ${
-                        align === "left" ? "left-0" : "right-0"
+                    className={`fixed left-1/2 top-20 z-70 w-[calc(100vw-1.5rem)] max-w-sm -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl sm:absolute sm:top-auto sm:mt-2 sm:w-[min(22rem,calc(100vw-1.5rem))] sm:max-w-none sm:translate-x-0 ${
+                        align === "left"
+                            ? "sm:left-0 sm:right-auto"
+                            : "sm:left-auto sm:right-0"
                     }`}
                 >
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
