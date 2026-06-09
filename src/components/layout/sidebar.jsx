@@ -27,7 +27,7 @@ import {
 const menuByRole = {
     management: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
-        { label: "Requests", path: "/requests", icon: List },
+        { label: "Pekerjaan", path: "/requests", icon: List },
         {
             label: "Accommodation",
             path: "/management/accommodation",
@@ -43,7 +43,7 @@ const menuByRole = {
     ],
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
-        { label: "Daftar Pekerjaan", path: "/requests", icon: List },
+        { label: "Pekerjaan", path: "/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
         { label: "Accommodation", path: "/admin/accommodation", icon: Wallet },
         {
@@ -56,7 +56,7 @@ const menuByRole = {
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
-        { label: "Requests", path: "/technician/requests", icon: List },
+        { label: "Pekerjaan", path: "/technician/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
         {
             label: "History Absensi",
@@ -624,14 +624,6 @@ export function MobileBottomNav() {
         user?.email ||
         "User";
 
-    const estimateMenuWidth = (menu) => {
-        const badgeWidth = menu.badge ? 20 : 0;
-        const labelWidth = Math.max(28, menu.label.length * 6.2);
-        return 16 + 20 + 6 + labelWidth + badgeWidth;
-    };
-
-    const estimateMoreWidth = () => 82;
-
     useEffect(() => {
         const onScroll = () => {
             const current = window.scrollY || 0;
@@ -673,36 +665,16 @@ export function MobileBottomNav() {
     useEffect(() => {
         const recomputePrimaryCount = () => {
             const width = navRef.current?.clientWidth ?? window.innerWidth;
-            const availableWidth = Math.max(0, width - 8);
             if (!menus.length) {
                 setPrimaryCount(0);
                 return;
             }
 
-            let nextPrimaryCount = 1;
-            for (let count = 1; count <= menus.length; count += 1) {
-                const primaryWidth = menus
-                    .slice(0, count)
-                    .reduce(
-                        (total, menu) => total + estimateMenuWidth(menu),
-                        0,
-                    );
-                const hasOverflow = count < menus.length;
-                const totalWidth =
-                    primaryWidth +
-                    (hasOverflow ? estimateMoreWidth() : 0) +
-                    Math.max(0, count - 1) * 4;
-
-                if (totalWidth <= availableWidth) {
-                    nextPrimaryCount = count;
-                } else {
-                    break;
-                }
-            }
-
-            if (menus.length > 1) {
-                nextPrimaryCount = Math.max(1, nextPrimaryCount);
-            }
+            const maxSlots = width < 360 ? 4 : 5;
+            const hasOverflow = menus.length > maxSlots;
+            const nextPrimaryCount = hasOverflow
+                ? Math.max(1, maxSlots - 1)
+                : Math.min(menus.length, maxSlots);
             setPrimaryCount(nextPrimaryCount);
         };
 
@@ -806,7 +778,7 @@ export function MobileBottomNav() {
                                 end
                                 to={path}
                                 className={({ isActive }) =>
-                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! relative flex h-full w-full items-center justify-center px-1 py-2.5 transition-colors duration-200 ${
+                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! relative flex h-full min-h-16 w-full items-center justify-center px-1 py-2 transition-colors duration-200 ${
                                         isActive
                                             ? "text-sky-500 border-b-2 border-sky-500 font-semibold"
                                             : "text-slate-500 border-b-2 border-transparent hover:text-slate-700"
@@ -814,7 +786,7 @@ export function MobileBottomNav() {
                                 }
                                 style={{ textDecoration: "none" }}
                             >
-                                <div className="flex min-w-0 flex-col items-center gap-1">
+                                <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
                                     <span className="relative inline-flex">
                                         {createElement(icon, { size: 20 })}
                                         {badge && (
@@ -823,7 +795,7 @@ export function MobileBottomNav() {
                                             </span>
                                         )}
                                     </span>
-                                    <span className="text-xs font-medium truncate">
+                                    <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal break-words">
                                         {label}
                                     </span>
                                 </div>
@@ -831,15 +803,15 @@ export function MobileBottomNav() {
                         </li>
                     ))}
                     {extraMenus.length > 0 && (
-                        <li className="min-w-0">
+                        <li className="min-w-0 flex-1">
                             <button
                                 type="button"
                                 onClick={() => setMoreOpen(true)}
-                                className="no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex h-full w-20.5 items-center justify-center px-1 py-2.5 text-slate-500 transition-colors duration-200 hover:text-slate-700"
+                                className="no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex h-full min-h-16 w-full items-center justify-center px-1 py-2 text-slate-500 transition-colors duration-200 hover:text-slate-700"
                             >
-                                <div className="flex flex-col items-center gap-1">
+                                <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
                                     <MoreHorizontal size={20} />
-                                    <span className="text-xs font-medium truncate">
+                                    <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal break-words">
                                         Lainnya
                                     </span>
                                 </div>
