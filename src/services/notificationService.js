@@ -136,6 +136,29 @@ export const markAllAsRead = async () => {
     return data ?? [];
 };
 
+export const deleteNotification = async (notificationId) => {
+    if (!notificationId) return false;
+
+    const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("id", notificationId)
+        .eq("is_read", true);
+
+    if (error) throw error;
+    return true;
+};
+
+export const deleteReadNotifications = async () => {
+    const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("is_read", true);
+
+    if (error) throw error;
+    return true;
+};
+
 export const buildNotificationPayload = ({
     type,
     title,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, CheckCheck, Loader2 } from "lucide-react";
+import { Bell, CheckCheck, Loader2, Trash2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import useNotifications from "../../hooks/useNotifications";
 import { useAuth } from "../../context/useAuth";
@@ -49,6 +49,10 @@ const getNotificationTargetPath = (notification, role) => {
 export default function NotificationCenter({ compact = false, align = "right" }) {
     const { role } = useAuth();
     const navigate = useNavigate();
+    const [open, setOpen] = useState(false);
+    const [toastNotification, setToastNotification] = useState(null);
+    const containerRef = useRef(null);
+    const toastTimerRef = useRef(null);
     const {
         notifications,
         unreadCount,
@@ -56,9 +60,14 @@ export default function NotificationCenter({ compact = false, align = "right" })
         error,
         markAsRead,
         markAllAsRead,
-    } = useNotifications({ limit: 20 });
-    const [open, setOpen] = useState(false);
-    const containerRef = useRef(null);
+        deleteNotification,
+        clearReadNotifications,
+    } = useNotifications({
+        limit: 20,
+        onNewNotification: (notification) => {
+            setToastNotification(notification);
+        },
+    });
 
     useEffect(() => {
         const handlePointerDown = (event) => {
@@ -72,12 +81,37 @@ export default function NotificationCenter({ compact = false, align = "right" })
             document.removeEventListener("pointerdown", handlePointerDown);
     }, []);
 
+    useEffect(() => {
+        if (!toastNotification) return undefined;
+
+        if (toastTimerRef.current) {
+            clearTimeout(toastTimerRef.current);
+        }
+        toastTimerRef.current = setTimeout(() => {
+            setToastNotification(null);
+        }, 4500);
+
+        return () => {
+            if (toastTimerRef.current) {
+                clearTimeout(toastTimerRef.current);
+            }
+        };
+    }, [toastNotification]);
+
     const handleNotificationClick = async (notification) => {
         if (!notification.is_read) {
             await markAsRead(notification.id);
         }
         setOpen(false);
         navigate(getNotificationTargetPath(notification, role));
+    };
+
+    const handleDeleteNotification = async (event, notification) => {
+        event.stopPropagation();
+        if (!notification.is_read) {
+            await markAsRead(notification.id);
+        }
+        await deleteNotification(notification.id);
     };
 
     return (
@@ -124,6 +158,14 @@ export default function NotificationCenter({ compact = false, align = "right" })
                             <CheckCheck size={14} />
                             Tandai semua
                         </button>
+                        <button
+                            type="button"
+                            onClick={clearReadNotifications}
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                        >
+                            <Trash2 size={14} />
+                            Hapus dibaca
+                        </button>
                     </div>
 
                     <div className="max-h-96 overflow-y-auto">
@@ -138,17 +180,13 @@ export default function NotificationCenter({ compact = false, align = "right" })
                             </div>
                         ) : notifications.length ? (
                             notifications.map((notification) => (
-                                <button
+                                <div
                                     key={notification.id}
-                                    type="button"
-                                    onClick={() =>
-                                        handleNotificationClick(notification)
-                                    }
                                     className={`flex w-full gap-3 border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-slate-50 ${
                                         notification.is_read
                                             ? "bg-white"
                                             : "bg-sky-50/60"
-                                    }`}
+                                        }`}
                                 >
                                     <span
                                         className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
@@ -157,7 +195,15 @@ export default function NotificationCenter({ compact = false, align = "right" })
                                                 : "bg-sky-500"
                                         }`}
                                     />
-                                    <span className="min-w-0 flex-1">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleNotificationClick(
+                                                notification,
+                                            )
+                                        }
+                                        className="min-w-0 flex-1 text-left"
+                                    >
                                         <span className="block text-sm font-semibold text-slate-900">
                                             {notification.title}
                                         </span>
@@ -169,14 +215,68 @@ export default function NotificationCenter({ compact = false, align = "right" })
                                                 notification.created_at,
                                             )}
                                         </span>
-                                    </span>
-                                </button>
+                                    </button>
+                                    {notification.is_read && (
+                                        <button
+                                            type="button"
+                                            onClick={(event) =>
+                                                handleDeleteNotification(
+                                                    event,
+                                                    notification,
+                                                )
+                                            }
+                                            className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                            aria-label="Hapus notifikasi"
+                                        >
+                                            <Trash2 size={15} />
+                                        </button>
+                                    )}
+                                </div>
                             ))
                         ) : (
                             <div className="px-4 py-8 text-center text-sm text-slate-500">
                                 Belum ada notifikasi.
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {toastNotification && !open && (
+                <div className="fixed bottom-24 right-4 z-80 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-sky-200 bg-white p-4 text-left shadow-2xl md:bottom-6">
+                    <div className="flex items-start gap-3">
+                        <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+                            <Bell size={17} />
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setToastNotification(null);
+                                handleNotificationClick(toastNotification);
+                            }}
+                            className="min-w-0 flex-1 text-left"
+                        >
+                            <span className="block text-xs font-semibold uppercase tracking-wide text-sky-600">
+                                Notifikasi baru
+                            </span>
+                            <span className="mt-1 block truncate text-sm font-semibold text-slate-900">
+                                {toastNotification.title}
+                            </span>
+                            <span className="mt-1 line-clamp-2 block text-sm text-slate-600">
+                                {toastNotification.body}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setToastNotification(null);
+                            }}
+                            className="-mr-1 -mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            aria-label="Tutup notifikasi baru"
+                        >
+                            <X size={15} />
+                        </button>
                     </div>
                 </div>
             )}
