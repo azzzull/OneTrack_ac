@@ -43,6 +43,12 @@ import {
     getTechnicianJobIds,
     syncJobTechnicians,
 } from "../../services/jobTechniciansService";
+import {
+    NOTIFICATION_TYPES,
+    buildNotificationPayload,
+    notifyByRoles,
+    notifyRelatedCustomer,
+} from "../../services/notificationService";
 
 const FILTERS = [
     { key: "all", label: "All" },
@@ -129,6 +135,7 @@ const normalizeRequest = (row, creatorName = "") => {
             "-",
         ),
         createdBy: pickFirst(row, ["created_by"], ""),
+        customerId: pickFirst(row, ["customer_id"], ""),
         technicianId: pickFirst(row, ["technician_id"], ""),
         assignee: pickFirst(
             row,
@@ -908,6 +915,10 @@ export default function AdminRequestsPage() {
 
             if (error) throw error;
 
+            const technicianAlreadyAssigned = selectedRequestTechnicians.some(
+                (item) => String(item.technician_id) === String(user?.id),
+            );
+
             if (role === "technician" && user?.id) {
                 await syncJobTechnicians({
                     jobId: selectedRequest.id,
@@ -920,6 +931,50 @@ export default function AdminRequestsPage() {
                     ],
                     addedBy: user.id,
                 });
+
+                if (!technicianAlreadyAssigned) {
+                    const takenPayload = buildNotificationPayload({
+                        type: NOTIFICATION_TYPES.JOB_TAKEN,
+                        title: "Job telah diambil",
+                        body: "Pekerjaan telah diambil oleh teknisi.",
+                        referenceTable: "requests",
+                        referenceId: selectedRequest.id,
+                        data: {
+                            job_id: selectedRequest.id,
+                            technician_id: user.id,
+                        },
+                    });
+                    await Promise.all([
+                        notifyByRoles(["admin", "management"], takenPayload),
+                        notifyRelatedCustomer(
+                            selectedRequest.customerId,
+                            takenPayload,
+                        ),
+                    ]);
+                }
+
+                if (payload.status !== selectedRequest.status) {
+                    const statusPayload = buildNotificationPayload({
+                        type: NOTIFICATION_TYPES.JOB_STATUS_CHANGED,
+                        title: "Status pekerjaan berubah",
+                        body: "Status pekerjaan telah diperbarui oleh teknisi.",
+                        referenceTable: "requests",
+                        referenceId: selectedRequest.id,
+                        data: {
+                            job_id: selectedRequest.id,
+                            status: payload.status,
+                            previous_status: selectedRequest.status,
+                            technician_id: user.id,
+                        },
+                    });
+                    await Promise.all([
+                        notifyByRoles(["admin"], statusPayload),
+                        notifyRelatedCustomer(
+                            selectedRequest.customerId,
+                            statusPayload,
+                        ),
+                    ]);
+                }
             }
 
             await loadRequests();

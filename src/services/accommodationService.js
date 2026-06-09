@@ -1,5 +1,11 @@
 import supabase from "../supabaseClient";
 import { compressJobPhotoFile } from "./jobPhotoService";
+import {
+    NOTIFICATION_TYPES,
+    buildNotificationPayload,
+    createNotification,
+    notifyByRoles,
+} from "./notificationService";
 
 export const ACCOMMODATION_BUCKET = "accommodation-proofs";
 
@@ -231,6 +237,20 @@ export const createAccommodationRequest = async (payload) => {
 
     if (error) throw error;
     await sendAccommodationNotification("request_created", data);
+    await notifyByRoles(
+        ["admin", "management"],
+        buildNotificationPayload({
+            type: NOTIFICATION_TYPES.ACCOMMODATION_REQUESTED,
+            title: "Pengajuan akomodasi baru",
+            body: "Teknisi mengajukan akomodasi dan menunggu approval.",
+            referenceTable: "accommodation_requests",
+            referenceId: data.id,
+            data: {
+                accommodation_request_id: data.id,
+                technician_id: data.technician_id,
+            },
+        }),
+    );
     return data;
 };
 
@@ -338,6 +358,34 @@ export const approveAccommodationRequest = async ({
 
     if (error) throw error;
     await sendAccommodationNotification("request_approved", data);
+    await createNotification(
+        data.technician_id,
+        buildNotificationPayload({
+            type: NOTIFICATION_TYPES.ACCOMMODATION_APPROVED,
+            title: "Akomodasi disetujui",
+            body: "Pengajuan akomodasi kamu telah disetujui.",
+            referenceTable: "accommodation_requests",
+            referenceId: data.id,
+            data: {
+                accommodation_request_id: data.id,
+                reviewed_by: reviewedBy,
+            },
+        }),
+    );
+    await createNotification(
+        data.technician_id,
+        buildNotificationPayload({
+            type: NOTIFICATION_TYPES.TRANSFER_PROOF_UPLOADED,
+            title: "Bukti transfer diupload",
+            body: "Bukti transfer akomodasi telah diupload.",
+            referenceTable: "accommodation_requests",
+            referenceId: data.id,
+            data: {
+                accommodation_request_id: data.id,
+                reviewed_by: reviewedBy,
+            },
+        }),
+    );
     return data;
 };
 
@@ -360,6 +408,20 @@ export const rejectAccommodationRequest = async ({
 
     if (error) throw error;
     await sendAccommodationNotification("request_rejected", data);
+    await createNotification(
+        data.technician_id,
+        buildNotificationPayload({
+            type: NOTIFICATION_TYPES.ACCOMMODATION_REJECTED,
+            title: "Akomodasi ditolak",
+            body: "Pengajuan akomodasi kamu ditolak. Silakan cek catatan approval.",
+            referenceTable: "accommodation_requests",
+            referenceId: data.id,
+            data: {
+                accommodation_request_id: data.id,
+                reviewed_by: reviewedBy,
+            },
+        }),
+    );
     return data;
 };
 
@@ -386,6 +448,21 @@ export const addAccommodationRealization = async ({
 
     if (error) throw error;
     await sendAccommodationNotification("realization_created", data);
+    await notifyByRoles(
+        ["admin", "management"],
+        buildNotificationPayload({
+            type: NOTIFICATION_TYPES.REALIZATION_NEED_REVIEW,
+            title: "Realisasi perlu dicek",
+            body: "Teknisi telah mengupload bukti realisasi akomodasi.",
+            referenceTable: "accommodation_requests",
+            referenceId: requestId,
+            data: {
+                accommodation_request_id: requestId,
+                realization_id: data.id,
+                created_by: createdBy,
+            },
+        }),
+    );
     return data;
 };
 

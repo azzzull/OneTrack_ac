@@ -18,6 +18,11 @@ import {
     buildScopeDetailValuesPayload,
     validateScopeDetailValues,
 } from "../../services/scopeDetailFieldsService";
+import {
+    NOTIFICATION_TYPES,
+    buildNotificationPayload,
+    notifyByRoles,
+} from "../../services/notificationService";
 
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
@@ -321,8 +326,27 @@ export default function CustomerRequestFormPage() {
                 created_by: user?.id ?? null,
             };
 
-            const { error } = await supabase.from("requests").insert(payload);
+            const { data: createdRequest, error } = await supabase
+                .from("requests")
+                .insert(payload)
+                .select("id")
+                .single();
             if (error) throw error;
+
+            await notifyByRoles(
+                ["technician"],
+                buildNotificationPayload({
+                    type: NOTIFICATION_TYPES.JOB_REQUESTED,
+                    title: "Job baru tersedia",
+                    body: "Ada pekerjaan baru yang bisa kamu ambil.",
+                    referenceTable: "requests",
+                    referenceId: createdRequest?.id ?? null,
+                    data: {
+                        job_id: createdRequest?.id ?? null,
+                        customer_id: selectedCustomer.id,
+                    },
+                }),
+            );
 
             setForm((prev) => ({
                 ...prev,

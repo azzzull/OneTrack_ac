@@ -25,6 +25,12 @@ import {
 } from "../../services/scopeDetailFieldsService";
 import { uploadJobPhotoFile } from "../../services/jobPhotoService";
 import { syncJobTechnicians } from "../../services/jobTechniciansService";
+import {
+    NOTIFICATION_TYPES,
+    buildNotificationPayload,
+    notifyByRoles,
+    notifyRelatedCustomer,
+} from "../../services/notificationService";
 
 const initialForm = {
     jobScope: "AC",
@@ -104,9 +110,6 @@ export default function AdminNewJobPage() {
     const [beforePhotoFile, setBeforePhotoFile] = useState(null);
     const [progressPhotoFile, setProgressPhotoFile] = useState(null);
     const [afterPhotoFile, setAfterPhotoFile] = useState(null);
-    const [beforePhotoUrl, setBeforePhotoUrl] = useState("");
-    const [progressPhotoUrl, setProgressPhotoUrl] = useState("");
-    const [afterPhotoUrl, setAfterPhotoUrl] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
@@ -562,14 +565,44 @@ export default function AdminNewJobPage() {
                 addedBy: user?.id ?? null,
             });
 
+            if (sessionRole === "technician") {
+                const notificationPayload = buildNotificationPayload({
+                    type: NOTIFICATION_TYPES.JOB_CREATED_BY_TECHNICIAN,
+                    title: "Job baru dibuat teknisi",
+                    body: "Teknisi membuat pekerjaan baru untuk customer terkait.",
+                    referenceTable: "requests",
+                    referenceId: createdRequest.id,
+                    data: {
+                        job_id: createdRequest.id,
+                        customer_id: form.customerId,
+                        technician_id: user?.id ?? null,
+                    },
+                });
+                await Promise.all([
+                    notifyByRoles(["admin"], notificationPayload),
+                    notifyRelatedCustomer(form.customerId, notificationPayload),
+                ]);
+            } else if (selectedTechnicianIds.length === 0) {
+                await notifyByRoles(
+                    ["technician"],
+                    buildNotificationPayload({
+                        type: NOTIFICATION_TYPES.JOB_REQUESTED,
+                        title: "Job baru tersedia",
+                        body: "Ada pekerjaan baru yang bisa kamu ambil.",
+                        referenceTable: "requests",
+                        referenceId: createdRequest.id,
+                        data: {
+                            job_id: createdRequest.id,
+                            customer_id: form.customerId,
+                        },
+                    }),
+                );
+            }
+
             setSelectedTechnicianIds([]);
             setBeforePhotoFile(null);
             setProgressPhotoFile(null);
             setAfterPhotoFile(null);
-            setBeforePhotoUrl("");
-            setProgressPhotoUrl("");
-            setAfterPhotoUrl("");
-
             navigate(
                 sessionRole === "technician" ? "/technician" : "/requests",
             );
