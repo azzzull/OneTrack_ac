@@ -520,7 +520,13 @@ Deno.serve(async (req) => {
                     token: row.token,
                     notification: { title, body },
                     data: fcmData,
-                    android: { priority: "high" },
+                    android: {
+                        priority: "high",
+                        notification: {
+                            icon: "ic_stat_onetrack",
+                            color: "#008AEF",
+                        },
+                    },
                 },
             }),
         });
