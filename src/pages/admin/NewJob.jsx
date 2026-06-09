@@ -76,16 +76,24 @@ const FileCaptureCard = ({ label, fileName, onClick }) => (
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:bg-white";
 
-const getCurrentUserDisplayName = (user) => {
+const getCurrentUserDisplayName = (user, profile = null) => {
+    const profileComposed =
+        `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
     const composed =
         `${user?.user_metadata?.first_name ?? ""} ${user?.user_metadata?.last_name ?? ""}`.trim();
     return (
+        profileComposed ||
+        String(profile?.name ?? "").trim() ||
+        String(profile?.email ?? "").trim() ||
         composed ||
         String(user?.user_metadata?.full_name ?? "").trim() ||
         String(user?.email ?? "").trim() ||
         "Teknisi"
     );
 };
+
+const getCustomerDisplayName = (customer) =>
+    String(customer?.name ?? "").trim() || "customer";
 
 const getSessionRole = (role, user) => {
     const metadataRole = String(user?.user_metadata?.role ?? "")
@@ -120,7 +128,7 @@ export default function AdminNewJobPage() {
     const streamRef = useRef(null);
     const videoRef = useRef(null);
 
-    const { user, role } = useAuth();
+    const { user, role, profile } = useAuth();
     const { alert: showAlert } = useDialog();
     const { labels: jobScopeLabels } = useJobScopeOptions();
     const { technicians, loading: techniciansLoading } =
@@ -545,7 +553,10 @@ export default function AdminNewJobPage() {
             };
             if (sessionRole === "technician") {
                 payload.technician_id = user?.id ?? null;
-                payload.technician_name = getCurrentUserDisplayName(user);
+                payload.technician_name = getCurrentUserDisplayName(
+                    user,
+                    profile,
+                );
             }
 
             const { data: createdRequest, error } = await supabase
@@ -566,34 +577,40 @@ export default function AdminNewJobPage() {
             });
 
             if (sessionRole === "technician") {
+                const technicianName = getCurrentUserDisplayName(user, profile);
+                const customerName = getCustomerDisplayName(selectedCustomer);
                 const notificationPayload = buildNotificationPayload({
                     type: NOTIFICATION_TYPES.JOB_CREATED_BY_TECHNICIAN,
                     title: "Job baru dibuat teknisi",
-                    body: "Teknisi membuat pekerjaan baru untuk customer terkait.",
+                    body: `${technicianName} membuat pekerjaan baru untuk ${customerName}.`,
                     referenceTable: "requests",
                     referenceId: createdRequest.id,
                     data: {
                         job_id: createdRequest.id,
                         customer_id: form.customerId,
+                        customer_name: customerName,
                         technician_id: user?.id ?? null,
+                        technician_name: technicianName,
                     },
                 });
                 await Promise.all([
-                    notifyByRoles(["admin"], notificationPayload),
+                    notifyByRoles(["admin", "management"], notificationPayload),
                     notifyRelatedCustomer(form.customerId, notificationPayload),
                 ]);
             } else if (selectedTechnicianIds.length === 0) {
+                const customerName = getCustomerDisplayName(selectedCustomer);
                 await notifyByRoles(
                     ["technician"],
                     buildNotificationPayload({
                         type: NOTIFICATION_TYPES.JOB_REQUESTED,
                         title: "Job baru tersedia",
-                        body: "Ada pekerjaan baru yang bisa kamu ambil.",
+                        body: `Ada pekerjaan baru untuk ${customerName} yang bisa kamu ambil.`,
                         referenceTable: "requests",
                         referenceId: createdRequest.id,
                         data: {
                             job_id: createdRequest.id,
                             customer_id: form.customerId,
+                            customer_name: customerName,
                         },
                     }),
                 );

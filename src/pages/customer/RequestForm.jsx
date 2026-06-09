@@ -338,12 +338,13 @@ export default function CustomerRequestFormPage() {
                 buildNotificationPayload({
                     type: NOTIFICATION_TYPES.JOB_REQUESTED,
                     title: "Job baru tersedia",
-                    body: "Ada pekerjaan baru yang bisa kamu ambil.",
+                    body: `Ada pekerjaan baru untuk ${selectedCustomer.name ?? "customer"} yang bisa kamu ambil.`,
                     referenceTable: "requests",
                     referenceId: createdRequest?.id ?? null,
                     data: {
                         job_id: createdRequest?.id ?? null,
                         customer_id: selectedCustomer.id,
+                        customer_name: selectedCustomer.name ?? null,
                     },
                 }),
             );

@@ -111,6 +111,13 @@ const getProfileDisplayName = (profile) => {
     );
 };
 
+const getNotificationName = (value, fallback) => {
+    const primary = String(value ?? "").trim();
+    if (primary && primary !== "-") return primary;
+    const secondary = String(fallback ?? "").trim();
+    return secondary && secondary !== "-" ? secondary : "";
+};
+
 const normalizeRequest = (row, creatorName = "") => {
     const status = normalizeStatusKey(pickFirst(row, ["status"], "pending"));
 
@@ -931,6 +938,20 @@ export default function AdminRequestsPage() {
             );
 
             if (role === "technician" && user?.id) {
+                const currentTechnician = selectedRequestTechnicians.find(
+                    (item) => String(item.technician_id) === String(user.id),
+                );
+                const technicianName =
+                    getNotificationName(
+                        currentTechnician?.technician_name,
+                        selectedRequest.technicianName,
+                    ) ||
+                    getNotificationName(user?.user_metadata?.full_name, user?.email) ||
+                    "Teknisi";
+                const customerName =
+                    getNotificationName(selectedRequest.requester) ||
+                    "customer";
+
                 await syncJobTechnicians({
                     jobId: selectedRequest.id,
                     creatorId: creatorTechnicianId || user.id,
@@ -947,12 +968,15 @@ export default function AdminRequestsPage() {
                     const takenPayload = buildNotificationPayload({
                         type: NOTIFICATION_TYPES.JOB_TAKEN,
                         title: "Job telah diambil",
-                        body: "Pekerjaan telah diambil oleh teknisi.",
+                        body: `${technicianName} telah mengambil pekerjaan untuk ${customerName}.`,
                         referenceTable: "requests",
                         referenceId: selectedRequest.id,
                         data: {
                             job_id: selectedRequest.id,
                             technician_id: user.id,
+                            technician_name: technicianName,
+                            customer_id: selectedRequest.customerId,
+                            customer_name: customerName,
                         },
                     });
                     await Promise.all([
@@ -968,7 +992,7 @@ export default function AdminRequestsPage() {
                     const statusPayload = buildNotificationPayload({
                         type: NOTIFICATION_TYPES.JOB_STATUS_CHANGED,
                         title: "Status pekerjaan berubah",
-                        body: "Status pekerjaan telah diperbarui oleh teknisi.",
+                        body: `${technicianName} memperbarui status pekerjaan ${customerName} menjadi ${STATUS_LABELS[payload.status] ?? payload.status}.`,
                         referenceTable: "requests",
                         referenceId: selectedRequest.id,
                         data: {
@@ -976,10 +1000,13 @@ export default function AdminRequestsPage() {
                             status: payload.status,
                             previous_status: selectedRequest.status,
                             technician_id: user.id,
+                            technician_name: technicianName,
+                            customer_id: selectedRequest.customerId,
+                            customer_name: customerName,
                         },
                     });
                     await Promise.all([
-                        notifyByRoles(["admin"], statusPayload),
+                        notifyByRoles(["admin", "management"], statusPayload),
                         notifyRelatedCustomer(
                             selectedRequest.customerId,
                             statusPayload,
