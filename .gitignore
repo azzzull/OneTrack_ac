@@ -40,3 +40,4 @@ supabase/migrations/*.sql
 
 # Secrets
 supabase.txt
+android/app/google-services.json
