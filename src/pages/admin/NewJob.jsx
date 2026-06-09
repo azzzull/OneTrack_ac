@@ -26,11 +26,9 @@ import {
 import { uploadJobPhotoFile } from "../../services/jobPhotoService";
 import { syncJobTechnicians } from "../../services/jobTechniciansService";
 import {
-    NOTIFICATION_TYPES,
-    buildNotificationPayload,
-    notifyByRoles,
-    notifyRelatedCustomer,
-} from "../../services/notificationService";
+    NOTIFICATION_EVENT_TYPES,
+    notifyEvent,
+} from "../../services/notificationEvents";
 
 const initialForm = {
     jobScope: "AC",
@@ -579,41 +577,23 @@ export default function AdminNewJobPage() {
             if (sessionRole === "technician") {
                 const technicianName = getCurrentUserDisplayName(user, profile);
                 const customerName = getCustomerDisplayName(selectedCustomer);
-                const notificationPayload = buildNotificationPayload({
-                    type: NOTIFICATION_TYPES.JOB_CREATED_BY_TECHNICIAN,
-                    title: "Job baru dibuat teknisi",
-                    body: `${technicianName} membuat pekerjaan baru untuk ${customerName}.`,
-                    referenceTable: "requests",
-                    referenceId: createdRequest.id,
-                    data: {
-                        job_id: createdRequest.id,
+                await notifyEvent(
+                    NOTIFICATION_EVENT_TYPES.JOB_CREATED_BY_TECHNICIAN,
+                    {
+                        request_id: createdRequest.id,
                         customer_id: form.customerId,
                         customer_name: customerName,
                         technician_id: user?.id ?? null,
                         technician_name: technicianName,
                     },
-                });
-                await Promise.all([
-                    notifyByRoles(["admin", "management"], notificationPayload),
-                    notifyRelatedCustomer(form.customerId, notificationPayload),
-                ]);
+                );
             } else if (selectedTechnicianIds.length === 0) {
                 const customerName = getCustomerDisplayName(selectedCustomer);
-                await notifyByRoles(
-                    ["technician"],
-                    buildNotificationPayload({
-                        type: NOTIFICATION_TYPES.JOB_REQUESTED,
-                        title: "Job baru tersedia",
-                        body: `Ada pekerjaan baru untuk ${customerName} yang bisa kamu ambil.`,
-                        referenceTable: "requests",
-                        referenceId: createdRequest.id,
-                        data: {
-                            job_id: createdRequest.id,
-                            customer_id: form.customerId,
-                            customer_name: customerName,
-                        },
-                    }),
-                );
+                await notifyEvent(NOTIFICATION_EVENT_TYPES.JOB_REQUESTED, {
+                    request_id: createdRequest.id,
+                    customer_id: form.customerId,
+                    customer_name: customerName,
+                });
             }
 
             setSelectedTechnicianIds([]);

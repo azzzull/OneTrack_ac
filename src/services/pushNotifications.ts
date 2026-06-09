@@ -31,6 +31,50 @@ const getCurrentUserId = async () => {
     return data.user?.id ?? null;
 };
 
+const getCurrentUserRole = async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) return null;
+
+    const { data, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle();
+
+    if (error) {
+        console.warn("[Push] Failed to read profile role:", error.message);
+        return null;
+    }
+
+    return String(data?.role ?? "").trim().toLowerCase() || null;
+};
+
+const getNotificationTargetPath = (data: Record<string, unknown>, role: string | null) => {
+    const table = String(data.referenceTable ?? data.reference_table ?? "")
+        .trim()
+        .toLowerCase();
+
+    if (table === "requests" || table === "jobs") {
+        if (role === "technician") return "/technician/requests";
+        if (role === "customer") return "/services";
+        return "/requests";
+    }
+
+    if (
+        table === "accommodation_requests" ||
+        table === "accommodation_realizations" ||
+        table === "accommodations"
+    ) {
+        if (role === "technician") return "/accommodation";
+        if (role === "management") return "/management/accommodation";
+        return "/admin/accommodation";
+    }
+
+    if (role === "technician") return "/technician";
+    if (role === "customer") return "/customer";
+    return "/admin";
+};
+
 const saveFcmTokenToSupabase = async (token: string) => {
     const userId = await getCurrentUserId();
     if (!userId) {
@@ -77,8 +121,14 @@ const registerPushListeners = () => {
         console.log("[Push] Notification received:", notification);
     });
 
-    PushNotifications.addListener("pushNotificationActionPerformed", (notification) => {
+    PushNotifications.addListener("pushNotificationActionPerformed", async (notification) => {
         console.log("[Push] Notification clicked:", notification);
+        const role = await getCurrentUserRole();
+        const targetPath = getNotificationTargetPath(
+            notification.notification?.data ?? {},
+            role,
+        );
+        window.location.assign(targetPath);
     });
 
     listenersRegistered = true;

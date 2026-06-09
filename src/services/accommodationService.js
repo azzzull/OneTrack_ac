@@ -1,12 +1,9 @@
 import supabase from "../supabaseClient";
 import { compressJobPhotoFile } from "./jobPhotoService";
 import {
-    NOTIFICATION_TYPES,
-    buildNotificationPayload,
-    createNotification,
-    notifyByRoles,
-    notifyByRolesAlways,
-} from "./notificationService";
+    NOTIFICATION_EVENT_TYPES,
+    notifyEvent,
+} from "./notificationEvents";
 
 export const ACCOMMODATION_BUCKET = "accommodation-proofs";
 
@@ -256,21 +253,12 @@ export const createAccommodationRequest = async (payload) => {
         technician,
         payload.technician_name,
     );
-    await notifyByRoles(
-        ["admin", "management"],
-        buildNotificationPayload({
-            type: NOTIFICATION_TYPES.ACCOMMODATION_REQUESTED,
-            title: "Pengajuan akomodasi baru",
-            body: `${technicianName} mengajukan akomodasi dan menunggu approval.`,
-            referenceTable: "accommodation_requests",
-            referenceId: data.id,
-            data: {
-                accommodation_request_id: data.id,
-                technician_id: data.technician_id,
-                technician_name: technicianName,
-            },
-        }),
-    );
+    await notifyEvent(NOTIFICATION_EVENT_TYPES.ACCOMMODATION_REQUESTED, {
+        accommodation_id: data.id,
+        technician_id: data.technician_id,
+        technician_name: technicianName,
+        amount: data.requested_amount,
+    });
     return data;
 };
 
@@ -384,21 +372,13 @@ export const approveAccommodationRequest = async ({
         technician,
         fallbackTechnicianName,
     );
-    await createNotification(
-        data.technician_id,
-        buildNotificationPayload({
-            type: NOTIFICATION_TYPES.ACCOMMODATION_APPROVED,
-            title: "Akomodasi disetujui",
-            body: `Pengajuan akomodasi ${technicianName} telah disetujui.`,
-            referenceTable: "accommodation_requests",
-            referenceId: data.id,
-            data: {
-                accommodation_request_id: data.id,
-                reviewed_by: reviewedBy,
-                technician_name: technicianName,
-            },
-        }),
-    );
+    await notifyEvent(NOTIFICATION_EVENT_TYPES.ACCOMMODATION_APPROVED, {
+        accommodation_id: data.id,
+        technician_id: data.technician_id,
+        technician_name: technicianName,
+        reviewed_by: reviewedBy,
+        amount: data.approved_amount,
+    });
     return data;
 };
 
@@ -427,21 +407,14 @@ export const rejectAccommodationRequest = async ({
         technician,
         fallbackTechnicianName,
     );
-    await createNotification(
-        data.technician_id,
-        buildNotificationPayload({
-            type: NOTIFICATION_TYPES.ACCOMMODATION_REJECTED,
-            title: "Akomodasi ditolak",
-            body: `Pengajuan akomodasi ${technicianName} ditolak. Silakan cek catatan approval.`,
-            referenceTable: "accommodation_requests",
-            referenceId: data.id,
-            data: {
-                accommodation_request_id: data.id,
-                reviewed_by: reviewedBy,
-                technician_name: technicianName,
-            },
-        }),
-    );
+    await notifyEvent(NOTIFICATION_EVENT_TYPES.ACCOMMODATION_REJECTED, {
+        accommodation_id: data.id,
+        technician_id: data.technician_id,
+        technician_name: technicianName,
+        reviewed_by: reviewedBy,
+        amount: data.requested_amount,
+        rejection_note: rejectionReason,
+    });
     return data;
 };
 
@@ -474,22 +447,13 @@ export const addAccommodationRealization = async ({
         technician,
         fallbackTechnicianName,
     );
-    await notifyByRolesAlways(
-        ["admin", "management"],
-        buildNotificationPayload({
-            type: NOTIFICATION_TYPES.REALIZATION_NEED_REVIEW,
-            title: "Realisasi perlu dicek",
-            body: `${technicianName} telah mengupload bukti realisasi akomodasi.`,
-            referenceTable: "accommodation_realizations",
-            referenceId: data.id,
-            data: {
-                accommodation_request_id: requestId,
-                realization_id: data.id,
-                created_by: createdBy,
-                technician_name: technicianName,
-            },
-        }),
-    );
+    await notifyEvent(NOTIFICATION_EVENT_TYPES.REALIZATION_NEED_REVIEW, {
+        accommodation_id: requestId,
+        realization_id: data.id,
+        technician_id: createdBy,
+        technician_name: technicianName,
+        amount: data.amount,
+    });
     return data;
 };
 

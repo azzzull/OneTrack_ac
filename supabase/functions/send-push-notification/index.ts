@@ -161,6 +161,34 @@ const isInvalidFcmToken = (payload: unknown) => {
     );
 };
 
+const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
+    job_requested: ["technician"],
+    job_created_by_technician: ["admin", "management"],
+    job_taken: ["admin", "management"],
+    job_status_changed: ["admin", "management"],
+    accommodation_requested: ["admin", "management"],
+    realization_need_review: ["admin", "management"],
+};
+
+const canUseBusinessRecipients = (
+    type: string,
+    requestedRoles: string[],
+    requestedUserIds: string[],
+) => {
+    const allowedRoles = BUSINESS_EVENT_ALLOWED_ROLES[type];
+    if (!allowedRoles) return false;
+    const rolesAllowed =
+        requestedRoles.length === 0 ||
+        requestedRoles.every((role) => allowedRoles.includes(role));
+    return rolesAllowed && requestedUserIds.length <= 25;
+};
+
+const RELATED_CUSTOMER_EVENT_TYPES = [
+    "job_created_by_technician",
+    "job_taken",
+    "job_status_changed",
+];
+
 Deno.serve(async (req) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -256,15 +284,20 @@ Deno.serve(async (req) => {
             ["admin", "management", "technician", "customer"].includes(role),
         );
 
-    if (
-        (requestedRoles.length > 0 ||
-            requestedUserIds.some((id) => id !== requesterId)) &&
-        !canSendArbitrary
-    ) {
+    const usesArbitraryRecipients =
+        requestedRoles.length > 0 ||
+        requestedUserIds.some((id) => id !== requesterId);
+    const canSendBusinessEvent = canUseBusinessRecipients(
+        type,
+        requestedRoles,
+        requestedUserIds,
+    );
+
+    if (usesArbitraryRecipients && !canSendArbitrary && !canSendBusinessEvent) {
         return jsonResponse(
             {
                 success: false,
-                error: "Forbidden. Only admin and management can send push notifications to roles or other users.",
+                error: "Forbidden. Recipient targets are not allowed for this user or event type.",
             },
             403,
         );
@@ -272,6 +305,71 @@ Deno.serve(async (req) => {
 
     const recipientMap = new Map<string, ResolvedUser>();
     for (const userId of requestedUserIds) recipientMap.set(userId, { id: userId });
+
+    const relatedCustomerId = String(data.customer_id ?? "").trim();
+    if (
+        relatedCustomerId &&
+        RELATED_CUSTOMER_EVENT_TYPES.includes(type)
+    ) {
+        const { data: customerProfiles, error: customerProfileError } =
+            await adminClient
+                .from("profiles")
+                .select("id, role")
+                .eq("role", "customer")
+                .eq("customer_id", relatedCustomerId);
+
+        if (customerProfileError) {
+            console.warn(
+                "[send-push-notification] customer profile lookup skipped:",
+                customerProfileError.message,
+            );
+        } else {
+            for (const user of (customerProfiles ?? []) as ResolvedUser[]) {
+                if (isUuid(user.id)) recipientMap.set(user.id, user);
+            }
+        }
+
+        const { data: customer, error: customerError } = await adminClient
+            .from("master_customers")
+            .select("user_id, email")
+            .eq("id", relatedCustomerId)
+            .maybeSingle();
+
+        if (customerError) {
+            console.warn(
+                "[send-push-notification] master customer lookup skipped:",
+                customerError.message,
+            );
+        } else {
+            if (isUuid(customer?.user_id)) {
+                recipientMap.set(customer.user_id, {
+                    id: customer.user_id,
+                    role: "customer",
+                });
+            }
+
+            const customerEmail = String(customer?.email ?? "").trim();
+            if (customerEmail) {
+                const { data: emailProfiles, error: emailProfileError } =
+                    await adminClient
+                        .from("profiles")
+                        .select("id, role")
+                        .eq("role", "customer")
+                        .eq("email", customerEmail);
+
+                if (emailProfileError) {
+                    console.warn(
+                        "[send-push-notification] customer email profile lookup skipped:",
+                        emailProfileError.message,
+                    );
+                } else {
+                    for (const user of (emailProfiles ?? []) as ResolvedUser[]) {
+                        if (isUuid(user.id)) recipientMap.set(user.id, user);
+                    }
+                }
+            }
+        }
+    }
 
     if (requestedRoles.length > 0) {
         const { data: roleUsers, error: roleUsersError } = await adminClient

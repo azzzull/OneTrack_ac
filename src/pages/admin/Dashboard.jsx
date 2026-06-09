@@ -6,7 +6,6 @@ import {
     CircleCheckBig,
     Clock3,
     Download,
-    Send,
     Wrench,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -88,12 +87,10 @@ const describeFullCircle = (cx, cy, radius) =>
 export default function AdminDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
-    const { user, loading: authLoading, isAdmin } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const [requests, setRequests] = useState([]);
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
-    const [isSendingTestPush, setIsSendingTestPush] = useState(false);
-    const [testPushToast, setTestPushToast] = useState(null);
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
     const authLoadingRef = useRef(authLoading);
@@ -102,12 +99,6 @@ export default function AdminDashboard() {
     useEffect(() => {
         authLoadingRef.current = authLoading;
     }, [authLoading]);
-
-    useEffect(() => {
-        if (!testPushToast) return undefined;
-        const timerId = setTimeout(() => setTestPushToast(null), 3500);
-        return () => clearTimeout(timerId);
-    }, [testPushToast]);
 
     const loadRequests = async () => {
         try {
@@ -367,69 +358,6 @@ export default function AdminDashboard() {
         URL.revokeObjectURL(url);
     };
 
-    const sendTestPushNotification = async () => {
-        if (!user?.id) {
-            setTestPushToast({
-                type: "error",
-                message: "User login tidak ditemukan.",
-            });
-            return;
-        }
-
-        setIsSendingTestPush(true);
-        try {
-            const { data, error } = await supabase.functions.invoke(
-                "send-push-notification",
-                {
-                    body: {
-                        recipientUserIds: [user.id],
-                        title: "Test Push OneTrack",
-                        body: "Notifikasi test dari Edge Function berhasil.",
-                        type: "test_push",
-                        referenceTable: "test",
-                        referenceId: null,
-                        data: {
-                            source: "phase_2b",
-                        },
-                    },
-                },
-            );
-
-            console.log("[Push Test] send-push-notification response:", {
-                data,
-                error,
-            });
-
-            if (error || data?.success === false) {
-                setTestPushToast({
-                    type: "error",
-                    message:
-                        data?.message ||
-                        data?.error ||
-                        error?.message ||
-                        "Test push gagal.",
-                });
-                return;
-            }
-
-            setTestPushToast({
-                type: "success",
-                message: "Test push berhasil dikirim.",
-            });
-        } catch (error) {
-            console.error("[Push Test] send-push-notification error:", error);
-            setTestPushToast({
-                type: "error",
-                message:
-                    error instanceof Error
-                        ? error.message
-                        : "Test push gagal.",
-            });
-        } finally {
-            setIsSendingTestPush(false);
-        }
-    };
-
     const radius = 74;
     const center = 90;
 
@@ -453,19 +381,6 @@ export default function AdminDashboard() {
                             </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 self-start">
-                            {isAdmin && (
-                                <button
-                                    type="button"
-                                    onClick={sendTestPushNotification}
-                                    disabled={isSendingTestPush}
-                                    className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    <Send size={16} />
-                                    {isSendingTestPush
-                                        ? "Sending..."
-                                        : "Test Push Notification"}
-                                </button>
-                            )}
                             <button
                                 type="button"
                                 onClick={exportCsv}
@@ -715,19 +630,6 @@ export default function AdminDashboard() {
             </div>
 
             <MobileBottomNav />
-            {testPushToast && (
-                <div className="fixed right-4 top-4 z-120 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-xl">
-                    <span
-                        className={
-                            testPushToast.type === "success"
-                                ? "text-emerald-700"
-                                : "text-red-600"
-                        }
-                    >
-                        {testPushToast.message}
-                    </span>
-                </div>
-            )}
         </div>
     );
 }
