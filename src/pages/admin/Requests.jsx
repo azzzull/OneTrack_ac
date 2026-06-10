@@ -301,7 +301,7 @@ const shouldIncludeRequestForRole = (row, role, userId) => {
 };
 
 export default function AdminRequestsPage() {
-    const { user, role, loading: authLoading } = useAuth();
+    const { user, role, profile, loading: authLoading } = useAuth();
     const { isOnline } = useNetworkStatus();
     const { alert: showAlert, confirm: showConfirm } = useDialog();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
@@ -774,6 +774,56 @@ export default function AdminRequestsPage() {
         selectedRequest?.createdBy,
         selectedRequest?.technicianId,
         selectedRequestTechnicians,
+    ]);
+    const selectedRequestTechniciansForDisplay = useMemo(() => {
+        if (selectedRequestTechnicians.length > 0) {
+            return selectedRequestTechnicians;
+        }
+
+        if (!selectedRequest) return [];
+
+        const fallbackTechnicianId =
+            selectedRequest.createdBy || selectedRequest.technicianId || user?.id;
+        if (!fallbackTechnicianId) return [];
+
+        const directoryProfile =
+            technicianDirectory.find(
+                (item) => String(item.id) === String(fallbackTechnicianId),
+            ) ?? null;
+        const authProfile =
+            String(user?.id) === String(fallbackTechnicianId) ? profile : null;
+        const fallbackProfile = directoryProfile ?? authProfile;
+        const profileName = getProfileDisplayName(fallbackProfile);
+        const fallbackName =
+            (profileName && profileName !== "-" ? profileName : "") ||
+            selectedRequest.technicianName ||
+            user?.user_metadata?.full_name ||
+            user?.email ||
+            "Teknisi";
+
+        return [
+            {
+                id: `fallback-creator-${fallbackTechnicianId}`,
+                job_id: selectedRequest.id,
+                technician_id: fallbackTechnicianId,
+                role: "creator",
+                technician: {
+                    ...(fallbackProfile ?? {}),
+                    id: fallbackTechnicianId,
+                    email: fallbackProfile?.email ?? user?.email ?? null,
+                },
+                technician_name:
+                    fallbackName && fallbackName !== "-"
+                        ? fallbackName
+                        : "Teknisi",
+            },
+        ];
+    }, [
+        profile,
+        selectedRequest,
+        selectedRequestTechnicians,
+        technicianDirectory,
+        user,
     ]);
     const canManageTechnicians =
         role === "admin" ||
@@ -1655,9 +1705,9 @@ export default function AdminRequestsPage() {
                                             <p className="text-sm text-slate-500">
                                                 Memuat teknisi...
                                             </p>
-                                        ) : selectedRequestTechnicians.length >
+                                        ) : selectedRequestTechniciansForDisplay.length >
                                           0 ? (
-                                            selectedRequestTechnicians.map(
+                                            selectedRequestTechniciansForDisplay.map(
                                                 (item) => {
                                                     const isCreator =
                                                         item.role === "creator";

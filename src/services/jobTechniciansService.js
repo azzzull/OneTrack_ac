@@ -1,4 +1,7 @@
 import supabase from "../supabaseClient";
+import { readLocalCache, writeLocalCache } from "../utils/localDataCache";
+
+const getJobTechniciansCacheKey = (jobId) => `job-technicians.${jobId}`;
 
 const normalizeProfileDisplayName = (profile) => {
     const composed =
@@ -78,41 +81,60 @@ export const getTechnicianProfiles = async () => {
 export const getJobTechnicians = async (jobId) => {
     if (!jobId) return [];
 
-    const [{ data: rows, error: rowsError }, profiles] = await Promise.all([
-        supabase
-            .from("job_technicians")
-            .select(
-                `
-                id,
-                job_id,
-                technician_id,
-                role,
-                added_by,
-                created_at,
-                updated_at
-            `,
-            )
-            .eq("job_id", jobId)
-            .order("role", { ascending: true })
-            .order("created_at", { ascending: true }),
-        getTechnicianProfiles().catch((error) => {
-            console.warn("Failed to load technician directory for job rows:", error);
-            return [];
-        }),
-    ]);
+    const cachedRows = readLocalCache(getJobTechniciansCacheKey(jobId), []);
 
-    if (rowsError) throw rowsError;
+    if (!navigator.onLine) {
+        return cachedRows;
+    }
 
-    const profileMap = new Map((profiles ?? []).map((profile) => [String(profile.id), profile]));
-    const addedByMap = profileMap;
+    try {
+        const [{ data: rows, error: rowsError }, profiles] = await Promise.all([
+            supabase
+                .from("job_technicians")
+                .select(
+                    `
+                    id,
+                    job_id,
+                    technician_id,
+                    role,
+                    added_by,
+                    created_at,
+                    updated_at
+                `,
+                )
+                .eq("job_id", jobId)
+                .order("role", { ascending: true })
+                .order("created_at", { ascending: true }),
+            getTechnicianProfiles().catch((error) => {
+                console.warn(
+                    "Failed to load technician directory for job rows:",
+                    error,
+                );
+                return [];
+            }),
+        ]);
 
-    return (rows ?? []).map((row) =>
-        normalizeJobTechnicianRow({
-            ...row,
-            technician: profileMap.get(String(row.technician_id)) ?? null,
-            added_by_profile: addedByMap.get(String(row.added_by)) ?? null,
-        }),
-    );
+        if (rowsError) throw rowsError;
+
+        const profileMap = new Map(
+            (profiles ?? []).map((profile) => [String(profile.id), profile]),
+        );
+        const addedByMap = profileMap;
+
+        const normalizedRows = (rows ?? []).map((row) =>
+            normalizeJobTechnicianRow({
+                ...row,
+                technician: profileMap.get(String(row.technician_id)) ?? null,
+                added_by_profile: addedByMap.get(String(row.added_by)) ?? null,
+            }),
+        );
+
+        writeLocalCache(getJobTechniciansCacheKey(jobId), normalizedRows);
+        return normalizedRows;
+    } catch (error) {
+        if (cachedRows.length > 0) return cachedRows;
+        throw error;
+    }
 };
 
 export const getTechnicianJobIds = async (technicianId) => {
