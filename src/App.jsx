@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { WifiOff } from "lucide-react";
 import ProtectedRoute from "@/routes/ProtectedRoute";
 import { registerPushNotifications } from "@/services/pushNotifications";
 import { useAuth } from "@/context/useAuth";
 import AuthLoadingScreen from "@/components/AuthLoadingScreen";
+import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
 
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminMasterDataPage from "@/pages/admin/MasterData";
@@ -22,17 +22,6 @@ import CustomerRequestFormPage from "@/pages/customer/RequestForm";
 import ProfilePage from "@/pages/Profile";
 import Login from "@/pages/Login";
 
-function OfflineBanner() {
-    return (
-        <div className="fixed left-1/2 top-3 z-[100] -translate-x-1/2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 shadow-lg">
-            <span className="flex items-center gap-2">
-                <WifiOff className="h-4 w-4" />
-                Offline mode. Network actions are disabled.
-            </span>
-        </div>
-    );
-}
-
 function App() {
     const { loading, user, isOffline } = useAuth();
 
@@ -45,7 +34,7 @@ function App() {
 
     return (
         <>
-            {isOffline && user && <OfflineBanner />}
+            <OfflineSyncStatus />
             <Routes>
                 <Route path="/" element={<Login />} />
                 <Route

@@ -21,6 +21,10 @@ import supabase from "../../supabaseClient";
 import useRequestStats from "../../hooks/useRequestStats";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import NotificationCenter from "../notifications/NotificationCenter";
+import {
+    clearOfflineQueueItems,
+    getOfflineQueueStats,
+} from "../../utils/offlineQueue";
 
 const menuByRole = {
     management: [
@@ -150,7 +154,7 @@ const usePendingAccommodationCount = (role, userId, isOnline) => {
 };
 
 export default function Sidebar({ collapsed = false, onToggle }) {
-    const { user, role, profile, loading, isOnline } = useAuth();
+    const { user, role, profile, loading, isOnline, logout } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
     const pendingAccommodationCount = usePendingAccommodationCount(
@@ -185,7 +189,16 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     });
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
+        const stats = await getOfflineQueueStats({ userId: user?.id });
+        if (stats.total > 0) {
+            const shouldClear = window.confirm(
+                `Ada ${stats.total} draft offline di perangkat ini. Hapus draft saat logout?`,
+            );
+            if (shouldClear) {
+                await clearOfflineQueueItems({ userId: user?.id });
+            }
+        }
+        await logout();
         navigate("/");
     };
     const identityLabel =
@@ -588,7 +601,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
 }
 
 export function MobileBottomNav() {
-    const { role, profile, user, isOnline } = useAuth();
+    const { role, profile, user, isOnline, logout } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
     const pendingAccommodationCount = usePendingAccommodationCount(
@@ -717,7 +730,16 @@ export function MobileBottomNav() {
     ]);
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
+        const queueStats = await getOfflineQueueStats({ userId: user?.id });
+        if (queueStats.total > 0) {
+            const shouldClear = window.confirm(
+                `Ada ${queueStats.total} draft offline di perangkat ini. Hapus draft saat logout?`,
+            );
+            if (shouldClear) {
+                await clearOfflineQueueItems({ userId: user?.id });
+            }
+        }
+        await logout();
         navigate("/");
     };
 

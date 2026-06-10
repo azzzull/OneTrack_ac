@@ -29,12 +29,14 @@ import JobTechnicianManagerModal from "../../components/job-technicians/JobTechn
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import useJobTechnicians from "../../hooks/useJobTechnicians";
 import useTechnicianDirectory from "../../hooks/useTechnicianDirectory";
+import useNetworkStatus from "../../hooks/useNetworkStatus";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import supabase from "../../supabaseClient";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
 import { formatDateUniversal } from "../../utils/dateFormatter";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
+import { createOfflineQueueItem } from "../../utils/offlineQueue";
 import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
 import {
     getTechnicianJobIds,
@@ -114,6 +116,44 @@ const getNotificationName = (value, fallback) => {
     if (primary && primary !== "-") return primary;
     const secondary = String(fallback ?? "").trim();
     return secondary && secondary !== "-" ? secondary : "";
+};
+
+const REQUEST_CACHE_PREFIX = "onetrack.requests.cache";
+
+const readCachedRequests = (userId) => {
+    if (!userId || typeof window === "undefined") return [];
+    try {
+        const raw = window.localStorage.getItem(
+            `${REQUEST_CACHE_PREFIX}.${userId}`,
+        );
+        return raw ? JSON.parse(raw) : [];
+    } catch (error) {
+        console.warn("Failed to read cached requests:", error);
+        return [];
+    }
+};
+
+const writeCachedRequests = (userId, requests) => {
+    if (!userId || typeof window === "undefined") return;
+    try {
+        window.localStorage.setItem(
+            `${REQUEST_CACHE_PREFIX}.${userId}`,
+            JSON.stringify(requests),
+        );
+    } catch (error) {
+        console.warn("Failed to cache requests:", error);
+    }
+};
+
+const isNetworkFailure = (error) => {
+    const message = String(error?.message ?? error ?? "").toLowerCase();
+    return (
+        !navigator.onLine ||
+        message.includes("failed to fetch") ||
+        message.includes("network") ||
+        message.includes("load failed") ||
+        message.includes("timeout")
+    );
 };
 
 const normalizeRequest = (row, creatorName = "") => {
@@ -262,6 +302,7 @@ const shouldIncludeRequestForRole = (row, role, userId) => {
 
 export default function AdminRequestsPage() {
     const { user, role, loading: authLoading } = useAuth();
+    const { isOnline } = useNetworkStatus();
     const { alert: showAlert, confirm: showConfirm } = useDialog();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
@@ -283,6 +324,7 @@ export default function AdminRequestsPage() {
     const [beforePhotoUrl, setBeforePhotoUrl] = useState(null);
     const [progressPhotoUrl, setProgressPhotoUrl] = useState(null);
     const [afterPhotoUrl, setAfterPhotoUrl] = useState(null);
+    const [pendingPhotoTypes, setPendingPhotoTypes] = useState({});
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraTarget, setCameraTarget] = useState(null);
     const [cameraError, setCameraError] = useState("");
@@ -317,6 +359,14 @@ export default function AdminRequestsPage() {
 
     const loadRequests = useCallback(async () => {
         try {
+            if (!navigator.onLine) {
+                if (isMountedRef.current) {
+                    setRequests(readCachedRequests(userIdRef.current));
+                    setLoading(false);
+                }
+                return;
+            }
+
             let query = supabase
                 .from("requests")
                 .select("*")
@@ -385,20 +435,20 @@ export default function AdminRequestsPage() {
             }
 
             if (isMountedRef.current) {
-                setRequests(
-                    requestRows.map((row) =>
-                        normalizeRequest(
-                            row,
-                            creatorMap[row.created_by] ??
-                                (row.created_by ? "User tidak ditemukan" : "-"),
-                        ),
+                const normalizedRequests = requestRows.map((row) =>
+                    normalizeRequest(
+                        row,
+                        creatorMap[row.created_by] ??
+                            (row.created_by ? "User tidak ditemukan" : "-"),
                     ),
                 );
+                setRequests(normalizedRequests);
+                writeCachedRequests(userIdRef.current, normalizedRequests);
             }
         } catch (error) {
             console.error("Error loading requests:", error);
             if (isMountedRef.current) {
-                setRequests([]);
+                setRequests(readCachedRequests(userIdRef.current));
             }
         } finally {
             if (isMountedRef.current) {
@@ -425,6 +475,10 @@ export default function AdminRequestsPage() {
         const timerId = setTimeout(() => {
             loadRequests();
         }, 0);
+
+        if (!isOnline) {
+            return () => clearTimeout(timerId);
+        }
 
         // Async channel setup with proper cleanup
         const setupChannel = async () => {
@@ -582,7 +636,7 @@ export default function AdminRequestsPage() {
                 console.log("[AdminRequests] Channel cleaned up");
             }
         };
-    }, [user?.id, loadRequests]); // ✅ Depends on user.id and stable loadRequests - recreates when user changes
+    }, [isOnline, user?.id, loadRequests]);
 
     useEffect(() => {
         deferRefreshRef.current = Boolean(cameraOpen || saving);
@@ -741,6 +795,7 @@ export default function AdminRequestsPage() {
         setBeforePhotoUrl(null);
         setProgressPhotoUrl(null);
         setAfterPhotoUrl(null);
+        setPendingPhotoTypes({});
     }, [selectedRequest]);
 
     const closeDetail = () => {
@@ -751,6 +806,7 @@ export default function AdminRequestsPage() {
         setBeforePhotoUrl(null);
         setProgressPhotoUrl(null);
         setAfterPhotoUrl(null);
+        setPendingPhotoTypes({});
         setCameraOpen(false);
         setCameraTarget(null);
         setCameraError("");
@@ -847,6 +903,61 @@ export default function AdminRequestsPage() {
         }
     };
 
+    const queueJobDraft = async ({ payload, action }) => {
+        const queueItem = await createOfflineQueueItem({
+            user_id: user.id,
+            type: "job_action",
+            entity_table: "requests",
+            entity_id: selectedRequest.id,
+            action,
+            payload: {
+                ...payload,
+                request_id: selectedRequest.id,
+                job_id: selectedRequest.id,
+                old_status: selectedRequest.status,
+                technician_id: user.id,
+                timestamp: new Date().toISOString(),
+            },
+            attachments: [],
+        });
+
+        setRequests((current) => {
+            const next = current.map((item) =>
+                item.id === selectedRequest.id
+                    ? {
+                          ...item,
+                          troubleDescription:
+                              payload.trouble_description ??
+                              item.troubleDescription,
+                          replacedParts:
+                              payload.replaced_parts ?? item.replacedParts,
+                          reconditionedParts:
+                              payload.reconditioned_parts ??
+                              item.reconditionedParts,
+                          serialNumber:
+                              payload.serial_number ?? item.serialNumber,
+                          status: payload.status ?? item.status,
+                          localSyncStatus: "pending",
+                      }
+                    : item,
+            );
+            writeCachedRequests(user?.id, next);
+            return next;
+        });
+
+        setBeforePhotoUrl(null);
+        setProgressPhotoUrl(null);
+        setAfterPhotoUrl(null);
+        setPendingPhotoTypes({});
+
+        await showAlert(
+            "Data disimpan offline dan akan disinkronkan saat internet kembali.",
+            { title: "Draft Offline" },
+        );
+
+        return queueItem;
+    };
+
     const saveChanges = async () => {
         if (!selectedRequest) return;
 
@@ -867,7 +978,12 @@ export default function AdminRequestsPage() {
             nextSerial !== currentSerial;
 
         const hasNewPhotos =
-            beforePhotoUrl || progressPhotoUrl || afterPhotoUrl;
+            beforePhotoUrl ||
+            progressPhotoUrl ||
+            afterPhotoUrl ||
+            pendingPhotoTypes.before ||
+            pendingPhotoTypes.progress ||
+            pendingPhotoTypes.after;
 
         if (!hasRepairNoteChanges && !hasNewPhotos) {
             await showAlert("Tidak ada perubahan yang disimpan.", {
@@ -875,6 +991,8 @@ export default function AdminRequestsPage() {
             });
             return;
         }
+
+        let payloadForOffline = null;
 
         try {
             setSaving(true);
@@ -894,10 +1012,18 @@ export default function AdminRequestsPage() {
 
             // Determine status automatically based on photos
             // Check current photos + newly uploaded ones
-            const hasBefore = beforePhotoUrl || selectedRequest.beforePhotoUrl;
+            const hasBefore =
+                beforePhotoUrl ||
+                pendingPhotoTypes.before ||
+                selectedRequest.beforePhotoUrl;
             const hasProgress =
-                progressPhotoUrl || selectedRequest.progressPhotoUrl;
-            const hasAfter = afterPhotoUrl || selectedRequest.afterPhotoUrl;
+                progressPhotoUrl ||
+                pendingPhotoTypes.progress ||
+                selectedRequest.progressPhotoUrl;
+            const hasAfter =
+                afterPhotoUrl ||
+                pendingPhotoTypes.after ||
+                selectedRequest.afterPhotoUrl;
 
             if (
                 role === "technician" &&
@@ -922,6 +1048,19 @@ export default function AdminRequestsPage() {
             } else {
                 // Keep current status if no photos
                 payload.status = selectedRequest.status;
+            }
+
+            payloadForOffline = payload;
+
+            if (!isOnline && role === "technician") {
+                await queueJobDraft({
+                    payload,
+                    action:
+                        payload.status === "completed"
+                            ? "submit_job_completion"
+                            : "update_job_progress",
+                });
+                return;
             }
 
             const { error } = await supabase
@@ -993,12 +1132,27 @@ export default function AdminRequestsPage() {
             setBeforePhotoUrl(null);
             setProgressPhotoUrl(null);
             setAfterPhotoUrl(null);
+            setPendingPhotoTypes({});
 
             await showAlert("Perubahan berhasil disimpan.", {
                 title: "Sukses",
             });
         } catch (error) {
             console.error("Error saving changes:", error);
+            if (
+                role === "technician" &&
+                payloadForOffline &&
+                isNetworkFailure(error)
+            ) {
+                await queueJobDraft({
+                    payload: payloadForOffline,
+                    action:
+                        payloadForOffline.status === "completed"
+                            ? "submit_job_completion"
+                            : "update_job_progress",
+                });
+                return;
+            }
             await showAlert("Gagal menyimpan perubahan.", { title: "Error" });
         } finally {
             setSaving(false);
@@ -1087,9 +1241,16 @@ export default function AdminRequestsPage() {
 
                 <main className="min-w-0 flex-1 p-3 pb-24 md:p-8 md:pb-8">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
-                            Daftar Pekerjaan
-                        </h1>
+                        <div>
+                            <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
+                                Daftar Pekerjaan
+                            </h1>
+                            {!isOnline && (
+                                <p className="mt-1 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                                    Data Offline
+                                </p>
+                            )}
+                        </div>
 
                         <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:max-w-sm md:px-4 md:py-3">
                             <Search size={16} />
@@ -1152,7 +1313,9 @@ export default function AdminRequestsPage() {
                         ) : filteredRequests.length === 0 ? (
                             <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50 p-8">
                                 <p className="text-base text-sky-700">
-                                    Belum ada data pekerjaan
+                                    {!isOnline
+                                        ? "Data ini belum tersedia offline. Buka data saat online terlebih dahulu."
+                                        : "Belum ada data pekerjaan"}
                                 </p>
                             </div>
                         ) : (
@@ -1223,22 +1386,31 @@ export default function AdminRequestsPage() {
                                                                 </p>
                                                             </div>
 
-                                                            <span
-                                                                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                                                    STATUS_STYLES[
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <span
+                                                                    className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                                                        STATUS_STYLES[
+                                                                            normalizeStatusKey(
+                                                                                item.status,
+                                                                            )
+                                                                        ] ??
+                                                                        STATUS_STYLES.pending
+                                                                    }`}
+                                                                >
+                                                                    {STATUS_LABELS[
                                                                         normalizeStatusKey(
                                                                             item.status,
                                                                         )
-                                                                    ] ??
-                                                                    STATUS_STYLES.pending
-                                                                }`}
-                                                            >
-                                                                {STATUS_LABELS[
-                                                                    normalizeStatusKey(
-                                                                        item.status,
-                                                                    )
-                                                                ] ?? "PENDING"}
-                                                            </span>
+                                                                    ] ?? "PENDING"}
+                                                                </span>
+                                                                {item.localSyncStatus ===
+                                                                    "pending" && (
+                                                                    <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                                                                        Menunggu
+                                                                        Sync
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </>
                                                 );
@@ -1428,6 +1600,12 @@ export default function AdminRequestsPage() {
                                         )
                                     ] ?? "PENDING"}
                                 </div>
+                                {selectedRequest.localSyncStatus ===
+                                    "pending" && (
+                                    <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                                        Menunggu Sync
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -1764,6 +1942,7 @@ export default function AdminRequestsPage() {
                                         <PhotoUploadInput
                                             folderName="before"
                                             photoType="before"
+                                            entityId={selectedRequest.id}
                                             supabaseClient={supabase}
                                             onPhotoSelected={() => {}}
                                             onUploadSuccess={async (
@@ -1772,12 +1951,21 @@ export default function AdminRequestsPage() {
                                             ) => {
                                                 setBeforePhotoUrl(photoUrl);
                                             }}
+                                            onUploadQueued={() => {
+                                                setPendingPhotoTypes((prev) => ({
+                                                    ...prev,
+                                                    before: true,
+                                                }));
+                                            }}
                                             showQueuedStatus={false}
                                         />
-                                        {beforePhotoUrl && (
+                                        {(beforePhotoUrl ||
+                                            pendingPhotoTypes.before) && (
                                             <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
                                                 <p className="text-xs text-emerald-700">
-                                                    Foto terpilih
+                                                    {pendingPhotoTypes.before
+                                                        ? "Menunggu sinkronisasi"
+                                                        : "Foto terpilih"}
                                                 </p>
                                             </div>
                                         )}
@@ -1789,6 +1977,7 @@ export default function AdminRequestsPage() {
                                         <PhotoUploadInput
                                             folderName="progress"
                                             photoType="progress"
+                                            entityId={selectedRequest.id}
                                             supabaseClient={supabase}
                                             onPhotoSelected={() => {}}
                                             onUploadSuccess={async (
@@ -1797,12 +1986,21 @@ export default function AdminRequestsPage() {
                                             ) => {
                                                 setProgressPhotoUrl(photoUrl);
                                             }}
+                                            onUploadQueued={() => {
+                                                setPendingPhotoTypes((prev) => ({
+                                                    ...prev,
+                                                    progress: true,
+                                                }));
+                                            }}
                                             showQueuedStatus={false}
                                         />
-                                        {progressPhotoUrl && (
+                                        {(progressPhotoUrl ||
+                                            pendingPhotoTypes.progress) && (
                                             <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
                                                 <p className="text-xs text-emerald-700">
-                                                    Foto terpilih
+                                                    {pendingPhotoTypes.progress
+                                                        ? "Menunggu sinkronisasi"
+                                                        : "Foto terpilih"}
                                                 </p>
                                             </div>
                                         )}
@@ -1814,6 +2012,7 @@ export default function AdminRequestsPage() {
                                         <PhotoUploadInput
                                             folderName="after"
                                             photoType="after"
+                                            entityId={selectedRequest.id}
                                             supabaseClient={supabase}
                                             onPhotoSelected={() => {}}
                                             onUploadSuccess={async (
@@ -1822,12 +2021,21 @@ export default function AdminRequestsPage() {
                                             ) => {
                                                 setAfterPhotoUrl(photoUrl);
                                             }}
+                                            onUploadQueued={() => {
+                                                setPendingPhotoTypes((prev) => ({
+                                                    ...prev,
+                                                    after: true,
+                                                }));
+                                            }}
                                             showQueuedStatus={false}
                                         />
-                                        {afterPhotoUrl && (
+                                        {(afterPhotoUrl ||
+                                            pendingPhotoTypes.after) && (
                                             <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
                                                 <p className="text-xs text-emerald-700">
-                                                    Foto terpilih
+                                                    {pendingPhotoTypes.after
+                                                        ? "Menunggu sinkronisasi"
+                                                        : "Foto terpilih"}
                                                 </p>
                                             </div>
                                         )}

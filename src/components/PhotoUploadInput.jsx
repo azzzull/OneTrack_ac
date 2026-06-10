@@ -6,13 +6,20 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import { useAuth } from "../context/useAuth";
+import {
+    createOfflineQueueItem,
+    fileToOfflineAttachment,
+} from "../utils/offlineQueue";
 
 const PhotoUploadInput = ({
     folderName = "temp",
     onPhotoSelected = () => {},
     onUploadSuccess = () => {},
+    onUploadQueued = () => {},
     deferredUpload = false,
     photoType = "generic", // for metadata
+    entityId = null,
+    entityTable = "requests",
     disabled = false,
     className = "",
     supabaseClient = null,
@@ -294,6 +301,58 @@ const PhotoUploadInput = ({
     /**
      * Perform the actual upload
      */
+    const queueOfflinePhoto = async (file, reason = "") => {
+        const compressedFile = await compressImage(file);
+        const attachment = await fileToOfflineAttachment(compressedFile);
+        const queueItem = await createOfflineQueueItem({
+            user_id: user.id,
+            type: "job_photo",
+            entity_table: entityTable,
+            entity_id: entityId ?? "",
+            action: "upload_job_photo",
+            payload: {
+                request_id: entityId,
+                job_id: entityId,
+                photo_type: photoType,
+                technician_id: user.id,
+                caption: "",
+                timestamp: new Date().toISOString(),
+                folder_name: folderName,
+                reason,
+            },
+            attachments: attachment ? [attachment] : [],
+        });
+
+        await onUploadQueued(
+            {
+                userId: user.id,
+                photoType,
+                requestId: entityId,
+                timestamp: Date.now(),
+                queueId: queueItem.id,
+            },
+            queueItem,
+        );
+
+        setUploadMessage(
+            "Data disimpan offline dan akan disinkronkan saat internet kembali.",
+        );
+        setMessageType("success");
+
+        setTimeout(() => {
+            setPreviewImage(null);
+            setSelectedFile(null);
+            setUploadMessage("");
+            setIsOpen(false);
+            setUploadMode("gallery");
+            if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+            }
+        }, 1500);
+
+        return queueItem;
+    };
+
     const performUpload = async (file) => {
         if (!user || !supabaseClient) {
             setUploadMessage("User not authenticated. Please log in.");
@@ -305,10 +364,7 @@ const PhotoUploadInput = ({
         try {
             // Check online status
             if (!navigator.onLine) {
-                setUploadMessage(
-                    "No internet connection. Please try again when online.",
-                );
-                setMessageType("error");
+                await queueOfflinePhoto(file, "offline");
                 setIsUploading(false);
                 return;
             }
@@ -359,6 +415,14 @@ const PhotoUploadInput = ({
             }, 1500);
         } catch (error) {
             console.error("Upload error:", error);
+            if (!navigator.onLine || String(error.message).includes("fetch")) {
+                try {
+                    await queueOfflinePhoto(file, error.message);
+                    return;
+                } catch (queueError) {
+                    console.error("Queue photo error:", queueError);
+                }
+            }
             setUploadMessage(`Error: ${error.message}`);
             setMessageType("error");
         } finally {
