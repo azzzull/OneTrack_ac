@@ -10,7 +10,7 @@ function Login() {
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
 
-    const { login, user, role } = useAuth();
+    const { login, user, role, isOffline } = useAuth();
     const { alert: showAlert } = useDialog();
     const navigate = useNavigate();
 
@@ -80,10 +80,12 @@ function Login() {
                     <div className="flex flex-col w-full">
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || isOffline}
                             className="px-4 py-2 font-semibold rounded-2xl bg-sky-400 text-white hover:bg-sky-500 hover:text-white hover:cursor-pointer duration-200 ease-in hover:scale-105 my-2"
                         >
-                            {loading ? (
+                            {isOffline ? (
+                                "Offline"
+                            ) : loading ? (
                                 <span className="flex items-center justify-center gap-2">
                                     <Loader2 className="animate-spin w-4 h-4" />
                                     <span>Menyinkronkan...</span>

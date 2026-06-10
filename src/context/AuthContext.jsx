@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import supabase from "../supabaseClient";
 import { AuthContext } from "./AuthContextValue";
 import {
     cleanupAllChannels,
     markUserLoggedOut,
 } from "../utils/realtimeChannelManager";
+
+const AUTH_PROFILE_CACHE_KEY = "onetrack.auth.profile";
 
 const fetchUserProfile = async (userId) => {
     const { data, error } = await supabase
@@ -19,32 +21,151 @@ const fetchUserProfile = async (userId) => {
     return data ?? null;
 };
 
+const getInitialOnlineState = () => {
+    if (typeof navigator === "undefined") return true;
+    return navigator.onLine;
+};
+
+const readCachedProfile = (userId) => {
+    if (!userId || typeof window === "undefined") return null;
+
+    try {
+        const cached = window.localStorage.getItem(AUTH_PROFILE_CACHE_KEY);
+        if (!cached) return null;
+
+        const parsed = JSON.parse(cached);
+        if (parsed?.userId !== userId) return null;
+
+        return parsed.profile ?? null;
+    } catch (error) {
+        console.warn("[AuthContext] Failed to read cached profile:", error);
+        return null;
+    }
+};
+
+const writeCachedProfile = (userId, profile) => {
+    if (!userId || !profile || typeof window === "undefined") return;
+
+    try {
+        window.localStorage.setItem(
+            AUTH_PROFILE_CACHE_KEY,
+            JSON.stringify({
+                userId,
+                profile,
+                cachedAt: new Date().toISOString(),
+            }),
+        );
+    } catch (error) {
+        console.warn("[AuthContext] Failed to cache profile:", error);
+    }
+};
+
+const clearCachedProfile = () => {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(AUTH_PROFILE_CACHE_KEY);
+};
+
+const isSessionExpired = (session) => {
+    const expiresAtMs = Number(session?.expires_at ?? 0) * 1000;
+    return Boolean(expiresAtMs && expiresAtMs <= Date.now());
+};
+
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [profile, setProfile] = useState(null);
     const [role, setRole] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [isOnline, setIsOnline] = useState(getInitialOnlineState);
 
-    const syncUserProfile = async (userId) => {
-        try {
-            const nextProfile = await fetchUserProfile(userId);
-            setProfile(nextProfile);
-            setRole(nextProfile?.role ?? null);
-        } catch (error) {
-            console.error("Error fetching profile:", error);
-            setProfile(null);
-            setRole(null);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const applyProfile = useCallback((nextProfile) => {
+        setProfile(nextProfile);
+        setRole(nextProfile?.role ?? null);
+    }, []);
+
+    const syncUserProfile = useCallback(
+        async (userId, options = {}) => {
+            const { finishLoading = true } = options;
+            if (!userId) {
+                if (finishLoading) setLoading(false);
+                return;
+            }
+
+            try {
+                const nextProfile = await fetchUserProfile(userId);
+                applyProfile(nextProfile);
+                writeCachedProfile(userId, nextProfile);
+            } catch (error) {
+                console.error("Error fetching profile:", error);
+                const cachedProfile = readCachedProfile(userId);
+                if (cachedProfile) {
+                    applyProfile(cachedProfile);
+                }
+            } finally {
+                if (finishLoading) {
+                    setLoading(false);
+                }
+            }
+        },
+        [applyProfile],
+    );
 
     useEffect(() => {
-        // cek user saat refresh
-        supabase.auth.getUser().then(async ({ data, error }) => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => {
+            console.log("[AuthContext] offline mode detected");
+            setIsOnline(false);
+        };
+
+        window.addEventListener("online", handleOnline);
+        window.addEventListener("offline", handleOffline);
+
+        if (!getInitialOnlineState()) {
+            console.log("[AuthContext] offline mode detected");
+        }
+
+        return () => {
+            window.removeEventListener("online", handleOnline);
+            window.removeEventListener("offline", handleOffline);
+        };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const clearAuthState = async ({ signOut = false } = {}) => {
+            if (signOut) {
+                try {
+                    await supabase.auth.signOut({ scope: "local" });
+                } catch (error) {
+                    console.warn("[AuthContext] Local sign out failed:", error);
+                }
+            }
+
+            if (cancelled) return;
+            clearCachedProfile();
+            await cleanupAllChannels();
+            markUserLoggedOut();
+            setUser(null);
+            setProfile(null);
+            setRole(null);
+            setLoading(false);
+        };
+
+        const restoreLocalSession = async () => {
+            const {
+                data: { session },
+                error,
+            } = await supabase.auth.getSession();
+
+            if (cancelled) return;
+
             if (error) {
-                console.error("Error restoring auth session:", error);
-                await supabase.auth.signOut();
+                console.error("[AuthContext] Error loading local session:", error);
+                await clearAuthState();
+                return;
+            }
+
+            if (!session?.user) {
                 setUser(null);
                 setProfile(null);
                 setRole(null);
@@ -52,19 +173,61 @@ export function AuthProvider({ children }) {
                 return;
             }
 
-            if (data?.user) {
-                setUser(data.user);
-                syncUserProfile(data.user.id);
-            } else {
-                setLoading(false);
-            }
-        });
+            console.log("[AuthContext] local session found");
+            setUser(session.user);
 
-        // dengerin perubahan login / logout
+            const cachedProfile = readCachedProfile(session.user.id);
+            if (cachedProfile) {
+                applyProfile(cachedProfile);
+            } else {
+                setProfile(null);
+                setRole(null);
+            }
+            setLoading(false);
+
+            if (!getInitialOnlineState()) {
+                console.log("[AuthContext] offline mode detected");
+                return;
+            }
+
+            try {
+                const { data, error: refreshError } =
+                    await supabase.auth.refreshSession(session);
+
+                if (cancelled) return;
+
+                if (refreshError || !data?.session?.user) {
+                    console.error(
+                        "[AuthContext] background session refresh fail:",
+                        refreshError,
+                    );
+                    if (isSessionExpired(session)) {
+                        await clearAuthState({ signOut: true });
+                    }
+                    return;
+                }
+
+                console.log("[AuthContext] background session refresh success");
+                setUser(data.session.user);
+                await syncUserProfile(data.session.user.id, {
+                    finishLoading: false,
+                });
+            } catch (refreshError) {
+                if (cancelled) return;
+                console.error(
+                    "[AuthContext] background session refresh fail:",
+                    refreshError,
+                );
+                if (isSessionExpired(session)) {
+                    await clearAuthState({ signOut: true });
+                }
+            }
+        };
+
+        restoreLocalSession();
+
         const { data: listener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                // ✅ CRITICAL: Cleanup channels on SIGNED_OUT or TOKEN_REFRESHED events
-                // This prevents stale channels from causing "cannot add postgres_changes after subscribe()" errors
                 if (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") {
                     console.log(
                         `[AuthContext] Auth event: ${event} - cleaning up channels`,
@@ -75,8 +238,19 @@ export function AuthProvider({ children }) {
 
                 if (session?.user) {
                     setUser(session.user);
-                    syncUserProfile(session.user.id);
+                    if (getInitialOnlineState()) {
+                        syncUserProfile(session.user.id);
+                    } else {
+                        const cachedProfile = readCachedProfile(
+                            session.user.id,
+                        );
+                        if (cachedProfile) {
+                            applyProfile(cachedProfile);
+                        }
+                        setLoading(false);
+                    }
                 } else {
+                    clearCachedProfile();
                     setUser(null);
                     setProfile(null);
                     setRole(null);
@@ -85,10 +259,17 @@ export function AuthProvider({ children }) {
             },
         );
 
-        return () => listener.subscription.unsubscribe();
-    }, []);
+        return () => {
+            cancelled = true;
+            listener.subscription.unsubscribe();
+        };
+    }, [applyProfile, syncUserProfile]);
 
     const login = async (email, password) => {
+        if (!isOnline) {
+            throw new Error("Tidak ada koneksi internet. Login membutuhkan koneksi.");
+        }
+
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
@@ -98,10 +279,9 @@ export function AuthProvider({ children }) {
     };
 
     const logout = async () => {
-        // ✅ CRITICAL FIX: Cleanup all realtime channels before logout
-        // This prevents stale subscriptions from causing issues after re-login
         await cleanupAllChannels();
         markUserLoggedOut();
+        clearCachedProfile();
         await supabase.auth.signOut();
     };
 
@@ -114,6 +294,8 @@ export function AuthProvider({ children }) {
                 logout,
                 role,
                 loading,
+                isOnline,
+                isOffline: !isOnline,
                 refreshProfile: () => syncUserProfile(user?.id),
             }}
         >

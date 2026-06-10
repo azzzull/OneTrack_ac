@@ -79,11 +79,11 @@ const getMenus = (role, profile) => {
     ];
 };
 
-const usePendingAccommodationCount = (role, userId) => {
+const usePendingAccommodationCount = (role, userId, isOnline) => {
     const [pendingCount, setPendingCount] = useState(0);
 
     useEffect(() => {
-        if (!userId || !["admin", "management"].includes(role)) {
+        if (!isOnline || !userId || !["admin", "management"].includes(role)) {
             return undefined;
         }
 
@@ -144,18 +144,19 @@ const usePendingAccommodationCount = (role, userId) => {
                 supabase.removeChannel(channel);
             }
         };
-    }, [role, userId]);
+    }, [isOnline, role, userId]);
 
-    return pendingCount;
+    return isOnline ? pendingCount : 0;
 };
 
 export default function Sidebar({ collapsed = false, onToggle }) {
-    const { user, role, profile, loading } = useAuth();
+    const { user, role, profile, loading, isOnline } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
     const pendingAccommodationCount = usePendingAccommodationCount(
         role,
         user?.id,
+        isOnline,
     );
     const [newRequestToast, setNewRequestToast] = useState("");
     const [accommodationToast, setAccommodationToast] = useState("");
@@ -213,7 +214,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     }, []);
 
     useEffect(() => {
-        if (loading || role !== "technician" || !user?.id) return;
+        if (loading || !isOnline || role !== "technician" || !user?.id) return;
 
         // Async channel setup with proper cleanup
         const setupChannel = async () => {
@@ -320,10 +321,15 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 console.log("[Sidebar] Channel cleaned up");
             }
         };
-    }, [loading, role, user?.id]);
+    }, [isOnline, loading, role, user?.id]);
 
     useEffect(() => {
-        if (loading || !["admin", "management"].includes(role) || !user?.id) {
+        if (
+            loading ||
+            !isOnline ||
+            !["admin", "management"].includes(role) ||
+            !user?.id
+        ) {
             return;
         }
 
@@ -418,7 +424,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 accommodationNotifyChannelRef.current = null;
             }
         };
-    }, [loading, role, user?.id]);
+    }, [isOnline, loading, role, user?.id]);
 
     return (
         <>
@@ -582,12 +588,13 @@ export default function Sidebar({ collapsed = false, onToggle }) {
 }
 
 export function MobileBottomNav() {
-    const { role, profile, user } = useAuth();
+    const { role, profile, user, isOnline } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
     const pendingAccommodationCount = usePendingAccommodationCount(
         role,
         user?.id,
+        isOnline,
     );
     const navRef = useRef(null);
     const [menuOpen, setMenuOpen] = useState(false);
@@ -800,7 +807,7 @@ export function MobileBottomNav() {
                                             </span>
                                         )}
                                     </span>
-                                    <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal break-words">
+                                    <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal wrap-break-words">
                                         {label}
                                     </span>
                                 </div>
@@ -816,7 +823,7 @@ export function MobileBottomNav() {
                             >
                                 <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
                                     <MoreHorizontal size={20} />
-                                    <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal break-words">
+                                    <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal wrap-break-words">
                                         Lainnya
                                     </span>
                                 </div>
