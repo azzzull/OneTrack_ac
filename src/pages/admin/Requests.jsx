@@ -18,6 +18,9 @@ import {
     X,
     ChevronLeft,
     ChevronRight,
+    Download,
+    FileSpreadsheet,
+    RotateCcw,
     Trash2,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -75,6 +78,15 @@ const STATUS_OPTIONS = [
     { value: "completed", label: "Completed" },
 ];
 
+const PERIOD_OPTIONS = [
+    { value: "all", label: "Semua Periode" },
+    { value: "today", label: "Hari Ini" },
+    { value: "week", label: "Minggu Ini" },
+    { value: "month", label: "Bulan Ini" },
+    { value: "year", label: "Tahun Ini" },
+    { value: "custom", label: "Custom Periode" },
+];
+
 const normalizeStatusKey = (value) => {
     const raw = String(value ?? "")
         .trim()
@@ -97,6 +109,131 @@ const pickFirst = (obj, keys, fallback = "") => {
         }
     }
     return fallback;
+};
+
+const startOfDay = (date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const endOfDay = (date) =>
+    new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        23,
+        59,
+        59,
+        999,
+    );
+
+const getDateRangeForPeriod = (period, customStartDate, customEndDate) => {
+    const now = new Date();
+    let start = null;
+    let end = null;
+
+    if (period === "today") {
+        start = startOfDay(now);
+        end = endOfDay(now);
+    } else if (period === "week") {
+        const currentDay = now.getDay();
+        const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
+        start = startOfDay(
+            new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset),
+        );
+        end = endOfDay(
+            new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6),
+        );
+    } else if (period === "month") {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    } else if (period === "year") {
+        start = new Date(now.getFullYear(), 0, 1);
+        end = endOfDay(new Date(now.getFullYear(), 11, 31));
+    } else if (period === "custom") {
+        start = customStartDate ? startOfDay(new Date(customStartDate)) : null;
+        end = customEndDate ? endOfDay(new Date(customEndDate)) : null;
+    }
+
+    return { start, end };
+};
+
+const isDateInRange = (value, range) => {
+    if (!range.start && !range.end) return true;
+    if (!value) return false;
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+    if (range.start && date < range.start) return false;
+    if (range.end && date > range.end) return false;
+    return true;
+};
+
+const getPeriodLabel = (period, customStartDate, customEndDate) => {
+    if (period === "custom") {
+        if (customStartDate && customEndDate) {
+            return `${customStartDate} sampai ${customEndDate}`;
+        }
+        if (customStartDate) return `mulai ${customStartDate}`;
+        if (customEndDate) return `sampai ${customEndDate}`;
+    }
+
+    return (
+        PERIOD_OPTIONS.find((item) => item.value === period)?.label ??
+        "Semua Periode"
+    );
+};
+
+const slugifyFilePart = (value) => {
+    const normalized = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    return normalized || "semua";
+};
+
+const getExportFileName = ({
+    extension,
+    period,
+    customStartDate,
+    customEndDate,
+    technicianName,
+}) => {
+    const parts = ["pekerjaan"];
+
+    if (technicianName) {
+        parts.push(slugifyFilePart(technicianName));
+    }
+
+    if (period === "custom" && (customStartDate || customEndDate)) {
+        parts.push(
+            slugifyFilePart(
+                `${customStartDate || "awal"}-sampai-${customEndDate || "akhir"}`,
+            ),
+        );
+    } else if (period !== "all") {
+        parts.push(slugifyFilePart(getPeriodLabel(period)));
+    }
+
+    return `${parts.join("-")}.${extension}`;
+};
+
+const downloadBlob = (blob, fileName) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+};
+
+const escapeCsvValue = (value) => {
+    const raw = String(value ?? "");
+    if (/[",\r\n]/.test(raw)) {
+        return `"${raw.replaceAll('"', '""')}"`;
+    }
+    return raw;
 };
 
 const getProfileDisplayName = (profile) => {
@@ -156,8 +293,25 @@ const isNetworkFailure = (error) => {
     );
 };
 
-const normalizeRequest = (row, creatorName = "") => {
+const normalizeRequest = (row, creatorName = "", jobTechnicians = []) => {
     const status = normalizeStatusKey(pickFirst(row, ["status"], "pending"));
+    const technicianIds = [
+        ...new Set(
+            [
+                ...jobTechnicians.map((item) => item.technician_id),
+                pickFirst(row, ["technician_id"], ""),
+            ]
+                .filter(Boolean)
+                .map((id) => String(id)),
+        ),
+    ];
+    const technicianNames = [
+        ...new Set(
+            jobTechnicians
+                .map((item) => item.technician_name)
+                .filter((name) => name && name !== "-"),
+        ),
+    ];
 
     return {
         id: pickFirst(row, ["id"], `${Math.random()}`),
@@ -179,15 +333,17 @@ const normalizeRequest = (row, creatorName = "") => {
         createdBy: pickFirst(row, ["created_by"], ""),
         customerId: pickFirst(row, ["customer_id"], ""),
         technicianId: pickFirst(row, ["technician_id"], ""),
+        technicianIds,
+        technicianNames,
         assignee: pickFirst(
             row,
             ["technician_name", "assignee", "crew_name", "team_name"],
-            creatorName || "-",
+            technicianNames.join(", ") || creatorName || "-",
         ),
         technicianName: pickFirst(
             row,
             ["technician_name", "assignee", "crew_name", "team_name"],
-            creatorName || "-",
+            technicianNames.join(", ") || creatorName || "-",
         ),
         createdByName: creatorName || "-",
         requester: pickFirst(
@@ -211,6 +367,10 @@ const normalizeRequest = (row, creatorName = "") => {
         beforePhotoUrl: pickFirst(row, ["before_photo_url"], ""),
         progressPhotoUrl: pickFirst(row, ["progress_photo_url"], ""),
         afterPhotoUrl: pickFirst(row, ["after_photo_url"], ""),
+        createdAt: pickFirst(row, ["created_at"], null),
+        updatedAt: pickFirst(row, ["updated_at"], null),
+        completedAt: pickFirst(row, ["completed_at"], null),
+        reportDate: pickFirst(row, ["created_at", "updated_at"], null),
         date: pickFirst(row, ["updated_at", "created_at"], null),
         status,
     };
@@ -311,8 +471,13 @@ export default function AdminRequestsPage() {
         getValidFilter(searchParams.get("status") ?? "all"),
     );
     const [search, setSearch] = useState("");
+    const [periodFilter, setPeriodFilter] = useState("all");
+    const [customStartDate, setCustomStartDate] = useState("");
+    const [customEndDate, setCustomEndDate] = useState("");
+    const [selectedTechnicianId, setSelectedTechnicianId] = useState("all");
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [exportLoading, setExportLoading] = useState(null);
     const [selectedRequestId, setSelectedRequestId] = useState(null);
     const [saving, setSaving] = useState(false);
     const [repairNotes, setRepairNotes] = useState({
@@ -390,6 +555,7 @@ export default function AdminRequestsPage() {
 
             if (error) throw error;
             const requestRows = data ?? [];
+            const requestIds = requestRows.map((row) => row.id).filter(Boolean);
 
             const creatorIds = [
                 ...new Set(
@@ -434,12 +600,78 @@ export default function AdminRequestsPage() {
                 }
             }
 
+            let jobTechnicianMap = {};
+            if (requestIds.length > 0) {
+                const { data: jobTechnicianRows, error: jobTechniciansError } =
+                    await supabase
+                        .from("job_technicians")
+                        .select("job_id, technician_id")
+                        .in("job_id", requestIds);
+
+                if (jobTechniciansError) {
+                    console.warn(
+                        "Job technician lookup skipped:",
+                        jobTechniciansError.message,
+                    );
+                } else {
+                    const technicianIds = [
+                        ...new Set(
+                            (jobTechnicianRows ?? [])
+                                .map((row) => row.technician_id)
+                                .filter(Boolean),
+                        ),
+                    ];
+                    let technicianNameMap = {};
+
+                    if (technicianIds.length > 0) {
+                        const { data: technicianProfiles, error: techniciansError } =
+                            await supabase
+                                .from("profiles")
+                                .select("id, first_name, last_name, name, email")
+                                .in("id", technicianIds);
+
+                        if (techniciansError) {
+                            console.warn(
+                                "Technician profile lookup skipped:",
+                                techniciansError.message,
+                            );
+                        } else {
+                            technicianNameMap = (technicianProfiles ?? []).reduce(
+                                (acc, technician) => {
+                                    acc[technician.id] =
+                                        getProfileDisplayName(technician);
+                                    return acc;
+                                },
+                                {},
+                            );
+                        }
+                    }
+
+                    jobTechnicianMap = (jobTechnicianRows ?? []).reduce(
+                        (acc, row) => {
+                            const jobId = row.job_id;
+                            if (!jobId) return acc;
+                            if (!acc[jobId]) acc[jobId] = [];
+                            acc[jobId].push({
+                                technician_id: row.technician_id,
+                                technician_name:
+                                    technicianNameMap[row.technician_id] ??
+                                    "Teknisi tidak ditemukan",
+                            });
+                            return acc;
+                        },
+                        {},
+                    );
+                }
+            }
+
             if (isMountedRef.current) {
                 const normalizedRequests = requestRows.map((row) =>
                     normalizeRequest(
                         row,
                         creatorMap[row.created_by] ??
                             (row.created_by ? "User tidak ditemukan" : "-"),
+                        jobTechnicianMap[row.id] ?? [],
                     ),
                 );
                 setRequests(normalizedRequests);
@@ -684,8 +916,35 @@ export default function AdminRequestsPage() {
         };
     }, [loadRequests]);
 
-    const filteredRequests = useMemo(() => {
+    const { technicians: technicianDirectory } = useTechnicianDirectory();
+    const canFilterByTechnician = role === "admin" || role === "management";
+
+    const selectedTechnicianName = useMemo(() => {
+        if (selectedTechnicianId === "all") return "";
+        const technician = technicianDirectory.find(
+            (item) => String(item.id) === String(selectedTechnicianId),
+        );
+        return getProfileDisplayName(technician);
+    }, [selectedTechnicianId, technicianDirectory]);
+
+    const technicianOptions = useMemo(
+        () => [
+            { value: "all", label: "Semua Teknisi" },
+            ...technicianDirectory.map((item) => ({
+                value: item.id,
+                label: getProfileDisplayName(item),
+            })),
+        ],
+        [technicianDirectory],
+    );
+
+    const baseFilteredRequests = useMemo(() => {
         const keyword = search.trim().toLowerCase();
+        const dateRange = getDateRangeForPeriod(
+            periodFilter,
+            customStartDate,
+            customEndDate,
+        );
 
         return requests.filter((item) => {
             const scopeSummary = getScopeSummaryMeta(
@@ -693,21 +952,44 @@ export default function AdminRequestsPage() {
                 item.dynamicData,
                 item.roomLocation,
             );
-            const matchFilter =
-                activeFilter === "all"
+            const technicianIds = [
+                ...(item.technicianIds ?? []),
+                item.technicianId,
+                item.createdBy,
+            ]
+                .filter(Boolean)
+                .map((id) => String(id));
+            const matchPeriod = isDateInRange(item.reportDate, dateRange);
+            const matchTechnician =
+                !canFilterByTechnician || selectedTechnicianId === "all"
                     ? true
-                    : normalizeStatusKey(item.status) === activeFilter;
+                    : technicianIds.includes(String(selectedTechnicianId));
             const matchSearch = keyword
-                ? `${item.title} ${item.address} ${scopeSummary.value} ${item.troubleDescription} ${item.assignee} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
+                ? `${item.title} ${item.address} ${scopeSummary.value} ${item.troubleDescription} ${item.assignee} ${(item.technicianNames ?? []).join(" ")} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
-            return matchFilter && matchSearch;
+            return matchPeriod && matchTechnician && matchSearch;
         });
-    }, [activeFilter, requests, search]);
+    }, [
+        canFilterByTechnician,
+        customEndDate,
+        customStartDate,
+        periodFilter,
+        requests,
+        search,
+        selectedTechnicianId,
+    ]);
+
+    const filteredRequests = useMemo(() => {
+        if (activeFilter === "all") return baseFilteredRequests;
+        return baseFilteredRequests.filter(
+            (item) => normalizeStatusKey(item.status) === activeFilter,
+        );
+    }, [activeFilter, baseFilteredRequests]);
 
     const requestCounts = useMemo(() => {
-        return requests.reduce(
+        return baseFilteredRequests.reduce(
             (acc, item) => {
                 const status = normalizeStatusKey(item.status);
                 acc.all += 1;
@@ -723,7 +1005,7 @@ export default function AdminRequestsPage() {
                 completed: 0,
             },
         );
-    }, [requests]);
+    }, [baseFilteredRequests]);
 
     // Pagination calculations
     const totalPages = Math.ceil(filteredRequests.length / ITEMS_PER_PAGE);
@@ -737,10 +1019,160 @@ export default function AdminRequestsPage() {
         [currentPage, totalPages],
     );
 
+    const activePeriodLabel = useMemo(
+        () => getPeriodLabel(periodFilter, customStartDate, customEndDate),
+        [customEndDate, customStartDate, periodFilter],
+    );
+    const hasActiveAdvancedFilter =
+        search.trim() !== "" ||
+        activeFilter !== "all" ||
+        periodFilter !== "all" ||
+        (canFilterByTechnician && selectedTechnicianId !== "all");
+    const filterSummary = useMemo(() => {
+        const statusLabel =
+            activeFilter === "all"
+                ? "semua status"
+                : FILTERS.find((item) => item.key === activeFilter)?.label ??
+                  activeFilter;
+        const periodLabel =
+            periodFilter === "all"
+                ? "semua periode"
+                : activePeriodLabel.toLowerCase();
+        const technicianLabel =
+            canFilterByTechnician && selectedTechnicianName
+                ? ` oleh ${selectedTechnicianName}`
+                : "";
+
+        return `Menampilkan ${filteredRequests.length} pekerjaan ${statusLabel} ${periodLabel}${technicianLabel}.`;
+    }, [
+        activeFilter,
+        activePeriodLabel,
+        canFilterByTechnician,
+        filteredRequests.length,
+        periodFilter,
+        selectedTechnicianName,
+    ]);
+
+    const buildExportRows = useCallback(
+        (items) =>
+            items.map((item) => {
+                const scopeSummary = getScopeSummaryMeta(
+                    item.jobScope,
+                    item.dynamicData,
+                    item.roomLocation,
+                );
+                return {
+                    "Nomor Pekerjaan": formatOrderId(item.id),
+                    "Job ID": item.id ?? "-",
+                    Tanggal: formatDate(item.reportDate),
+                    Status:
+                        STATUS_LABELS[normalizeStatusKey(item.status)] ??
+                        "PENDING",
+                    Customer: item.requester ?? "-",
+                    "Project / Lokasi": scopeSummary.value ?? "-",
+                    Alamat: item.address ?? "-",
+                    Teknisi:
+                        (item.technicianNames ?? []).join(", ") ||
+                        item.assignee ||
+                        "-",
+                    "Jenis Pekerjaan / Scope": item.jobScope ?? "-",
+                    "Keluhan / Trouble": item.troubleDescription ?? "-",
+                    "Tindakan / Perbaikan": item.reconditionedParts ?? "-",
+                    Sparepart: item.replacedParts ?? "-",
+                    "Created At": formatDate(item.createdAt),
+                    "Completed At": formatDate(item.completedAt),
+                };
+            }),
+        [],
+    );
+
+    const handleResetFilters = () => {
+        setSearch("");
+        setActiveFilter("all");
+        setPeriodFilter("all");
+        setCustomStartDate("");
+        setCustomEndDate("");
+        setSelectedTechnicianId("all");
+        setSearchParams({});
+    };
+
+    const handleExportCsv = async () => {
+        if (filteredRequests.length === 0) {
+            await showAlert("Tidak ada data untuk didownload.", {
+                title: "Export",
+            });
+            return;
+        }
+
+        setExportLoading("csv");
+        try {
+            const rows = buildExportRows(filteredRequests);
+            const headers = Object.keys(rows[0] ?? {});
+            const csv = [
+                headers.map(escapeCsvValue).join(","),
+                ...rows.map((row) =>
+                    headers.map((header) => escapeCsvValue(row[header])).join(","),
+                ),
+            ].join("\r\n");
+            const blob = new Blob([`\uFEFF${csv}`], {
+                type: "text/csv;charset=utf-8;",
+            });
+            downloadBlob(
+                blob,
+                getExportFileName({
+                    extension: "csv",
+                    period: periodFilter,
+                    customStartDate,
+                    customEndDate,
+                    technicianName: selectedTechnicianName,
+                }),
+            );
+        } finally {
+            setExportLoading(null);
+        }
+    };
+
+    const handleExportExcel = async () => {
+        if (filteredRequests.length === 0) {
+            await showAlert("Tidak ada data untuk didownload.", {
+                title: "Export",
+            });
+            return;
+        }
+
+        setExportLoading("excel");
+        try {
+            const XLSX = await import("xlsx");
+            const rows = buildExportRows(filteredRequests);
+            const worksheet = XLSX.utils.json_to_sheet(rows);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Pekerjaan");
+            XLSX.writeFile(
+                workbook,
+                getExportFileName({
+                    extension: "xlsx",
+                    period: periodFilter,
+                    customStartDate,
+                    customEndDate,
+                    technicianName: selectedTechnicianName,
+                }),
+            );
+        } finally {
+            setExportLoading(null);
+        }
+    };
+
     // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeFilter, search]);
+    }, [
+        activeFilter,
+        customEndDate,
+        customStartDate,
+        periodFilter,
+        search,
+        selectedTechnicianId,
+    ]);
 
     useEffect(() => {
         const nextFilter = getValidFilter(searchParams.get("status") ?? "all");
@@ -758,7 +1190,6 @@ export default function AdminRequestsPage() {
         loading: selectedRequestTechniciansLoading,
         reload: reloadSelectedRequestTechnicians,
     } = useJobTechnicians(selectedRequest?.id);
-    const { technicians: technicianDirectory } = useTechnicianDirectory();
     const creatorTechnicianId = useMemo(() => {
         const creatorRow =
             selectedRequestTechnicians.find(
@@ -1301,8 +1732,10 @@ export default function AdminRequestsPage() {
                                 </p>
                             )}
                         </div>
+                    </div>
 
-                        <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:max-w-sm md:px-4 md:py-3">
+                    <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:mt-6 md:p-5">
+                        <label className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-500 md:px-4 md:py-3">
                             <Search size={16} />
                             <input
                                 type="text"
@@ -1310,48 +1743,157 @@ export default function AdminRequestsPage() {
                                 onChange={(event) =>
                                     setSearch(event.target.value)
                                 }
-                                placeholder="Cari nama atau alamat..."
+                                placeholder="Cari teknisi, customer, alamat, lokasi, atau nomor pekerjaan..."
                                 className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 md:text-base"
                             />
                         </label>
-                    </div>
 
-                    <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:mt-6 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
-                        {FILTERS.map((filter) => (
-                            <button
-                                key={filter.key}
-                                type="button"
-                                onClick={() => {
-                                    setActiveFilter(filter.key);
-                                    if (filter.key === "all") {
-                                        setSearchParams({});
-                                        return;
-                                    }
-                                    setSearchParams({
-                                        status: filter.key,
-                                    });
-                                }}
-                                className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-6 md:text-sm ${
-                                    activeFilter === filter.key
-                                        ? "bg-sky-500 font-semibold text-white"
-                                        : "font-medium text-slate-600 hover:bg-slate-100"
-                                }`}
-                            >
-                                <span className="inline-flex items-center gap-2">
-                                    <span>{filter.label}</span>
-                                    <span
-                                        className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                            activeFilter === filter.key
-                                                ? "bg-white/20 text-white"
-                                                : "bg-slate-200 text-slate-700"
-                                        }`}
-                                    >
-                                        {requestCounts[filter.key] ?? 0}
-                                    </span>
+                        <div className="mt-4 grid gap-3 lg:grid-cols-[auto_220px_220px] lg:items-end">
+                            <div>
+                                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Status
+                                </p>
+                                <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
+                                    {FILTERS.map((filter) => (
+                                        <button
+                                            key={filter.key}
+                                            type="button"
+                                            onClick={() => {
+                                                setActiveFilter(filter.key);
+                                                if (filter.key === "all") {
+                                                    setSearchParams({});
+                                                    return;
+                                                }
+                                                setSearchParams({
+                                                    status: filter.key,
+                                                });
+                                            }}
+                                            className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-5 md:text-sm ${
+                                                activeFilter === filter.key
+                                                    ? "bg-sky-500 font-semibold text-white"
+                                                    : "font-medium text-slate-600 hover:bg-slate-100"
+                                            }`}
+                                        >
+                                            <span className="inline-flex items-center gap-2">
+                                                <span>{filter.label}</span>
+                                                <span
+                                                    className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                                        activeFilter ===
+                                                        filter.key
+                                                            ? "bg-white/20 text-white"
+                                                            : "bg-slate-200 text-slate-700"
+                                                    }`}
+                                                >
+                                                    {requestCounts[
+                                                        filter.key
+                                                    ] ?? 0}
+                                                </span>
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <label className="block">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Periode
                                 </span>
-                            </button>
-                        ))}
-                    </div>
+                                <CustomSelect
+                                    value={periodFilter}
+                                    onChange={setPeriodFilter}
+                                    options={PERIOD_OPTIONS}
+                                />
+                            </label>
+
+                            {canFilterByTechnician && (
+                                <label className="block">
+                                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Teknisi
+                                    </span>
+                                    <CustomSelect
+                                        value={selectedTechnicianId}
+                                        onChange={setSelectedTechnicianId}
+                                        options={technicianOptions}
+                                    />
+                                </label>
+                            )}
+                        </div>
+
+                        {periodFilter === "custom" && (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2 lg:max-w-xl">
+                                <label className="block">
+                                    <span className="text-xs font-medium text-slate-600">
+                                        Start Date
+                                    </span>
+                                    <input
+                                        type="date"
+                                        value={customStartDate}
+                                        onChange={(event) =>
+                                            setCustomStartDate(
+                                                event.target.value,
+                                            )
+                                        }
+                                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300 focus:bg-white"
+                                    />
+                                </label>
+                                <label className="block">
+                                    <span className="text-xs font-medium text-slate-600">
+                                        End Date
+                                    </span>
+                                    <input
+                                        type="date"
+                                        value={customEndDate}
+                                        onChange={(event) =>
+                                            setCustomEndDate(
+                                                event.target.value,
+                                            )
+                                        }
+                                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300 focus:bg-white"
+                                    />
+                                </label>
+                            </div>
+                        )}
+
+                        <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 md:flex-row md:items-center md:justify-between">
+                            <p className="text-sm text-slate-600">
+                                {filterSummary}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleResetFilters}
+                                    disabled={!hasActiveAdvancedFilter}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <RotateCcw size={15} />
+                                    Reset Filter
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleExportCsv}
+                                    disabled={Boolean(exportLoading)}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <Download size={15} />
+                                    {exportLoading === "csv"
+                                        ? "Menyiapkan file..."
+                                        : "Download CSV"}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleExportExcel}
+                                    disabled={Boolean(exportLoading)}
+                                    className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <FileSpreadsheet size={15} />
+                                    {exportLoading === "excel"
+                                        ? "Menyiapkan file..."
+                                        : "Download Excel"}
+                                </button>
+                            </div>
+                        </div>
+
+                    </section>
 
                     <section className="mt-6 space-y-3">
                         {loading ? (
@@ -1365,7 +1907,9 @@ export default function AdminRequestsPage() {
                                 <p className="text-base text-sky-700">
                                     {!isOnline
                                         ? "Data ini belum tersedia offline. Buka data saat online terlebih dahulu."
-                                        : "Belum ada data pekerjaan"}
+                                        : hasActiveAdvancedFilter
+                                          ? "Tidak ada pekerjaan yang sesuai dengan filter."
+                                          : "Belum ada data pekerjaan"}
                                 </p>
                             </div>
                         ) : (
