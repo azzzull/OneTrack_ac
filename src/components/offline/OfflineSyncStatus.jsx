@@ -11,6 +11,7 @@ import {
 } from "../../utils/offlineQueue";
 
 const ACTION_LABELS = {
+    create_job: "Buat Job Baru",
     update_job_status: "Update Status Job",
     update_job_progress: "Catatan Progress",
     upload_job_photo: "Upload Foto Job",

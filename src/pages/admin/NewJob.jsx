@@ -18,7 +18,13 @@ import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
 import useJobScopeOptions from "../../hooks/useJobScopeOptions";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
+import useNetworkStatus from "../../hooks/useNetworkStatus";
 import { scanBarcodeFromFile } from "../../utils/barcodeScanner";
+import { readLocalCache, writeLocalCache } from "../../utils/localDataCache";
+import {
+    createOfflineQueueItem,
+    fileToOfflineAttachment,
+} from "../../utils/offlineQueue";
 import {
     buildScopeDetailValuesPayload,
     validateScopeDetailValues,
@@ -93,6 +99,8 @@ const getCurrentUserDisplayName = (user, profile = null) => {
 const getCustomerDisplayName = (customer) =>
     String(customer?.name ?? "").trim() || "customer";
 
+const NEW_JOB_MASTER_CACHE_KEY = "new-job.master-data";
+
 const getSessionRole = (role, user) => {
     const metadataRole = String(user?.user_metadata?.role ?? "")
         .trim()
@@ -128,6 +136,7 @@ export default function AdminNewJobPage() {
 
     const { user, role, profile } = useAuth();
     const { alert: showAlert } = useDialog();
+    const { isOnline } = useNetworkStatus();
     const { labels: jobScopeLabels } = useJobScopeOptions();
     const { technicians, loading: techniciansLoading } =
         useTechnicianDirectory();
@@ -168,6 +177,16 @@ export default function AdminNewJobPage() {
 
     const loadMasterData = useCallback(async () => {
         try {
+            if (!navigator.onLine) {
+                const cached = readLocalCache(NEW_JOB_MASTER_CACHE_KEY, {});
+                setCustomers(cached.customers ?? []);
+                setProjects(cached.projects ?? []);
+                setAcBrands(cached.acBrands ?? []);
+                setAcTypes(cached.acTypes ?? []);
+                setAcPks(cached.acPks ?? []);
+                return;
+            }
+
             const [customersRes, projectsRes, brandsRes, typesRes, pksRes] =
                 await Promise.all([
                     supabase
@@ -197,18 +216,29 @@ export default function AdminNewJobPage() {
             if (brandsRes.error) throw brandsRes.error;
             if (typesRes.error) throw typesRes.error;
             if (pksRes.error) throw pksRes.error;
-            setCustomers(customersRes.data ?? []);
-            setProjects(projectsRes.data ?? []);
-            setAcBrands(brandsRes.data ?? []);
-            setAcTypes(typesRes.data ?? []);
-            setAcPks(pksRes.data ?? []);
+
+            const nextMasterData = {
+                customers: customersRes.data ?? [],
+                projects: projectsRes.data ?? [],
+                acBrands: brandsRes.data ?? [],
+                acTypes: typesRes.data ?? [],
+                acPks: pksRes.data ?? [],
+            };
+
+            setCustomers(nextMasterData.customers);
+            setProjects(nextMasterData.projects);
+            setAcBrands(nextMasterData.acBrands);
+            setAcTypes(nextMasterData.acTypes);
+            setAcPks(nextMasterData.acPks);
+            writeLocalCache(NEW_JOB_MASTER_CACHE_KEY, nextMasterData);
         } catch (error) {
             console.error("Error loading master data for new job:", error);
-            setCustomers([]);
-            setProjects([]);
-            setAcBrands([]);
-            setAcTypes([]);
-            setAcPks([]);
+            const cached = readLocalCache(NEW_JOB_MASTER_CACHE_KEY, {});
+            setCustomers(cached.customers ?? []);
+            setProjects(cached.projects ?? []);
+            setAcBrands(cached.acBrands ?? []);
+            setAcTypes(cached.acTypes ?? []);
+            setAcPks(cached.acPks ?? []);
         }
     }, []);
 
@@ -483,38 +513,22 @@ export default function AdminNewJobPage() {
             return;
         }
 
-        setSubmitting(true);
-
         const uploadedPhotoPaths = [];
 
         try {
+            setSubmitting(true);
             const detailValues = buildScopeDetailValuesPayload(
                 activeScopeDetailFormFields,
                 form.scopeDetails,
             );
 
-            const beforeUpload = await uploadQueuedPhoto(
-                beforePhotoFile,
-                "before",
-            );
-            const progressUpload = await uploadQueuedPhoto(
-                progressPhotoFile,
-                "progress",
-            );
-            const afterUpload = await uploadQueuedPhoto(
-                afterPhotoFile,
-                "after",
-            );
-
-            if (beforeUpload?.path) uploadedPhotoPaths.push(beforeUpload.path);
-            if (progressUpload?.path) uploadedPhotoPaths.push(progressUpload.path);
-            if (afterUpload?.path) uploadedPhotoPaths.push(afterUpload.path);
-
-            const payload = {
+            const buildBasePayload = (uploads = {}) => ({
                 title: selectedProject?.project_name ?? "",
-                status: afterUpload?.url
+                status: uploads.after?.url
                     ? "completed"
-                    : progressUpload?.url
+                    : afterPhotoFile
+                    ? "completed"
+                    : uploads.progress?.url || progressPhotoFile
                       ? "in_progress"
                       : "requested",
                 job_scope: activeJobScope,
@@ -544,18 +558,102 @@ export default function AdminNewJobPage() {
                 trouble_description: form.troubleDescription,
                 replaced_parts: form.replacedParts,
                 reconditioned_parts: form.reconditionedParts,
-                before_photo_url: beforeUpload?.url || null,
-                progress_photo_url: progressUpload?.url || null,
-                after_photo_url: afterUpload?.url || null,
+                before_photo_url: uploads.before?.url || null,
+                progress_photo_url: uploads.progress?.url || null,
+                after_photo_url: uploads.after?.url || null,
                 created_by: user?.id ?? null,
-            };
-            if (sessionRole === "technician") {
-                payload.technician_id = user?.id ?? null;
-                payload.technician_name = getCurrentUserDisplayName(
-                    user,
-                    profile,
+                ...(sessionRole === "technician"
+                    ? {
+                          technician_id: user?.id ?? null,
+                          technician_name: getCurrentUserDisplayName(
+                              user,
+                              profile,
+                          ),
+                      }
+                    : {}),
+            });
+
+            if (!isOnline) {
+                const attachments = (
+                    await Promise.all([
+                        beforePhotoFile
+                            ? fileToOfflineAttachment(beforePhotoFile).then(
+                                  (attachment) => ({
+                                      ...attachment,
+                                      photo_type: "before",
+                                  }),
+                              )
+                            : null,
+                        progressPhotoFile
+                            ? fileToOfflineAttachment(progressPhotoFile).then(
+                                  (attachment) => ({
+                                      ...attachment,
+                                      photo_type: "progress",
+                                  }),
+                              )
+                            : null,
+                        afterPhotoFile
+                            ? fileToOfflineAttachment(afterPhotoFile).then(
+                                  (attachment) => ({
+                                      ...attachment,
+                                      photo_type: "after",
+                                  }),
+                              )
+                            : null,
+                    ])
+                ).filter(Boolean);
+
+                await createOfflineQueueItem({
+                    user_id: user?.id,
+                    type: "job_action",
+                    entity_table: "requests",
+                    entity_id: `new-job-${Date.now()}`,
+                    action: "create_job",
+                    payload: {
+                        request_payload: buildBasePayload(),
+                        technician_ids: selectedTechnicianIds,
+                        creator_id: user?.id ?? null,
+                        timestamp: new Date().toISOString(),
+                    },
+                    attachments,
+                });
+
+                setSelectedTechnicianIds([]);
+                setBeforePhotoFile(null);
+                setProgressPhotoFile(null);
+                setAfterPhotoFile(null);
+                await showAlert(
+                    "Data disimpan offline dan akan disinkronkan saat internet kembali.",
+                    { title: "Draft Offline" },
                 );
+                navigate(
+                    sessionRole === "technician" ? "/technician" : "/requests",
+                );
+                return;
             }
+
+            const beforeUpload = await uploadQueuedPhoto(
+                beforePhotoFile,
+                "before",
+            );
+            const progressUpload = await uploadQueuedPhoto(
+                progressPhotoFile,
+                "progress",
+            );
+            const afterUpload = await uploadQueuedPhoto(
+                afterPhotoFile,
+                "after",
+            );
+
+            if (beforeUpload?.path) uploadedPhotoPaths.push(beforeUpload.path);
+            if (progressUpload?.path) uploadedPhotoPaths.push(progressUpload.path);
+            if (afterUpload?.path) uploadedPhotoPaths.push(afterUpload.path);
+
+            const payload = buildBasePayload({
+                before: beforeUpload,
+                progress: progressUpload,
+                after: afterUpload,
+            });
 
             const { data: createdRequest, error } = await supabase
                 .from("requests")
@@ -664,10 +762,24 @@ export default function AdminNewJobPage() {
                         >
                             <ArrowLeft size={18} />
                         </Link>
-                        <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
-                            Pekerjaan Baru
-                        </h1>
+                        <div>
+                            <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
+                                Pekerjaan Baru
+                            </h1>
+                            {!isOnline && (
+                                <p className="mt-1 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                                    Data Offline
+                                </p>
+                            )}
+                        </div>
                     </div>
+
+                    {!isOnline && customers.length === 0 && (
+                        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                            Data customer/project belum tersedia offline. Buka
+                            halaman ini saat online terlebih dahulu.
+                        </div>
+                    )}
 
                     <form
                         onSubmit={handleSubmit}

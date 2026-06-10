@@ -4,6 +4,7 @@ import {
     offlineAttachmentToFile,
     updateOfflineQueueItem,
 } from "../utils/offlineQueue";
+import { syncJobTechnicians } from "./jobTechniciansService";
 
 let activeSync = null;
 
@@ -167,7 +168,77 @@ const syncJobPhoto = async (item, session) => {
     });
 };
 
+const uploadQueuedJobAttachment = async (item, session, attachment) => {
+    const photoType = attachment.photo_type || "other";
+    const file = offlineAttachmentToFile(
+        attachment,
+        `${photoType}-${item.id}.jpg`,
+    );
+    const ext = String(file.name ?? "")
+        .split(".")
+        .pop()
+        ?.toLowerCase() || "jpg";
+    const uploadPath = `${session.user.id}/${photoType}/${item.id}-${photoType}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from("job-photos")
+        .upload(uploadPath, file, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicData } = supabase.storage
+        .from("job-photos")
+        .getPublicUrl(uploadPath);
+
+    return {
+        photoType,
+        url: publicData?.publicUrl ?? "",
+    };
+};
+
+const syncCreateJob = async (item, session) => {
+    const payload = {
+        ...(item.payload?.request_payload ?? {}),
+    };
+
+    for (const attachment of item.attachments ?? []) {
+        const uploaded = await uploadQueuedJobAttachment(item, session, attachment);
+        if (!uploaded.url) continue;
+
+        if (uploaded.photoType === "before") {
+            payload.before_photo_url = uploaded.url;
+        } else if (uploaded.photoType === "progress") {
+            payload.progress_photo_url = uploaded.url;
+        } else if (uploaded.photoType === "after") {
+            payload.after_photo_url = uploaded.url;
+        }
+    }
+
+    const { data: createdRequest, error } = await supabase
+        .from("requests")
+        .insert(payload)
+        .select("id")
+        .single();
+
+    if (error) throw error;
+    if (!createdRequest?.id) {
+        throw new Error("Job berhasil dibuat tetapi ID tidak ditemukan.");
+    }
+
+    await syncJobTechnicians({
+        jobId: createdRequest.id,
+        creatorId: item.payload?.creator_id ?? session.user.id,
+        technicianIds: item.payload?.technician_ids ?? [],
+        addedBy: session.user.id,
+    });
+};
+
 const syncItem = async (item, session) => {
+    if (item.action === "create_job") {
+        await syncCreateJob(item, session);
+        return;
+    }
+
     if (item.action === "update_job_status") {
         await syncJobStatus(item, session);
         return;

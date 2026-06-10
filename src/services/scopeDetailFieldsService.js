@@ -1,5 +1,6 @@
 import supabase from "../supabaseClient";
 import { normalizeJobScopeCode } from "../utils/jobScopeCatalog";
+import { readLocalCache, writeLocalCache } from "../utils/localDataCache";
 
 const FIELD_TYPE_OPTIONS = [
     "text",
@@ -12,6 +13,9 @@ const FIELD_TYPE_OPTIONS = [
 ];
 
 const scopeConfigCache = new Map();
+
+const getScopeConfigCacheKey = (scopeCode) =>
+    `scope-detail-config.${scopeCode}`;
 
 export const normalizeScopeDetailFieldType = (value) => {
     const raw = String(value ?? "").trim().toLowerCase();
@@ -119,6 +123,17 @@ export const getScopeDetailConfig = async (scopeCode) => {
     const cached = scopeConfigCache.get(normalizedScope);
     if (cached) return cached;
 
+    if (!navigator.onLine) {
+        const localCached = readLocalCache(
+            getScopeConfigCacheKey(normalizedScope),
+            null,
+        );
+        if (localCached) {
+            scopeConfigCache.set(normalizedScope, localCached);
+            return localCached;
+        }
+    }
+
     const { data: scopeRow, error: scopeError } = await supabase
         .from("master_job_scopes")
         .select("id, code, label")
@@ -156,6 +171,7 @@ export const getScopeDetailConfig = async (scopeCode) => {
         checklist: normalizeScopeDetailChecklistItems(checklistRows ?? []),
     };
     scopeConfigCache.set(normalizedScope, result);
+    writeLocalCache(getScopeConfigCacheKey(normalizedScope), result);
     return result;
 };
 
