@@ -1,27 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-    BarChart3,
-    CalendarDays,
-    ChartPie,
     CircleCheckBig,
+    ClipboardList,
+    ClipboardPlus,
     Clock3,
+    FilePenLine,
+    Plus,
+    Wallet,
     Wrench,
 } from "lucide-react";
-import { Link } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
-import Card from "../../components/card";
+import OperationalDashboard from "../../components/dashboard/OperationalDashboard";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import { getTechnicianJobIds } from "../../services/jobTechniciansService";
-
-const STATUS_META = {
-    pending: { label: "Pending", color: "#0ea5e9" },
-    in_progress: { label: "In Progress", color: "#67e8f9" },
-    completed: { label: "Completed", color: "#0369a1" },
-};
+import { buildStatusSegments } from "../../utils/dashboardStatus";
 
 const normalizeStatusKey = (value) => {
     const raw = String(value ?? "")
@@ -30,11 +26,41 @@ const normalizeStatusKey = (value) => {
         .replaceAll("-", "_")
         .replaceAll(" ", "_");
     if (raw === "inprogress") return "in_progress";
-    if (raw === "in_progress") return "in_progress";
-    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "in_progress" || raw === "on_progress") return "in_progress";
+    if (raw === "completed" || raw === "done" || raw === "selesai") return "completed";
+    if (raw === "cancelled" || raw === "canceled" || raw === "rejected")
+        return "cancelled";
     if (raw === "requested") return "pending";
     if (raw === "pending" || raw === "") return "pending";
     return "pending";
+};
+
+const normalizeAccommodationStatus = (value) => {
+    const raw = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+    if (["rejected", "ditolak"].includes(raw)) return "rejected";
+    if (["realized", "realisasi", "fully_realized"].includes(raw))
+        return "approved";
+    if (
+        [
+            "approved",
+            "disetujui",
+            "paid",
+            "unrealized",
+            "belum_realisasi",
+            "not_realized",
+            "realization_process",
+            "partial_realized",
+            "partial_realize",
+            "partially_realized",
+        ].includes(raw)
+    ) {
+        return "unrealized";
+    }
+    return "active";
 };
 
 const toDateKey = (value) => {
@@ -47,40 +73,25 @@ const toDateKey = (value) => {
     return `${year}-${month}-${day}`;
 };
 
-const polarToCartesian = (cx, cy, radius, angleInDegrees) => {
-    const radians = ((angleInDegrees - 90) * Math.PI) / 180;
-    return {
-        x: cx + radius * Math.cos(radians),
-        y: cy + radius * Math.sin(radians),
-    };
+const formatRelativeTime = (value) => {
+    if (!value) return "Baru saja";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Baru saja";
+    return date.toLocaleString("id-ID", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
 };
-
-const describePieSlice = (cx, cy, radius, startAngle, endAngle) => {
-    const start = polarToCartesian(cx, cy, radius, endAngle);
-    const end = polarToCartesian(cx, cy, radius, startAngle);
-    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
-
-    return [
-        `M ${cx} ${cy}`,
-        `L ${start.x} ${start.y}`,
-        `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
-        "Z",
-    ].join(" ");
-};
-
-const describeFullCircle = (cx, cy, radius) =>
-    [
-        `M ${cx} ${cy - radius}`,
-        `A ${radius} ${radius} 0 1 1 ${cx} ${cy + radius}`,
-        `A ${radius} ${radius} 0 1 1 ${cx} ${cy - radius}`,
-        "Z",
-    ].join(" ");
 
 export default function TechnicianDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
-    const { user, loading: authLoading } = useAuth();
+    const { user, profile, loading: authLoading } = useAuth();
     const [tasks, setTasks] = useState([]);
+    const [availableJobs, setAvailableJobs] = useState(0);
+    const [accommodations, setAccommodations] = useState([]);
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
     const channelRef = useRef(null);
@@ -88,7 +99,6 @@ export default function TechnicianDashboard() {
     const userIdRef = useRef(user?.id);
     const authLoadingRef = useRef(authLoading);
 
-    // ✅ Update refs without triggering effect
     useEffect(() => {
         userIdRef.current = user?.id;
     }, [user?.id]);
@@ -103,69 +113,77 @@ export default function TechnicianDashboard() {
         try {
             const jobIds = await getTechnicianJobIds(userIdRef.current);
             if (jobIds.length === 0) {
-                if (isMountedRef.current) {
-                    setTasks([]);
-                }
-                return;
-            }
-            const { data, error } = await supabase
-                .from("requests")
-                .select("*")
-                .in("id", jobIds)
-                .order("created_at", { ascending: false });
+                if (isMountedRef.current) setTasks([]);
+            } else {
+                const { data, error } = await supabase
+                    .from("requests")
+                    .select("*")
+                    .in("id", jobIds)
+                    .order("created_at", { ascending: false });
 
-            if (error) throw error;
-            if (isMountedRef.current) {
-                setTasks(data ?? []);
+                if (error) throw error;
+                if (isMountedRef.current) setTasks(data ?? []);
             }
+
+            const { count, error: availableError } = await supabase
+                .from("requests")
+                .select("id", { count: "exact", head: true })
+                .in("status", ["pending", "requested"]);
+
+            if (availableError) throw availableError;
+            if (isMountedRef.current) setAvailableJobs(count ?? 0);
         } catch (error) {
             console.error("Error loading technician dashboard data:", error);
             if (isMountedRef.current) {
                 setTasks([]);
+                setAvailableJobs(0);
             }
         }
     };
 
-    // ✅ Setup channel once on mount - NO dependencies to prevent re-creation
-    useEffect(() => {
-        // ⚠️ CRITICAL GUARD: Don't setup if still loading auth OR no user
-        if (authLoadingRef.current || !userIdRef.current) {
-            console.log(
-                "[TechDashboard] Skipping channel setup - auth loading or no user:",
-                {
-                    loading: authLoadingRef.current,
-                    userId: userIdRef.current,
-                },
-            );
-            return;
-        }
-
+    const loadAccommodations = async () => {
         if (!userIdRef.current) return;
+        try {
+            const { data, error } = await supabase
+                .from("accommodation_requests")
+                .select("*")
+                .eq("technician_id", userIdRef.current)
+                .order("created_at", { ascending: false })
+                .limit(50);
+
+            if (error) throw error;
+            if (isMountedRef.current) setAccommodations(data ?? []);
+        } catch (error) {
+            console.warn("Technician accommodation summary skipped:", error.message);
+            if (isMountedRef.current) setAccommodations([]);
+        }
+    };
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (authLoadingRef.current || !userIdRef.current) return;
 
         const timerId = setTimeout(() => {
             loadTasks();
+            loadAccommodations();
         }, 0);
 
-        // Async channel setup with proper cleanup
         const setupChannel = async () => {
-            // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
-            // ✅ CRITICAL FIX: Use unique channel name with user ID
             const channelName = createUniqueChannelName(
                 "technician-dashboard",
                 userIdRef.current,
             );
-
-            // ✅ Skip if channel already exists
-            const existingChannels = supabase.getChannels();
-            const existing = existingChannels.find(
-                (ch) => ch.topic === `realtime:${channelName}`,
-            );
+            const existing = supabase
+                .getChannels()
+                .find((ch) => ch.topic === `realtime:${channelName}`);
 
             if (existing) {
-                console.log(
-                    "[TechDashboard] Channel already exists, reusing:",
-                    channelName,
-                );
                 channelRef.current = existing;
                 return;
             }
@@ -176,9 +194,14 @@ export default function TechnicianDashboard() {
                     "postgres_changes",
                     { event: "*", schema: "public", table: "requests" },
                     () => {
-                        if (isMountedRef.current) {
-                            loadTasks();
-                        }
+                        if (isMountedRef.current) loadTasks();
+                    },
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "job_technicians" },
+                    () => {
+                        if (isMountedRef.current) loadTasks();
                     },
                 )
                 .on(
@@ -186,105 +209,87 @@ export default function TechnicianDashboard() {
                     {
                         event: "*",
                         schema: "public",
-                        table: "job_technicians",
+                        table: "accommodation_requests",
                     },
                     () => {
-                        if (isMountedRef.current) {
-                            loadTasks();
-                        }
+                        if (isMountedRef.current) loadAccommodations();
                     },
                 );
 
             const { error } = await channelRef.current.subscribe();
-
-            if (error) {
-                console.error("[TechDashboard] Subscribe error:", error);
-                return;
-            }
-
-            console.log("[TechDashboard] Subscribed to:", channelName);
+            if (error) console.error("[TechDashboard] Subscribe error:", error);
         };
 
         setupChannel();
 
         return () => {
             clearTimeout(timerId);
-            // ✅ CRITICAL FIX: Proper cleanup using supabase.removeChannel()
-            // NOT .unsubscribe() - that only stops receiving events
             if (channelRef.current) {
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
-                console.log("[TechDashboard] Channel cleaned up");
             }
         };
-    }, [user?.id]); // ✅ Only recreate if user.id changes
+    }, [user?.id]);
 
     const statusCounts = useMemo(() => {
-        const counts = {
-            pending: 0,
-            in_progress: 0,
-            completed: 0,
-        };
-
+        const counts = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
         for (const row of tasks) {
-            const key = normalizeStatusKey(row.status);
-            if (counts[key] !== undefined) {
-                counts[key] += 1;
-            }
+            counts[normalizeStatusKey(row.status)] += 1;
         }
-
         return counts;
     }, [tasks]);
 
-    const jobStatusCards = [
-        {
-            title: "Pending",
-            value: statusCounts.pending,
-            icon: Clock3,
-            tone: "amber",
-            statusKey: "pending",
-        },
-        {
-            title: "In Progress",
-            value: statusCounts.in_progress,
-            icon: Wrench,
-            tone: "sky",
-            statusKey: "in_progress",
-        },
-        {
-            title: "Completed",
-            value: statusCounts.completed,
-            icon: CircleCheckBig,
-            tone: "emerald",
-            statusKey: "completed",
-        },
-    ];
+    const accommodationCounts = useMemo(() => {
+        const counts = { active: 0, approved: 0, unrealized: 0, rejected: 0 };
+        for (const row of accommodations) {
+            counts[normalizeAccommodationStatus(row.status)] += 1;
+        }
+        return counts;
+    }, [accommodations]);
 
     const totalTasks = tasks.length;
     const completionRate = totalTasks
         ? Math.round((statusCounts.completed / totalTasks) * 100)
         : 0;
+    const activeAttention = availableJobs + statusCounts.pending + statusCounts.in_progress;
 
-    const donutSegments = useMemo(() => {
-        const keys = ["pending", "in_progress", "completed"];
-        const total = totalTasks || 1;
-        let offset = 0;
+    const kpis = [
+        {
+            label: "Job Tersedia",
+            value: availableJobs,
+            meta: "Siap diambil",
+            icon: ClipboardList,
+            tone: "amber",
+        },
+        {
+            label: "Job Saya",
+            value: totalTasks,
+            meta: `${statusCounts.pending + statusCounts.in_progress} aktif`,
+            icon: ClipboardPlus,
+            tone: "sky",
+        },
+        {
+            label: "Dalam Progress",
+            value: statusCounts.in_progress,
+            meta: totalTasks ? `${Math.round((statusCounts.in_progress / totalTasks) * 100)}% dari job saya` : "0%",
+            icon: Wrench,
+            tone: "sky",
+        },
+        {
+            label: "Selesai",
+            value: statusCounts.completed,
+            meta: `${completionRate}% selesai`,
+            icon: CircleCheckBig,
+            tone: "emerald",
+        },
+    ];
 
-        return keys.map((key) => {
-            const value = statusCounts[key];
-            const ratio = value / total;
-            const segment = {
-                key,
-                value,
-                ratio,
-                offset,
-                color: STATUS_META[key].color,
-                label: STATUS_META[key].label,
-            };
-            offset += ratio;
-            return segment;
-        });
-    }, [statusCounts, totalTasks]);
+    const quickActions = [
+        { label: "Ambil Job", to: "/technician/requests", icon: ClipboardList },
+        { label: "Buat Job Baru", to: "/jobs/new", icon: Plus },
+        { label: "Ajukan Akomodasi", to: "/accommodation", icon: Wallet },
+        { label: "Draft Offline", to: "/jobs/new", icon: FilePenLine },
+    ];
 
     const last7Days = useMemo(() => {
         const byDate = {};
@@ -308,15 +313,26 @@ export default function TechnicianDashboard() {
         return Object.values(byDate);
     }, [tasks]);
 
-    const weeklyTotal = last7Days.reduce((sum, item) => sum + item.count, 0);
-    const weeklyMax = Math.max(...last7Days.map((item) => item.count), 1);
+    const recentActivities = useMemo(() => {
+        const jobItems = tasks.slice(0, 10).map((row) => ({
+            id: row.id,
+            type: "job",
+            time: row.updated_at ?? row.created_at,
+            timeLabel: formatRelativeTime(row.updated_at ?? row.created_at),
+            text: `Anda memperbarui pekerjaan ${row.title ?? `#${row.id}`}`,
+        }));
+        const accommodationItems = accommodations.slice(0, 10).map((row) => ({
+            id: row.id,
+            type: "accommodation",
+            time: row.updated_at ?? row.created_at,
+            timeLabel: formatRelativeTime(row.updated_at ?? row.created_at),
+            text: `Anda mengajukan akomodasi ${row.request_title ?? ""}`.trim(),
+        }));
 
-    const hoveredSegment = donutSegments.find(
-        (item) => item.key === hoveredStatus,
-    );
-    const hoveredDay = last7Days.find((item) => item.key === hoveredDayKey);
-    const radius = 74;
-    const center = 90;
+        return [...jobItems, ...accommodationItems]
+            .sort((a, b) => new Date(b.time ?? 0) - new Date(a.time ?? 0))
+            .slice(0, 10);
+    }, [tasks, accommodations]);
 
     return (
         <div className="min-h-screen bg-sky-50">
@@ -327,249 +343,40 @@ export default function TechnicianDashboard() {
                 />
 
                 <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <div>
-                        <h1 className="text-3xl font-semibold text-slate-900">
-                            Dashboard Teknisi
-                        </h1>
-                        <p className="mt-1 text-slate-600">
-                            Ringkasan pekerjaan Anda dan absensi hari ini.
-                        </p>
-                    </div>
-
-                    <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {jobStatusCards.map((item) => (
-                            <Link
-                                key={item.title}
-                                to={`/technician/requests?status=${item.statusKey}`}
-                                className="no-underline"
-                                style={{ textDecoration: "none" }}
-                            >
-                                <Card
-                                    title={item.title}
-                                    value={item.value}
-                                    icon={item.icon}
-                                    tone={item.tone}
-                                />
-                            </Link>
-                        ))}
-                    </section>
-
-                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 md:py-8">
-                        <div className="mb-4 flex items-center justify-between">
-                            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
-                                <CalendarDays size={18} />
-                                Absensi Hari Ini
-                            </h2>
-                        </div>
-                        <AttendanceDashboardSimple
-                            technicianId={user?.id}
-                            onDataChange={() => {}}
-                        />
-                    </section>
-
-                    <section className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                        <div className="rounded-2xl bg-white p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-2xl font-semibold text-slate-900">
-                                    Distribusi Status
-                                </h2>
-                                <ChartPie
-                                    size={18}
-                                    className="text-slate-400"
-                                />
-                            </div>
-
-                            <div className="mt-4 flex flex-col items-center">
-                                <svg
-                                    width="210"
-                                    height="210"
-                                    viewBox="0 0 180 180"
-                                >
-                                    <circle
-                                        cx={center}
-                                        cy={center}
-                                        r={radius}
-                                        fill="#e2e8f0"
-                                    />
-                                    {donutSegments.map((segment) => {
-                                        if (!segment.value) return null;
-                                        if (segment.ratio >= 0.999) {
-                                            return (
-                                                <path
-                                                    key={segment.key}
-                                                    d={describeFullCircle(
-                                                        center,
-                                                        center,
-                                                        radius,
-                                                    )}
-                                                    fill={segment.color}
-                                                    onMouseEnter={() =>
-                                                        setHoveredStatus(
-                                                            segment.key,
-                                                        )
-                                                    }
-                                                    onMouseLeave={() =>
-                                                        setHoveredStatus(null)
-                                                    }
-                                                />
-                                            );
-                                        }
-
-                                        const startAngle = segment.offset * 360;
-                                        const endAngle =
-                                            (segment.offset + segment.ratio) *
-                                            360;
-                                        return (
-                                            <path
-                                                key={segment.key}
-                                                d={describePieSlice(
-                                                    center,
-                                                    center,
-                                                    radius,
-                                                    startAngle,
-                                                    endAngle,
-                                                )}
-                                                fill={segment.color}
-                                                onMouseEnter={() =>
-                                                    setHoveredStatus(
-                                                        segment.key,
-                                                    )
-                                                }
-                                                onMouseLeave={() =>
-                                                    setHoveredStatus(null)
-                                                }
-                                            />
-                                        );
-                                    })}
-                                    <circle
-                                        cx={center}
-                                        cy={center}
-                                        r="45"
-                                        fill="white"
-                                    />
-                                    <text
-                                        x={center}
-                                        y={center - 2}
-                                        textAnchor="middle"
-                                        className="fill-slate-900 text-xl font-semibold"
-                                    >
-                                        {totalTasks}
-                                    </text>
-                                    <text
-                                        x={center}
-                                        y={center + 18}
-                                        textAnchor="middle"
-                                        className="fill-slate-400 text-[11px]"
-                                    >
-                                        Total Job
-                                    </text>
-                                </svg>
-
-                                <p className="mt-2 text-sm text-slate-600">
-                                    {hoveredSegment
-                                        ? `${hoveredSegment.label}: ${hoveredSegment.value} (${Math.round(
-                                              hoveredSegment.ratio * 100,
-                                          )}%)`
-                                        : `Total pekerjaan Anda: ${totalTasks}`}
-                                </p>
-
-                                <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm text-slate-600">
-                                    {donutSegments.map((segment) => (
-                                        <div
-                                            key={segment.key}
-                                            className="inline-flex items-center gap-2"
-                                        >
-                                            <span
-                                                className="h-3 w-3 rounded-full"
-                                                style={{
-                                                    backgroundColor:
-                                                        segment.color,
-                                                }}
-                                            />
-                                            <span>{segment.label}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="rounded-2xl bg-white p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-2xl font-semibold text-slate-900">
-                                    Aktivitas Harian (7 Hari Terakhir)
-                                </h2>
-                                <BarChart3
-                                    size={18}
-                                    className="text-slate-400"
-                                />
-                            </div>
-
-                            <div className="mt-8">
-                                <div className="flex h-64 items-end gap-3">
-                                    {last7Days.map((item) => {
-                                        const barHeight = Math.max(
-                                            (item.count / weeklyMax) * 200,
-                                            item.count ? 14 : 2,
-                                        );
-                                        const percent = weeklyTotal
-                                            ? Math.round(
-                                                  (item.count / weeklyTotal) *
-                                                      100,
-                                              )
-                                            : 0;
-                                        return (
-                                            <div
-                                                key={item.key}
-                                                className="group flex flex-1 flex-col items-center"
-                                                onMouseEnter={() =>
-                                                    setHoveredDayKey(item.key)
-                                                }
-                                                onMouseLeave={() =>
-                                                    setHoveredDayKey(null)
-                                                }
-                                            >
-                                                <div className="mb-2 h-6 text-[11px] text-slate-600">
-                                                    {hoveredDayKey === item.key
-                                                        ? `${item.count} (${percent}%)`
-                                                        : ""}
-                                                </div>
-                                                <div
-                                                    className={`w-full max-w-10 rounded-t-lg transition ${
-                                                        item.count
-                                                            ? "bg-sky-400 group-hover:bg-sky-500"
-                                                            : "bg-slate-200 group-hover:bg-slate-300"
-                                                    }`}
-                                                    style={{
-                                                        height: `${barHeight}px`,
-                                                    }}
-                                                />
-                                                <span className="mt-2 text-sm text-slate-500">
-                                                    {item.label}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <p className="mt-5 text-sm text-slate-400">
-                                    {hoveredDay
-                                        ? `${hoveredDay.label}: ${hoveredDay.count} pekerjaan`
-                                        : "Arahkan kursor ke batang untuk melihat detail."}
-                                </p>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section className="mt-6 rounded-2xl bg-sky-500 p-6 text-white shadow-sm">
-                        <p className="text-sm font-semibold uppercase tracking-wide text-sky-100">
-                            Ringkasan Penyelesaian
-                        </p>
-                        <p className="mt-2 text-3xl font-bold md:text-5xl">
-                            {completionRate}%
-                        </p>
-                        <p className="mt-2 text-lg text-sky-100">
-                            Persentase pekerjaan Anda yang sudah selesai.
-                        </p>
-                    </section>
+                    <OperationalDashboard
+                        user={user}
+                        profile={profile}
+                        attentionCount={activeAttention}
+                        attendance={
+                            <AttendanceDashboardSimple
+                                technicianId={user?.id}
+                                onDataChange={() => {}}
+                            />
+                        }
+                        kpis={kpis}
+                        quickActions={quickActions}
+                        completedCount={statusCounts.completed}
+                        totalCount={totalTasks}
+                        statusSegments={buildStatusSegments(statusCounts)}
+                        activityDays={last7Days}
+                        accommodationItems={[
+                            {
+                                label: "Pengajuan Aktif",
+                                value: accommodationCounts.active,
+                            },
+                            { label: "Disetujui", value: accommodationCounts.approved },
+                            {
+                                label: "Belum Realisasi",
+                                value: accommodationCounts.unrealized,
+                            },
+                            { label: "Ditolak", value: accommodationCounts.rejected },
+                        ]}
+                        recentActivities={recentActivities}
+                        hoveredStatus={hoveredStatus}
+                        onHoverStatus={setHoveredStatus}
+                        hoveredDayKey={hoveredDayKey}
+                        onHoverDay={setHoveredDayKey}
+                    />
                 </main>
             </div>
 

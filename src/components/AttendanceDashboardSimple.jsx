@@ -116,7 +116,7 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                             <button
                                 onClick={() => handleOpenModal("check-in")}
                                 disabled={loadingAttendance || loading}
-                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-500 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-70"
+                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 py-3 text-sm font-semibold text-white transition hover:bg-sky-600 disabled:opacity-70"
                             >
                                 <Clock size={18} />
                                 Absen Masuk

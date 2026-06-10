@@ -1,33 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     BarChart3,
-    CalendarDays,
-    ChartPie,
+    BriefcaseBusiness,
     CircleCheckBig,
     Clock3,
-    Download,
+    Plus,
+    Users,
+    Wallet,
     Wrench,
 } from "lucide-react";
-import { Link } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
-import Card from "../../components/card";
+import OperationalDashboard from "../../components/dashboard/OperationalDashboard";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
-
-const STATUS_META = {
-    pending: { label: "Pending", color: "#0ea5e9" },
-    in_progress: { label: "In Progress", color: "#67e8f9" },
-    completed: { label: "Completed", color: "#0369a1" },
-};
-
-const STATUS_LABELS = {
-    pending: "PENDING",
-    in_progress: "IN PROGRESS",
-    completed: "COMPLETED",
-};
+import { buildStatusSegments } from "../../utils/dashboardStatus";
 
 const normalizeStatusKey = (value) => {
     const raw = String(value ?? "")
@@ -36,11 +25,40 @@ const normalizeStatusKey = (value) => {
         .replaceAll("-", "_")
         .replaceAll(" ", "_");
     if (raw === "inprogress") return "in_progress";
-    if (raw === "in_progress") return "in_progress";
-    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "in_progress" || raw === "on_progress") return "in_progress";
+    if (raw === "completed" || raw === "done" || raw === "selesai") return "completed";
+    if (raw === "cancelled" || raw === "canceled" || raw === "rejected")
+        return "cancelled";
     if (raw === "requested") return "pending";
     if (raw === "pending" || raw === "") return "pending";
     return "pending";
+};
+
+const normalizeAccommodationStatus = (value) => {
+    const raw = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+    if (["pending", "requested", ""].includes(raw)) return "pending";
+    if (["approved", "disetujui", "paid"].includes(raw)) return "approved";
+    if (["rejected", "ditolak"].includes(raw)) return "rejected";
+    if (
+        [
+            "need_review",
+            "review",
+            "revision",
+            "needs_review",
+            "realization_process",
+            "partial_realized",
+            "partial_realize",
+            "partially_realized",
+            "realized",
+        ].includes(raw)
+    ) {
+        return "need_review";
+    }
+    return "need_review";
 };
 
 const toDateKey = (value) => {
@@ -53,49 +71,30 @@ const toDateKey = (value) => {
     return `${year}-${month}-${day}`;
 };
 
-const toCsvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-
-const polarToCartesian = (cx, cy, radius, angleInDegrees) => {
-    const radians = ((angleInDegrees - 90) * Math.PI) / 180;
-    return {
-        x: cx + radius * Math.cos(radians),
-        y: cy + radius * Math.sin(radians),
-    };
+const formatRelativeTime = (value) => {
+    if (!value) return "Baru saja";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Baru saja";
+    return date.toLocaleString("id-ID", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
 };
-
-const describePieSlice = (cx, cy, radius, startAngle, endAngle) => {
-    const start = polarToCartesian(cx, cy, radius, endAngle);
-    const end = polarToCartesian(cx, cy, radius, startAngle);
-    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
-
-    return [
-        `M ${cx} ${cy}`,
-        `L ${start.x} ${start.y}`,
-        `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
-        "Z",
-    ].join(" ");
-};
-
-const describeFullCircle = (cx, cy, radius) =>
-    [
-        `M ${cx} ${cy - radius}`,
-        `A ${radius} ${radius} 0 1 1 ${cx} ${cy + radius}`,
-        `A ${radius} ${radius} 0 1 1 ${cx} ${cy - radius}`,
-        "Z",
-    ].join(" ");
 
 export default function AdminDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
-    const { user, loading: authLoading } = useAuth();
+    const { user, profile, role, loading: authLoading } = useAuth();
     const [requests, setRequests] = useState([]);
+    const [accommodations, setAccommodations] = useState([]);
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
     const authLoadingRef = useRef(authLoading);
 
-    // ✅ Update auth loading ref without triggering effect
     useEffect(() => {
         authLoadingRef.current = authLoading;
     }, [authLoading]);
@@ -108,14 +107,26 @@ export default function AdminDashboard() {
                 .order("created_at", { ascending: false });
 
             if (error) throw error;
-            if (isMountedRef.current) {
-                setRequests(data ?? []);
-            }
+            if (isMountedRef.current) setRequests(data ?? []);
         } catch (error) {
             console.error("Error loading admin dashboard data:", error);
-            if (isMountedRef.current) {
-                setRequests([]);
-            }
+            if (isMountedRef.current) setRequests([]);
+        }
+    };
+
+    const loadAccommodations = async () => {
+        try {
+            const { data, error } = await supabase
+                .from("accommodation_requests")
+                .select("*")
+                .order("created_at", { ascending: false })
+                .limit(50);
+
+            if (error) throw error;
+            if (isMountedRef.current) setAccommodations(data ?? []);
+        } catch (error) {
+            console.warn("Accommodation summary skipped:", error.message);
+            if (isMountedRef.current) setAccommodations([]);
         }
     };
 
@@ -126,44 +137,24 @@ export default function AdminDashboard() {
         };
     }, []);
 
-    // ✅ Setup channel once on mount - NO dependencies to prevent re-creation
     useEffect(() => {
-        // ⚠️ CRITICAL GUARD: Don't setup if still loading auth OR no user
-        if (authLoadingRef.current || !user?.id) {
-            console.log(
-                "[AdminDashboard] Skipping channel setup - auth loading or no user:",
-                {
-                    loading: authLoadingRef.current,
-                    userId: user?.id,
-                },
-            );
-            return;
-        }
+        if (authLoadingRef.current || !user?.id) return;
 
         const timerId = setTimeout(() => {
             loadRequests();
+            loadAccommodations();
         }, 0);
 
-        // Async channel setup with proper cleanup
         const setupChannel = async () => {
-            // ✅ CRITICAL FIX: Cleanup ALL existing channels before creating new one
-            // ✅ CRITICAL FIX: Use unique channel name with user ID
             const channelName = createUniqueChannelName(
                 "admin-dashboard",
-                user?.id,
+                user.id,
             );
-
-            // ✅ Skip if channel already exists
-            const existingChannels = supabase.getChannels();
-            const existing = existingChannels.find(
-                (ch) => ch.topic === `realtime:${channelName}`,
-            );
+            const existing = supabase
+                .getChannels()
+                .find((ch) => ch.topic === `realtime:${channelName}`);
 
             if (existing) {
-                console.log(
-                    "[AdminDashboard] Channel already exists, reusing:",
-                    channelName,
-                );
                 channelRef.current = existing;
                 return;
             }
@@ -174,9 +165,14 @@ export default function AdminDashboard() {
                     "postgres_changes",
                     { event: "*", schema: "public", table: "requests" },
                     () => {
-                        if (isMountedRef.current) {
-                            loadRequests();
-                        }
+                        if (isMountedRef.current) loadRequests();
+                    },
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "job_technicians" },
+                    () => {
+                        if (isMountedRef.current) loadRequests();
                     },
                 )
                 .on(
@@ -184,108 +180,93 @@ export default function AdminDashboard() {
                     {
                         event: "*",
                         schema: "public",
-                        table: "job_technicians",
+                        table: "accommodation_requests",
                     },
                     () => {
-                        if (isMountedRef.current) {
-                            loadRequests();
-                        }
+                        if (isMountedRef.current) loadAccommodations();
                     },
                 );
 
             const { error } = await channelRef.current.subscribe();
-
-            if (error) {
-                console.error("[AdminDashboard] Subscribe error:", error);
-                return;
-            }
-
-            console.log("[AdminDashboard] Subscribed to:", channelName);
+            if (error) console.error("[AdminDashboard] Subscribe error:", error);
         };
 
-        // Setup channel (but only if user is authenticated)
-        if (user?.id) {
-            setupChannel();
-        }
+        setupChannel();
 
         return () => {
             clearTimeout(timerId);
-            // ✅ CRITICAL FIX: Proper cleanup using supabase.removeChannel()
-            // NOT .unsubscribe() - that only stops receiving events
             if (channelRef.current) {
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
-                console.log("[AdminDashboard] Channel cleaned up");
             }
         };
-    }, [user?.id]); // ✅ Recreate only when user changes
+    }, [user?.id]);
 
     const statusCounts = useMemo(() => {
-        const counts = {
-            pending: 0,
-            in_progress: 0,
-            completed: 0,
-        };
-
+        const counts = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
         for (const row of requests) {
-            const key = normalizeStatusKey(row.status);
-            if (counts[key] !== undefined) {
-                counts[key] += 1;
-            }
+            counts[normalizeStatusKey(row.status)] += 1;
         }
-
         return counts;
     }, [requests]);
 
-    const jobStatusCards = [
-        {
-            title: "Pending",
-            value: statusCounts.pending,
-            icon: Clock3,
-            tone: "amber",
-            statusKey: "pending",
-        },
-        {
-            title: "In Progress",
-            value: statusCounts.in_progress,
-            icon: Wrench,
-            tone: "sky",
-            statusKey: "in_progress",
-        },
-        {
-            title: "Completed",
-            value: statusCounts.completed,
-            icon: CircleCheckBig,
-            tone: "emerald",
-            statusKey: "completed",
-        },
-    ];
+    const accommodationCounts = useMemo(() => {
+        const counts = { pending: 0, approved: 0, need_review: 0, rejected: 0 };
+        for (const row of accommodations) {
+            counts[normalizeAccommodationStatus(row.status)] += 1;
+        }
+        return counts;
+    }, [accommodations]);
 
     const totalRequests = requests.length;
     const completionRate = totalRequests
         ? Math.round((statusCounts.completed / totalRequests) * 100)
         : 0;
+    const activeAttention = statusCounts.pending + statusCounts.in_progress;
 
-    const donutSegments = useMemo(() => {
-        const keys = ["pending", "in_progress", "completed"];
-        const total = totalRequests || 1;
-        let offset = 0;
+    const kpis = [
+        {
+            label: "Pending",
+            value: statusCounts.pending,
+            meta: totalRequests ? `${Math.round((statusCounts.pending / totalRequests) * 100)}% dari total` : "0%",
+            icon: Clock3,
+            tone: "amber",
+        },
+        {
+            label: "In Progress",
+            value: statusCounts.in_progress,
+            meta: totalRequests ? `${Math.round((statusCounts.in_progress / totalRequests) * 100)}% dari total` : "0%",
+            icon: Wrench,
+            tone: "sky",
+        },
+        {
+            label: "Completed",
+            value: statusCounts.completed,
+            meta: `${completionRate}% selesai`,
+            icon: CircleCheckBig,
+            tone: "emerald",
+        },
+        {
+            label: "Total Pekerjaan",
+            value: totalRequests,
+            meta: `${activeAttention} aktif`,
+            icon: BriefcaseBusiness,
+            tone: "slate",
+        },
+    ];
 
-        return keys.map((key) => {
-            const value = statusCounts[key];
-            const ratio = value / total;
-            const segment = {
-                key,
-                value,
-                ratio,
-                offset,
-                color: STATUS_META[key].color,
-                label: STATUS_META[key].label,
-            };
-            offset += ratio;
-            return segment;
-        });
-    }, [statusCounts, totalRequests]);
+    const baseAccommodationPath =
+        role === "management" ? "/management/accommodation" : "/admin/accommodation";
+    const quickActions = [
+        { label: "Buat Pekerjaan", to: "/jobs/new", icon: Plus },
+        { label: "Tambah Customer", to: "/master-data", icon: Users },
+        { label: "Pengajuan Akomodasi", to: baseAccommodationPath, icon: Wallet },
+        {
+            label: "Laporan",
+            to: `${baseAccommodationPath}/reports`,
+            icon: BarChart3,
+        },
+    ];
 
     const last7Days = useMemo(() => {
         const byDate = {};
@@ -309,57 +290,26 @@ export default function AdminDashboard() {
         return Object.values(byDate);
     }, [requests]);
 
-    const weeklyTotal = last7Days.reduce((sum, item) => sum + item.count, 0);
-    const weeklyMax = Math.max(...last7Days.map((item) => item.count), 1);
+    const recentActivities = useMemo(() => {
+        const jobItems = requests.slice(0, 10).map((row) => ({
+            id: row.id,
+            type: "job",
+            time: row.updated_at ?? row.created_at,
+            timeLabel: formatRelativeTime(row.updated_at ?? row.created_at),
+            text: `${row.customer_name ?? "Customer"} membuat atau memperbarui pekerjaan ${row.title ?? `#${row.id}`}`,
+        }));
+        const accommodationItems = accommodations.slice(0, 10).map((row) => ({
+            id: row.id,
+            type: "accommodation",
+            time: row.updated_at ?? row.created_at,
+            timeLabel: formatRelativeTime(row.updated_at ?? row.created_at),
+            text: `${row.technician_name ?? "Teknisi"} mengajukan akomodasi ${row.request_title ?? ""}`.trim(),
+        }));
 
-    const hoveredSegment = donutSegments.find(
-        (item) => item.key === hoveredStatus,
-    );
-    const hoveredDay = last7Days.find((item) => item.key === hoveredDayKey);
-
-    const exportCsv = () => {
-        const headers = [
-            "ID",
-            "Title",
-            "Status",
-            "Customer",
-            "Phone",
-            "Location",
-            "Created At",
-        ];
-        const lines = [headers.map(toCsvCell).join(",")];
-
-        for (const row of requests) {
-            lines.push(
-                [
-                    row.id,
-                    row.title,
-                    STATUS_LABELS[normalizeStatusKey(row.status)] ?? "PENDING",
-                    row.customer_name,
-                    row.customer_phone,
-                    row.location,
-                    row.created_at,
-                ]
-                    .map(toCsvCell)
-                    .join(","),
-            );
-        }
-
-        const blob = new Blob([`\uFEFF${lines.join("\n")}`], {
-            type: "text/csv;charset=utf-8;",
-        });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = `admin-dashboard-${new Date().toISOString().split("T")[0]}.csv`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        URL.revokeObjectURL(url);
-    };
-
-    const radius = 74;
-    const center = 90;
+        return [...jobItems, ...accommodationItems]
+            .sort((a, b) => new Date(b.time ?? 0) - new Date(a.time ?? 0))
+            .slice(0, 10);
+    }, [requests, accommodations]);
 
     return (
         <div className="min-h-screen bg-sky-50">
@@ -370,262 +320,40 @@ export default function AdminDashboard() {
                 />
 
                 <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div>
-                            <h1 className="text-3xl font-semibold text-slate-900">
-                                Dashboard Admin
-                            </h1>
-                            <p className="mt-1 text-slate-600">
-                                Ringkasan pekerjaan servis dan absensi tim
-                                secara real-time.
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 self-start">
-                            <button
-                                type="button"
-                                onClick={exportCsv}
-                                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                            >
-                                <Download size={16} />
-                                Export CSV
-                            </button>
-                        </div>
-                    </div>
-
-                    <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {jobStatusCards.map((item) => (
-                            <Link
-                                key={item.title}
-                                to={`/requests?status=${item.statusKey}`}
-                                className="no-underline"
-                                style={{ textDecoration: "none" }}
-                            >
-                                <Card
-                                    title={item.title}
-                                    value={item.value}
-                                    icon={item.icon}
-                                    tone={item.tone}
-                                />
-                            </Link>
-                        ))}
-                    </section>
-
-                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 md:py-8">
-                        <div className="mb-4 flex items-center justify-between">
-                            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
-                                <CalendarDays size={18} />
-                                Absensi Hari Ini
-                            </h2>
-                        </div>
-                        <AttendanceDashboardSimple
-                            technicianId={user?.id}
-                            onDataChange={() => {}}
-                        />
-                    </section>
-
-                    <section className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                        <div className="rounded-2xl bg-white p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-2xl font-semibold text-slate-900">
-                                    Distribusi Status
-                                </h2>
-                                <ChartPie
-                                    size={18}
-                                    className="text-slate-400"
-                                />
-                            </div>
-
-                            <div className="mt-4 flex flex-col items-center">
-                                <svg
-                                    width="210"
-                                    height="210"
-                                    viewBox="0 0 180 180"
-                                >
-                                    <circle
-                                        cx={center}
-                                        cy={center}
-                                        r={radius}
-                                        fill="#e2e8f0"
-                                    />
-                                    {donutSegments.map((segment) => {
-                                        if (!segment.value) return null;
-                                        if (segment.ratio >= 0.999) {
-                                            return (
-                                                <path
-                                                    key={segment.key}
-                                                    d={describeFullCircle(
-                                                        center,
-                                                        center,
-                                                        radius,
-                                                    )}
-                                                    fill={segment.color}
-                                                    onMouseEnter={() =>
-                                                        setHoveredStatus(
-                                                            segment.key,
-                                                        )
-                                                    }
-                                                    onMouseLeave={() =>
-                                                        setHoveredStatus(null)
-                                                    }
-                                                />
-                                            );
-                                        }
-
-                                        const startAngle = segment.offset * 360;
-                                        const endAngle =
-                                            (segment.offset + segment.ratio) *
-                                            360;
-                                        return (
-                                            <path
-                                                key={segment.key}
-                                                d={describePieSlice(
-                                                    center,
-                                                    center,
-                                                    radius,
-                                                    startAngle,
-                                                    endAngle,
-                                                )}
-                                                fill={segment.color}
-                                                onMouseEnter={() =>
-                                                    setHoveredStatus(
-                                                        segment.key,
-                                                    )
-                                                }
-                                                onMouseLeave={() =>
-                                                    setHoveredStatus(null)
-                                                }
-                                            />
-                                        );
-                                    })}
-                                    <circle
-                                        cx={center}
-                                        cy={center}
-                                        r="45"
-                                        fill="white"
-                                    />
-                                    <text
-                                        x={center}
-                                        y={center - 2}
-                                        textAnchor="middle"
-                                        className="fill-slate-900 text-xl font-semibold"
-                                    >
-                                        {totalRequests}
-                                    </text>
-                                    <text
-                                        x={center}
-                                        y={center + 18}
-                                        textAnchor="middle"
-                                        className="fill-slate-400 text-[11px]"
-                                    >
-                                        Total Job
-                                    </text>
-                                </svg>
-
-                                <p className="mt-2 text-sm text-slate-600">
-                                    {hoveredSegment
-                                        ? `${hoveredSegment.label}: ${hoveredSegment.value} (${Math.round(
-                                              hoveredSegment.ratio * 100,
-                                          )}%)`
-                                        : `Total pekerjaan: ${totalRequests}`}
-                                </p>
-
-                                <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm text-slate-600">
-                                    {donutSegments.map((segment) => (
-                                        <div
-                                            key={segment.key}
-                                            className="inline-flex items-center gap-2"
-                                        >
-                                            <span
-                                                className="h-3 w-3 rounded-full"
-                                                style={{
-                                                    backgroundColor:
-                                                        segment.color,
-                                                }}
-                                            />
-                                            <span>{segment.label}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="rounded-2xl bg-white p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-2xl font-semibold text-slate-900">
-                                    Aktivitas Harian (7 Hari Terakhir)
-                                </h2>
-                                <BarChart3
-                                    size={18}
-                                    className="text-slate-400"
-                                />
-                            </div>
-
-                            <div className="mt-8">
-                                <div className="flex h-64 items-end gap-3">
-                                    {last7Days.map((item) => {
-                                        const barHeight = Math.max(
-                                            (item.count / weeklyMax) * 200,
-                                            item.count ? 14 : 2,
-                                        );
-                                        const percent = weeklyTotal
-                                            ? Math.round(
-                                                  (item.count / weeklyTotal) *
-                                                      100,
-                                              )
-                                            : 0;
-                                        return (
-                                            <div
-                                                key={item.key}
-                                                className="group flex flex-1 flex-col items-center"
-                                                onMouseEnter={() =>
-                                                    setHoveredDayKey(item.key)
-                                                }
-                                                onMouseLeave={() =>
-                                                    setHoveredDayKey(null)
-                                                }
-                                            >
-                                                <div className="mb-2 h-6 text-[11px] text-slate-600">
-                                                    {hoveredDayKey === item.key
-                                                        ? `${item.count} (${percent}%)`
-                                                        : ""}
-                                                </div>
-                                                <div
-                                                    className={`w-full max-w-10 rounded-t-lg transition ${
-                                                        item.count
-                                                            ? "bg-sky-400 group-hover:bg-sky-500"
-                                                            : "bg-slate-200 group-hover:bg-slate-300"
-                                                    }`}
-                                                    style={{
-                                                        height: `${barHeight}px`,
-                                                    }}
-                                                />
-                                                <span className="mt-2 text-sm text-slate-500">
-                                                    {item.label}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <p className="mt-5 text-sm text-slate-400">
-                                    {hoveredDay
-                                        ? `${hoveredDay.label}: ${hoveredDay.count} pekerjaan`
-                                        : "Arahkan kursor ke batang untuk melihat detail."}
-                                </p>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section className="mt-6 rounded-2xl bg-sky-500 p-6 text-white shadow-sm">
-                        <p className="text-sm font-semibold uppercase tracking-wide text-sky-100">
-                            Ringkasan Penyelesaian
-                        </p>
-                        <p className="mt-2 text-5xl font-bold">
-                            {completionRate}%
-                        </p>
-                        <p className="mt-2 text-lg text-sky-100">
-                            Persentase pekerjaan yang sudah selesai.
-                        </p>
-                    </section>
+                    <OperationalDashboard
+                        user={user}
+                        profile={profile}
+                        attentionCount={activeAttention}
+                        attendance={
+                            <AttendanceDashboardSimple
+                                technicianId={user?.id}
+                                onDataChange={() => {}}
+                            />
+                        }
+                        kpis={kpis}
+                        quickActions={quickActions}
+                        completedCount={statusCounts.completed}
+                        totalCount={totalRequests}
+                        statusSegments={buildStatusSegments(statusCounts)}
+                        activityDays={last7Days}
+                        accommodationItems={[
+                            {
+                                label: "Pending Approval",
+                                value: accommodationCounts.pending,
+                            },
+                            { label: "Approved", value: accommodationCounts.approved },
+                            {
+                                label: "Need Review",
+                                value: accommodationCounts.need_review,
+                            },
+                            { label: "Rejected", value: accommodationCounts.rejected },
+                        ]}
+                        recentActivities={recentActivities}
+                        hoveredStatus={hoveredStatus}
+                        onHoverStatus={setHoveredStatus}
+                        hoveredDayKey={hoveredDayKey}
+                        onHoverDay={setHoveredDayKey}
+                    />
                 </main>
             </div>
 

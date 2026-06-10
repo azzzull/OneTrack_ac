@@ -1,31 +1,19 @@
 import { useMemo, useState } from "react";
 import {
-    BarChart3,
-    ChartPie,
     CircleCheckBig,
+    ClipboardList,
     Clock3,
-    Download,
+    History,
+    Plus,
+    SearchCheck,
     Wrench,
 } from "lucide-react";
-import { Link } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
-import Card from "../../components/card";
+import OperationalDashboard from "../../components/dashboard/OperationalDashboard";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import useCustomerRequests from "../../hooks/useCustomerRequests";
-import { formatDateUniversal } from "../../utils/dateFormatter";
-
-const STATUS_META = {
-    pending: { label: "Pending", color: "#0ea5e9" },
-    in_progress: { label: "In Progress", color: "#67e8f9" },
-    completed: { label: "Completed", color: "#0369a1" },
-};
-
-const STATUS_LABELS = {
-    pending: "PENDING",
-    in_progress: "IN PROGRESS",
-    completed: "COMPLETED",
-};
+import { buildStatusSegments } from "../../utils/dashboardStatus";
 
 const normalizeStatusKey = (value) => {
     const raw = String(value ?? "")
@@ -34,16 +22,14 @@ const normalizeStatusKey = (value) => {
         .replaceAll("-", "_")
         .replaceAll(" ", "_");
     if (raw === "inprogress") return "in_progress";
-    if (raw === "in_progress") return "in_progress";
-    if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "in_progress" || raw === "on_progress") return "in_progress";
+    if (raw === "completed" || raw === "done" || raw === "selesai") return "completed";
+    if (raw === "cancelled" || raw === "canceled" || raw === "rejected")
+        return "cancelled";
     if (raw === "requested") return "pending";
     if (raw === "pending" || raw === "") return "pending";
     return "pending";
 };
-
-const formatOrderId = (id) => `#${String(id).padStart(6, "0")}`;
-
-const formatDate = (dateValue) => formatDateUniversal(dateValue);
 
 const toDateKey = (value) => {
     if (!value) return "";
@@ -55,111 +41,76 @@ const toDateKey = (value) => {
     return `${year}-${month}-${day}`;
 };
 
-const toCsvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-
-const polarToCartesian = (cx, cy, radius, angleInDegrees) => {
-    const radians = ((angleInDegrees - 90) * Math.PI) / 180;
-    return {
-        x: cx + radius * Math.cos(radians),
-        y: cy + radius * Math.sin(radians),
-    };
+const formatRelativeTime = (value) => {
+    if (!value) return "Baru saja";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Baru saja";
+    return date.toLocaleString("id-ID", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
 };
-
-const describePieSlice = (cx, cy, radius, startAngle, endAngle) => {
-    const start = polarToCartesian(cx, cy, radius, endAngle);
-    const end = polarToCartesian(cx, cy, radius, startAngle);
-    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
-    return [
-        `M ${cx} ${cy}`,
-        `L ${start.x} ${start.y}`,
-        `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
-        "Z",
-    ].join(" ");
-};
-
-const describeFullCircle = (cx, cy, radius) =>
-    [
-        `M ${cx} ${cy - radius}`,
-        `A ${radius} ${radius} 0 1 1 ${cx} ${cy + radius}`,
-        `A ${radius} ${radius} 0 1 1 ${cx} ${cy - radius}`,
-        "Z",
-    ].join(" ");
 
 export default function CustomerDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
     const { requests } = useCustomerRequests(user);
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
 
     const statusCounts = useMemo(() => {
-        const counts = {
-            pending: 0,
-            in_progress: 0,
-            completed: 0,
-        };
-
+        const counts = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
         for (const row of requests) {
-            const key = normalizeStatusKey(row.status);
-            if (counts[key] !== undefined) {
-                counts[key] += 1;
-            } else {
-                counts.pending += 1;
-            }
+            counts[normalizeStatusKey(row.status)] += 1;
         }
-
         return counts;
     }, [requests]);
 
-    const jobStatusCards = [
-        {
-            title: "Pending",
-            value: statusCounts.pending,
-            icon: Clock3,
-            tone: "amber",
-            statusKey: "pending",
-        },
-        {
-            title: "In Progress",
-            value: statusCounts.in_progress,
-            icon: Wrench,
-            tone: "sky",
-            statusKey: "in_progress",
-        },
-        {
-            title: "Completed",
-            value: statusCounts.completed,
-            icon: CircleCheckBig,
-            tone: "emerald",
-            statusKey: "completed",
-        },
-    ];
-
     const totalRequests = requests.length;
+    const activeRequests = statusCounts.pending + statusCounts.in_progress;
     const completionRate = totalRequests
         ? Math.round((statusCounts.completed / totalRequests) * 100)
         : 0;
 
-    const donutSegments = useMemo(() => {
-        const keys = ["pending", "in_progress", "completed"];
-        const total = totalRequests || 1;
-        let offset = 0;
-        return keys.map((key) => {
-            const value = statusCounts[key];
-            const ratio = value / total;
-            const segment = {
-                key,
-                value,
-                ratio,
-                offset,
-                color: STATUS_META[key].color,
-                label: STATUS_META[key].label,
-            };
-            offset += ratio;
-            return segment;
-        });
-    }, [statusCounts, totalRequests]);
+    const kpis = [
+        {
+            label: "Request Aktif",
+            value: activeRequests,
+            meta: `${totalRequests} total request`,
+            icon: ClipboardList,
+            tone: "sky",
+        },
+        {
+            label: "Menunggu Teknisi",
+            value: statusCounts.pending,
+            meta: totalRequests ? `${Math.round((statusCounts.pending / totalRequests) * 100)}% dari total` : "0%",
+            icon: Clock3,
+            tone: "amber",
+        },
+        {
+            label: "Sedang Dikerjakan",
+            value: statusCounts.in_progress,
+            meta: "Dalam penanganan",
+            icon: Wrench,
+            tone: "sky",
+        },
+        {
+            label: "Selesai",
+            value: statusCounts.completed,
+            meta: `${completionRate}% selesai`,
+            icon: CircleCheckBig,
+            tone: "emerald",
+        },
+    ];
+
+    const quickActions = [
+        { label: "Buat Request", to: "/customer/request", icon: Plus },
+        { label: "Lihat Progress", to: "/services", icon: SearchCheck },
+        { label: "Riwayat Pekerjaan", to: "/services", icon: History },
+    ];
 
     const last7Days = useMemo(() => {
         const byDate = {};
@@ -183,74 +134,17 @@ export default function CustomerDashboard() {
         return Object.values(byDate);
     }, [requests]);
 
-    const weeklyTotal = last7Days.reduce((sum, item) => sum + item.count, 0);
-    const weeklyMax = Math.max(...last7Days.map((item) => item.count), 1);
-
-    const hoveredSegment = donutSegments.find(
-        (item) => item.key === hoveredStatus,
+    const recentActivities = useMemo(
+        () =>
+            requests.slice(0, 10).map((row) => ({
+                id: row.id,
+                type: "job",
+                time: row.updated_at ?? row.created_at,
+                timeLabel: formatRelativeTime(row.updated_at ?? row.created_at),
+                text: `Request ${row.title ?? `#${row.id}`} sedang berstatus ${normalizeStatusKey(row.status).replaceAll("_", " ")}`,
+            })),
+        [requests],
     );
-    const hoveredDay = last7Days.find((item) => item.key === hoveredDayKey);
-
-    const exportCsv = () => {
-        const headers = [
-            "Order ID",
-            "Tanggal Dibuat",
-            "Status",
-            "Judul Pekerjaan",
-            "Customer",
-            "No. Telepon Customer",
-            "Teknisi",
-            "Lokasi",
-            "Alamat",
-            "Ruangan",
-            "Merk AC",
-            "Tipe AC",
-            "Kapasitas AC",
-            "Serial Number",
-            "Deskripsi Kendala",
-        ];
-
-        const lines = [headers.map(toCsvCell).join(",")];
-
-        for (const row of requests) {
-            lines.push(
-                [
-                    formatOrderId(row.id),
-                    formatDate(row.created_at),
-                    STATUS_LABELS[normalizeStatusKey(row.status)] ?? "PENDING",
-                    row.title,
-                    row.customer_name,
-                    row.customer_phone,
-                    row.technician_name,
-                    row.location,
-                    row.address,
-                    row.room_location,
-                    row.ac_brand,
-                    row.ac_type,
-                    row.ac_capacity_pk,
-                    row.serial_number,
-                    row.trouble_description,
-                ]
-                    .map(toCsvCell)
-                    .join(","),
-            );
-        }
-
-        const blob = new Blob([`\uFEFF${lines.join("\n")}`], {
-            type: "text/csv;charset=utf-8;",
-        });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = `customer-dashboard-${new Date().toISOString().split("T")[0]}.csv`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        URL.revokeObjectURL(url);
-    };
-
-    const radius = 74;
-    const center = 90;
 
     return (
         <div className="min-h-screen bg-sky-50">
@@ -261,247 +155,23 @@ export default function CustomerDashboard() {
                 />
 
                 <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div>
-                            <h1 className="text-3xl font-semibold text-slate-900">
-                                Dashboard Customer
-                            </h1>
-                            <p className="mt-1 text-slate-600">
-                                Ringkasan pekerjaan dan progres servis untuk
-                                akun Anda.
-                            </p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={exportCsv}
-                            className="inline-flex items-center gap-2 self-start rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                        >
-                            <Download size={16} />
-                            Export CSV
-                        </button>
-                    </div>
-
-                    <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {jobStatusCards.map((item) => (
-                            <Link
-                                key={item.title}
-                                to={`/services?status=${item.statusKey}`}
-                                className="no-underline"
-                                style={{ textDecoration: "none" }}
-                            >
-                                <Card
-                                    title={item.title}
-                                    value={item.value}
-                                    icon={item.icon}
-                                    tone={item.tone}
-                                />
-                            </Link>
-                        ))}
-                    </section>
-
-                    <section className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                        <div className="rounded-2xl bg-white p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-2xl font-semibold text-slate-900">
-                                    Distribusi Status
-                                </h2>
-                                <ChartPie
-                                    size={18}
-                                    className="text-slate-400"
-                                />
-                            </div>
-
-                            <div className="mt-4 flex flex-col items-center">
-                                <svg
-                                    width="210"
-                                    height="210"
-                                    viewBox="0 0 180 180"
-                                >
-                                    <circle
-                                        cx={center}
-                                        cy={center}
-                                        r={radius}
-                                        fill="#e2e8f0"
-                                    />
-                                    {donutSegments.map((segment) => {
-                                        if (!segment.value) return null;
-                                        if (segment.ratio >= 0.999) {
-                                            return (
-                                                <path
-                                                    key={segment.key}
-                                                    d={describeFullCircle(
-                                                        center,
-                                                        center,
-                                                        radius,
-                                                    )}
-                                                    fill={segment.color}
-                                                    onMouseEnter={() =>
-                                                        setHoveredStatus(
-                                                            segment.key,
-                                                        )
-                                                    }
-                                                    onMouseLeave={() =>
-                                                        setHoveredStatus(null)
-                                                    }
-                                                />
-                                            );
-                                        }
-
-                                        const startAngle = segment.offset * 360;
-                                        const endAngle =
-                                            (segment.offset + segment.ratio) *
-                                            360;
-                                        return (
-                                            <path
-                                                key={segment.key}
-                                                d={describePieSlice(
-                                                    center,
-                                                    center,
-                                                    radius,
-                                                    startAngle,
-                                                    endAngle,
-                                                )}
-                                                fill={segment.color}
-                                                onMouseEnter={() =>
-                                                    setHoveredStatus(
-                                                        segment.key,
-                                                    )
-                                                }
-                                                onMouseLeave={() =>
-                                                    setHoveredStatus(null)
-                                                }
-                                            />
-                                        );
-                                    })}
-                                    <circle
-                                        cx={center}
-                                        cy={center}
-                                        r="45"
-                                        fill="white"
-                                    />
-                                    <text
-                                        x={center}
-                                        y={center - 2}
-                                        textAnchor="middle"
-                                        className="fill-slate-900 text-xl font-semibold"
-                                    >
-                                        {totalRequests}
-                                    </text>
-                                    <text
-                                        x={center}
-                                        y={center + 18}
-                                        textAnchor="middle"
-                                        className="fill-slate-400 text-[11px]"
-                                    >
-                                        Total Job
-                                    </text>
-                                </svg>
-
-                                <p className="mt-2 text-sm text-slate-600">
-                                    {hoveredSegment
-                                        ? `${hoveredSegment.label}: ${hoveredSegment.value} (${Math.round(
-                                              hoveredSegment.ratio * 100,
-                                          )}%)`
-                                        : `Total pekerjaan Anda: ${totalRequests}`}
-                                </p>
-
-                                <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm text-slate-600">
-                                    {donutSegments.map((segment) => (
-                                        <div
-                                            key={segment.key}
-                                            className="inline-flex items-center gap-2"
-                                        >
-                                            <span
-                                                className="h-3 w-3 rounded-full"
-                                                style={{
-                                                    backgroundColor:
-                                                        segment.color,
-                                                }}
-                                            />
-                                            <span>{segment.label}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="rounded-2xl bg-white p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-2xl font-semibold text-slate-900">
-                                    Aktivitas Harian (7 Hari Terakhir)
-                                </h2>
-                                <BarChart3
-                                    size={18}
-                                    className="text-slate-400"
-                                />
-                            </div>
-
-                            <div className="mt-8">
-                                <div className="flex h-64 items-end gap-3">
-                                    {last7Days.map((item) => {
-                                        const barHeight = Math.max(
-                                            (item.count / weeklyMax) * 200,
-                                            item.count ? 14 : 2,
-                                        );
-                                        const percent = weeklyTotal
-                                            ? Math.round(
-                                                  (item.count / weeklyTotal) *
-                                                      100,
-                                              )
-                                            : 0;
-                                        return (
-                                            <div
-                                                key={item.key}
-                                                className="group flex flex-1 flex-col items-center"
-                                                onMouseEnter={() =>
-                                                    setHoveredDayKey(item.key)
-                                                }
-                                                onMouseLeave={() =>
-                                                    setHoveredDayKey(null)
-                                                }
-                                            >
-                                                <div className="mb-2 h-6 text-[11px] text-slate-600">
-                                                    {hoveredDayKey === item.key
-                                                        ? `${item.count} (${percent}%)`
-                                                        : ""}
-                                                </div>
-                                                <div
-                                                    className={`w-full max-w-10 rounded-t-lg transition ${
-                                                        item.count
-                                                            ? "bg-sky-400 group-hover:bg-sky-500"
-                                                            : "bg-slate-200 group-hover:bg-slate-300"
-                                                    }`}
-                                                    style={{
-                                                        height: `${barHeight}px`,
-                                                    }}
-                                                />
-                                                <span className="mt-2 text-sm text-slate-500">
-                                                    {item.label}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <p className="mt-5 text-sm text-slate-400">
-                                    {hoveredDay
-                                        ? `${hoveredDay.label}: ${hoveredDay.count} pekerjaan`
-                                        : "Arahkan kursor ke batang untuk melihat detail."}
-                                </p>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section className="mt-6 rounded-2xl bg-sky-500 p-6 text-white shadow-sm">
-                        <p className="text-sm font-semibold uppercase tracking-wide text-sky-100">
-                            Ringkasan Penyelesaian
-                        </p>
-                        <p className="mt-2 text-5xl font-bold">
-                            {completionRate}%
-                        </p>
-                        <p className="mt-2 text-lg text-sky-100">
-                            Persentase pekerjaan Anda yang sudah selesai.
-                        </p>
-                    </section>
+                    <OperationalDashboard
+                        user={user}
+                        profile={profile}
+                        attentionCount={activeRequests}
+                        kpis={kpis}
+                        quickActions={quickActions}
+                        completedCount={statusCounts.completed}
+                        totalCount={totalRequests}
+                        statusSegments={buildStatusSegments(statusCounts)}
+                        activityDays={last7Days}
+                        accommodationItems={[]}
+                        recentActivities={recentActivities}
+                        hoveredStatus={hoveredStatus}
+                        onHoverStatus={setHoveredStatus}
+                        hoveredDayKey={hoveredDayKey}
+                        onHoverDay={setHoveredDayKey}
+                    />
                 </main>
             </div>
 
