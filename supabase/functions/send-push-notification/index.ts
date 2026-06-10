@@ -13,6 +13,7 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const firebaseProjectId = Deno.env.get("FIREBASE_PROJECT_ID") ?? "";
 const firebaseClientEmail = Deno.env.get("FIREBASE_CLIENT_EMAIL") ?? "";
 const firebasePrivateKey = Deno.env.get("FIREBASE_PRIVATE_KEY") ?? "";
+const scheduledReminderSecret = Deno.env.get("SCHEDULED_REMINDER_SECRET") ?? "";
 
 type PushRequestBody = {
     recipientUserIds?: unknown;
@@ -168,6 +169,11 @@ const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
     job_status_changed: ["admin", "management"],
     accommodation_requested: ["admin", "management"],
     realization_need_review: ["admin", "management"],
+    job_unclaimed_reminder: ["technician"],
+    job_no_progress_reminder: ["admin", "management", "technician"],
+    accommodation_unrealized_reminder: ["technician"],
+    realization_unreviewed_reminder: ["admin", "management"],
+    attendance_reminder: ["technician"],
 };
 
 const canUseBusinessRecipients = (
@@ -217,39 +223,52 @@ Deno.serve(async (req) => {
     const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (!jwt) return jsonResponse({ success: false, error: "Unauthorized" }, 401);
 
-    const requesterClient = createClient(supabaseUrl, anonKey, {
-        global: { headers: { Authorization: `Bearer ${jwt}` } },
-    });
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
         auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const { data: userData, error: userError } =
-        await requesterClient.auth.getUser(jwt);
-    if (userError || !userData?.user) {
-        return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    const internalSecret = req.headers.get("x-scheduled-reminder-secret") ?? "";
+    const isInternalScheduledCall =
+        Boolean(scheduledReminderSecret) &&
+        internalSecret === scheduledReminderSecret &&
+        (jwt === serviceRoleKey || jwt === anonKey);
+
+    let requesterId: string | null = null;
+    let requesterRole = "admin";
+
+    if (!isInternalScheduledCall) {
+        const requesterClient = createClient(supabaseUrl, anonKey, {
+            global: { headers: { Authorization: `Bearer ${jwt}` } },
+        });
+
+        const { data: userData, error: userError } =
+            await requesterClient.auth.getUser(jwt);
+        if (userError || !userData?.user) {
+            return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+        }
+
+        requesterId = userData.user.id;
+        const { data: requesterProfile, error: requesterProfileError } =
+            await adminClient
+                .from("profiles")
+                .select("id, role")
+                .eq("id", requesterId)
+                .maybeSingle();
+
+        if (requesterProfileError) {
+            return jsonResponse(
+                {
+                    success: false,
+                    error: "Failed to load requester profile",
+                    details: requesterProfileError.message,
+                },
+                500,
+            );
+        }
+
+        requesterRole = String(requesterProfile?.role ?? "");
     }
 
-    const requesterId = userData.user.id;
-    const { data: requesterProfile, error: requesterProfileError } =
-        await adminClient
-            .from("profiles")
-            .select("id, role")
-            .eq("id", requesterId)
-            .maybeSingle();
-
-    if (requesterProfileError) {
-        return jsonResponse(
-            {
-                success: false,
-                error: "Failed to load requester profile",
-                details: requesterProfileError.message,
-            },
-            500,
-        );
-    }
-
-    const requesterRole = String(requesterProfile?.role ?? "");
     const canSendArbitrary = ["admin", "management"].includes(requesterRole);
 
     let input: PushRequestBody;

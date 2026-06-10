@@ -24,6 +24,12 @@ SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 ```
 
+Untuk panggilan internal dari `run-scheduled-reminders`, set secret bersama:
+
+```bash
+supabase secrets set SCHEDULED_REMINDER_SECRET="replace-with-long-random-secret"
+```
+
 ## Deploy
 
 ```bash
@@ -61,4 +67,5 @@ Expected result:
 - Function hanya menerima request authenticated.
 - User biasa hanya boleh mengirim push ke dirinya sendiri.
 - Pengiriman ke `recipientRoles` atau user lain hanya boleh dilakukan oleh role `admin` atau `management`.
+- `run-scheduled-reminders` dapat memanggil function ini secara internal hanya dengan `SUPABASE_SERVICE_ROLE_KEY` dan header `x-scheduled-reminder-secret` yang cocok.
 - Firebase credentials tidak dipakai di frontend.
