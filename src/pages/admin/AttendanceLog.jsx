@@ -23,6 +23,11 @@ import {
 import AttendanceMapModal from "../../components/AttendanceMapModal";
 import supabase from "../../supabaseClient";
 import { getLocationLabel, hasLocationData } from "../../utils/nominatim";
+import {
+    exportStyledExcel,
+    makeExcelFileName,
+    parseExcelDate,
+} from "../../utils/excelExport";
 
 const getCompactPagination = (currentPage, totalPages) => {
     if (totalPages <= 5) {
@@ -266,7 +271,7 @@ const AttendanceLog = () => {
         });
     };
 
-    const handleExportDailyCSV = () => {
+    const handleExportDailyExcel = async () => {
         const filteredTechs = technicians.filter((tech) => {
             if (!dailyStatusFilter) return true;
             const record = dailyAttendanceMap[tech.id];
@@ -284,40 +289,73 @@ const AttendanceLog = () => {
             return;
         }
 
-        const headers = [
-            "Tanggal",
-            "Teknisi",
-            "Status",
-            "Jam Masuk",
-            "Jam Pulang",
+        const columns = [
+            { key: "date", header: "Tanggal" },
+            { key: "technician", header: "Teknisi" },
+            { key: "status", header: "Status" },
+            { key: "checkIn", header: "Jam Masuk" },
+            { key: "checkOut", header: "Jam Pulang" },
         ];
 
         const rows = filteredTechs.map((tech) => {
             const record = dailyAttendanceMap[tech.id];
             const status = getDailyStatus(record);
-            return [
-                formatDateShort(dailyDate),
-                `${tech.first_name} ${tech.last_name}`.trim(),
+            return {
+                date: parseExcelDate(dailyDate),
+                technician: `${tech.first_name} ${tech.last_name}`.trim(),
                 status,
-                formatTimeShort(record?.check_in_time),
-                formatTimeShort(record?.check_out_time),
-            ];
+                checkIn: formatTimeShort(record?.check_in_time),
+                checkOut: formatTimeShort(record?.check_out_time),
+            };
         });
 
-        const csvContent = [
-            headers.join(","),
-            ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
-        ].join("\n");
+        const statusSummary = rows.reduce(
+            (acc, row) => {
+                acc.total += 1;
+                if (row.status === "Masuk") acc.masuk += 1;
+                if (row.status === "Masuk & Pulang") acc.masukPulang += 1;
+                if (row.status === "Belum Absen") acc.belumAbsen += 1;
+                return acc;
+            },
+            { total: 0, masuk: 0, masukPulang: 0, belumAbsen: 0 },
+        );
 
-        const blob = new Blob([csvContent], { type: "text/csv" });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `attendance_daily_${dailyDate}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
+        try {
+            await exportStyledExcel({
+                fileName: makeExcelFileName([
+                    "Laporan",
+                    "Absensi",
+                    "Harian",
+                    dailyDate,
+                ]),
+                sheetName: "Absensi Harian",
+                title: "Laporan Absensi Harian OneTrack",
+                filterRows: [
+                    ["Tanggal", parseExcelDate(dailyDate)],
+                    [
+                        "Status",
+                        dailyStatusFilter
+                            ? rows[0]?.status ?? dailyStatusFilter
+                            : "Semua Status",
+                    ],
+                    ["Tanggal Export", new Date()],
+                ],
+                columns,
+                rows,
+                summaryTitle: "Ringkasan Absensi Harian",
+                summaryRows: [
+                    ["Total Teknisi", statusSummary.total],
+                    ["Masuk", statusSummary.masuk],
+                    ["Masuk & Pulang", statusSummary.masukPulang],
+                    ["Belum Absen", statusSummary.belumAbsen],
+                ],
+                dateKeys: ["date"],
+                wrapKeys: ["technician"],
+            });
+        } catch (error) {
+            console.error("Daily attendance Excel export failed:", error);
+            alert("Gagal menyiapkan file Excel. Restart dev server jika perlu.");
+        }
     };
 
     const handleSaveEditModal = async () => {
@@ -475,52 +513,107 @@ const AttendanceLog = () => {
         : filteredData;
     const paginationItems = getCompactPagination(currentPage, totalPages);
 
-    const handleExportCSV = () => {
+    const handleExportExcel = async () => {
         if (filteredData.length === 0) {
             alert("Tidak ada data untuk di-export");
             return;
         }
 
-        const headers = [
-            "Nama Teknisi",
-            "Tanggal",
-            "Jam Masuk",
-            "Lokasi Masuk",
-            "Kecamatan Masuk",
-            "Jam Pulang",
-            "Lokasi Pulang",
-            "Kecamatan Pulang",
-            "Jam Kerja",
+        const columns = [
+            { key: "technician", header: "Nama Teknisi" },
+            { key: "date", header: "Tanggal" },
+            { key: "checkIn", header: "Jam Masuk" },
+            { key: "checkInLocation", header: "Lokasi Masuk" },
+            { key: "checkInDistrict", header: "Kecamatan Masuk" },
+            { key: "checkOut", header: "Jam Pulang" },
+            { key: "checkOutLocation", header: "Lokasi Pulang" },
+            { key: "checkOutDistrict", header: "Kecamatan Pulang" },
+            { key: "workingHours", header: "Jam Kerja" },
+            { key: "status", header: "Status" },
         ];
 
-        const rows = filteredData.map((record) => [
-            getTechnicianName(record.technician_id),
-            formatDateShort(record.attendance_date),
-            formatTimeShort(record.check_in_time),
-            record.check_in_street_address || "-",
-            record.check_in_district || "-",
-            formatTimeShort(record.check_out_time),
-            record.check_out_street_address || "-",
-            record.check_out_district || "-",
-            record.working_hours_minutes
+        const rows = filteredData.map((record) => ({
+            technician: getTechnicianName(record.technician_id),
+            date: parseExcelDate(record.attendance_date),
+            checkIn: formatTimeShort(record.check_in_time),
+            checkInLocation: record.check_in_street_address || "-",
+            checkInDistrict: record.check_in_district || "-",
+            checkOut: formatTimeShort(record.check_out_time),
+            checkOutLocation: record.check_out_street_address || "-",
+            checkOutDistrict: record.check_out_district || "-",
+            workingHours: record.working_hours_minutes
                 ? formatWorkingHours(record.working_hours_minutes)
                 : "-",
-        ]);
+            status: getDailyStatus(record),
+        }));
 
-        const csvContent = [
-            headers.join(","),
-            ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
-        ].join("\n");
+        const statusSummary = rows.reduce(
+            (acc, row) => {
+                acc.total += 1;
+                if (row.status === "Masuk") acc.masuk += 1;
+                if (row.status === "Masuk & Pulang") acc.masukPulang += 1;
+                if (row.status === "Belum Absen") acc.belumAbsen += 1;
+                return acc;
+            },
+            { total: 0, masuk: 0, masukPulang: 0, belumAbsen: 0 },
+        );
 
-        const blob = new Blob([csvContent], { type: "text/csv" });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `attendance_log_${new Date().toISOString().split("T")[0]}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
+        try {
+            await exportStyledExcel({
+                fileName: makeExcelFileName([
+                    "Laporan",
+                    "Log",
+                    "Absensi",
+                    filterTechnician
+                        ? getTechnicianName(filterTechnician)
+                        : "Semua Teknisi",
+                    filterDateFrom && filterDateTo
+                        ? `${filterDateFrom} sampai ${filterDateTo}`
+                        : new Date().toISOString().split("T")[0],
+                ]),
+                sheetName: "Log Absensi",
+                title: "Laporan Log Absensi OneTrack",
+                filterRows: [
+                    [
+                        "Teknisi",
+                        filterTechnician
+                            ? getTechnicianName(filterTechnician)
+                            : "Semua Teknisi",
+                    ],
+                    ["Tanggal Dari", filterDateFrom ? parseExcelDate(filterDateFrom) : "Semua"],
+                    ["Tanggal Sampai", filterDateTo ? parseExcelDate(filterDateTo) : "Semua"],
+                    [
+                        "Status",
+                        filterStatus === "check_in_only"
+                            ? "Masuk"
+                            : filterStatus === "checked_in_and_out"
+                              ? "Masuk & Pulang"
+                              : "Semua Status",
+                    ],
+                    ["Tanggal Export", new Date()],
+                ],
+                columns,
+                rows,
+                summaryTitle: "Ringkasan Log Absensi",
+                summaryRows: [
+                    ["Total Record", statusSummary.total],
+                    ["Masuk", statusSummary.masuk],
+                    ["Masuk & Pulang", statusSummary.masukPulang],
+                    ["Belum Absen", statusSummary.belumAbsen],
+                ],
+                dateKeys: ["date"],
+                wrapKeys: [
+                    "technician",
+                    "checkInLocation",
+                    "checkOutLocation",
+                    "checkInDistrict",
+                    "checkOutDistrict",
+                ],
+            });
+        } catch (error) {
+            console.error("Attendance log Excel export failed:", error);
+            alert("Gagal menyiapkan file Excel. Restart dev server jika perlu.");
+        }
     };
 
     return (
@@ -730,11 +823,11 @@ const AttendanceLog = () => {
                                         />
                                     </div>
                                     <button
-                                        onClick={handleExportDailyCSV}
+                                        onClick={handleExportDailyExcel}
                                         className="inline-flex items-center gap-2 px-3 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition text-sm font-semibold shadow-sm"
                                     >
                                         <Download size={16} />
-                                        Export CSV
+                                        Export Excel
                                     </button>
                                 </div>
                             </div>
@@ -898,11 +991,11 @@ const AttendanceLog = () => {
                                         </h2>
                                     </div>
                                     <button
-                                        onClick={handleExportCSV}
+                                        onClick={handleExportExcel}
                                         className="inline-flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition text-sm font-semibold shadow-sm"
                                     >
                                         <Download size={16} />
-                                        Export CSV
+                                        Export Excel
                                     </button>
                                 </div>
 

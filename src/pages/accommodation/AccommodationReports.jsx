@@ -27,6 +27,11 @@ import {
     loadAccommodationRequests,
 } from "../../services/accommodationService";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
+import {
+    exportStyledExcel,
+    makeExcelFileName,
+    parseExcelDate,
+} from "../../utils/excelExport";
 
 const formatDate = (value) => {
     if (!value) return "-";
@@ -73,8 +78,6 @@ const SummaryCard = ({ title, value, icon: Icon }) => (
         </div>
     </div>
 );
-
-const toCsvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
 
 const getMonthKey = (date = new Date()) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -316,47 +319,85 @@ export default function AccommodationReports() {
         [reportRows, selectedRequestId],
     );
 
-    const exportCsv = () => {
-        const headers = [
-            "Technician",
-            "Request Title",
-            "Requested Amount",
-            "Approved Amount",
-            "Realized Amount",
-            "Remaining Amount",
-            "Status",
-            "Days Since Approval",
-        ];
-        const lines = [headers.map(toCsvCell).join(",")];
-
-        for (const row of reportRows) {
-            lines.push(
-                [
-                    getDisplayName(row.technician),
-                    row.request_title,
-                    row.requested_amount,
-                    row.approved_amount,
-                    row.totalRealized,
-                    row.remainingAmount,
-                    STATUS_LABELS[row.status] ?? row.status,
-                    daysSince(row.reviewed_at),
-                ]
-                    .map(toCsvCell)
-                    .join(","),
-            );
+    const exportExcel = async () => {
+        if (reportRows.length === 0) {
+            alert("Tidak ada data untuk di-export");
+            return;
         }
 
-        const blob = new Blob([`\uFEFF${lines.join("\n")}`], {
-            type: "text/csv;charset=utf-8;",
-        });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = `accommodation-report-${periodMode}-${periodValue || "all"}.csv`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        URL.revokeObjectURL(url);
+        const columns = [
+            { key: "technician", header: "Teknisi" },
+            { key: "customer", header: "Customer" },
+            { key: "project", header: "Project / Lokasi" },
+            { key: "requestTitle", header: "Judul Request" },
+            { key: "requestedAt", header: "Tanggal Request" },
+            { key: "reviewedAt", header: "Tanggal Review" },
+            { key: "requestedAmount", header: "Nominal Diajukan" },
+            { key: "approvedAmount", header: "Nominal Disetujui" },
+            { key: "realizedAmount", header: "Nominal Realisasi" },
+            { key: "remainingAmount", header: "Sisa Dana" },
+            { key: "status", header: "Status" },
+            { key: "daysSinceApproval", header: "Hari Sejak Approval" },
+        ];
+
+        const rows = reportRows.map((row) => ({
+            technician: getDisplayName(row.technician),
+            customer: getAccommodationCustomerLabel(row),
+            project: getAccommodationProjectLabel(row),
+            requestTitle: row.request_title ?? "-",
+            requestedAt: parseExcelDate(row.requested_at || row.created_at),
+            reviewedAt: parseExcelDate(row.reviewed_at),
+            requestedAmount: Number(row.requested_amount ?? 0),
+            approvedAmount: Number(row.approved_amount ?? 0),
+            realizedAmount: Number(row.totalRealized ?? 0),
+            remainingAmount: Number(row.remainingAmount ?? 0),
+            status: STATUS_LABELS[row.status] ?? row.status ?? "-",
+            daysSinceApproval: daysSince(row.reviewed_at),
+        }));
+
+        try {
+            await exportStyledExcel({
+                fileName: makeExcelFileName([
+                    "Laporan",
+                    "Accommodation",
+                    periodLabel,
+                ]),
+                sheetName: "Accommodation Report",
+                title: "Laporan Accommodation OneTrack",
+                filterRows: [
+                    ["Periode", periodLabel],
+                    [
+                        "Tampilan",
+                        reportView === "technician"
+                            ? "Per Teknisi"
+                            : "Keseluruhan",
+                    ],
+                    ["Tanggal Export", new Date()],
+                ],
+                columns,
+                rows,
+                summaryTitle: "Ringkasan Accommodation",
+                summaryRows: [
+                    ["Total Request", reportRows.length],
+                    ["Total Diajukan", summary.requested, "currency"],
+                    ["Total Disetujui", summary.approved, "currency"],
+                    ["Total Realisasi", summary.realized, "currency"],
+                    ["Outstanding", summary.outstanding, "currency"],
+                    ["Pending", summary.pending, "currency"],
+                ],
+                dateKeys: ["requestedAt", "reviewedAt"],
+                currencyKeys: [
+                    "requestedAmount",
+                    "approvedAmount",
+                    "realizedAmount",
+                    "remainingAmount",
+                ],
+                wrapKeys: ["customer", "project", "requestTitle"],
+            });
+        } catch (error) {
+            console.error("Accommodation Excel export failed:", error);
+            alert("Gagal menyiapkan file Excel. Restart dev server jika perlu.");
+        }
     };
 
     return (
@@ -380,11 +421,11 @@ export default function AccommodationReports() {
                         <div className="flex flex-col gap-2 md:items-end">
                             <button
                                 type="button"
-                                onClick={exportCsv}
+                                onClick={exportExcel}
                                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
                             >
                                 <Receipt size={16} />
-                                Export CSV
+                                Export Excel
                             </button>
                             <p className="text-sm font-medium text-slate-500">
                                 Periode: {periodLabel}

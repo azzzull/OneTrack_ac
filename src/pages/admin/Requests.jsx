@@ -18,7 +18,6 @@ import {
     X,
     ChevronLeft,
     ChevronRight,
-    Download,
     FileSpreadsheet,
     RotateCcw,
     Trash2,
@@ -64,12 +63,14 @@ const STATUS_LABELS = {
     pending: "PENDING",
     in_progress: "IN PROGRESS",
     completed: "COMPLETED",
+    cancelled: "DIBATALKAN",
 };
 
 const STATUS_STYLES = {
     pending: "bg-amber-100 text-amber-700",
     in_progress: "bg-blue-100 text-blue-700",
     completed: "bg-emerald-100 text-emerald-700",
+    cancelled: "bg-rose-100 text-rose-700",
 };
 
 const STATUS_OPTIONS = [
@@ -96,6 +97,7 @@ const normalizeStatusKey = (value) => {
     if (raw === "inprogress") return "in_progress";
     if (raw === "in_progress") return "in_progress";
     if (raw === "completed" || raw === "done") return "completed";
+    if (raw === "cancelled" || raw === "canceled") return "cancelled";
     if (raw === "requested") return "pending";
     if (raw === "pending" || raw === "") return "pending";
     return "pending";
@@ -182,40 +184,64 @@ const getPeriodLabel = (period, customStartDate, customEndDate) => {
     );
 };
 
-const slugifyFilePart = (value) => {
-    const normalized = String(value ?? "")
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-    return normalized || "semua";
-};
-
-const getExportFileName = ({
-    extension,
+const getReadableExportFileName = ({
     period,
     customStartDate,
     customEndDate,
     technicianName,
 }) => {
-    const parts = ["pekerjaan"];
+    const parts = ["Laporan", "Pekerjaan"];
 
     if (technicianName) {
-        parts.push(slugifyFilePart(technicianName));
+        parts.push(technicianName);
     }
 
     if (period === "custom" && (customStartDate || customEndDate)) {
-        parts.push(
-            slugifyFilePart(
-                `${customStartDate || "awal"}-sampai-${customEndDate || "akhir"}`,
-            ),
-        );
+        parts.push(`${customStartDate || "Awal"} sampai ${customEndDate || "Akhir"}`);
     } else if (period !== "all") {
-        parts.push(slugifyFilePart(getPeriodLabel(period)));
+        parts.push(getPeriodLabel(period));
     }
 
-    return `${parts.join("-")}.${extension}`;
+    return `${parts
+        .join(" ")
+        .trim()
+        .replace(/[^a-zA-Z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")}.xlsx`;
 };
+
+const parseExcelDate = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getExportStatusLabel = (value) => {
+    const status = normalizeStatusKey(value);
+    if (status === "in_progress") return "Dalam Progress";
+    if (status === "completed") return "Selesai";
+    if (status === "cancelled") return "Dibatalkan";
+    return "Pending";
+};
+
+const buildStatusSummary = (items) =>
+    items.reduce(
+        (acc, item) => {
+            const status = normalizeStatusKey(item.status);
+            acc.total += 1;
+            if (status === "pending") acc.pending += 1;
+            if (status === "in_progress") acc.in_progress += 1;
+            if (status === "completed") acc.completed += 1;
+            if (status === "cancelled") acc.cancelled += 1;
+            return acc;
+        },
+        {
+            total: 0,
+            pending: 0,
+            in_progress: 0,
+            completed: 0,
+            cancelled: 0,
+        },
+    );
 
 const downloadBlob = (blob, fileName) => {
     const url = URL.createObjectURL(blob);
@@ -226,14 +252,6 @@ const downloadBlob = (blob, fileName) => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-};
-
-const escapeCsvValue = (value) => {
-    const raw = String(value ?? "");
-    if (/[",\r\n]/.test(raw)) {
-        return `"${raw.replaceAll('"', '""')}"`;
-    }
-    return raw;
 };
 
 const getProfileDisplayName = (profile) => {
@@ -1064,10 +1082,8 @@ export default function AdminRequestsPage() {
                 return {
                     "Nomor Pekerjaan": formatOrderId(item.id),
                     "Job ID": item.id ?? "-",
-                    Tanggal: formatDate(item.reportDate),
-                    Status:
-                        STATUS_LABELS[normalizeStatusKey(item.status)] ??
-                        "PENDING",
+                    Tanggal: parseExcelDate(item.reportDate),
+                    Status: getExportStatusLabel(item.status),
                     Customer: item.requester ?? "-",
                     "Project / Lokasi": scopeSummary.value ?? "-",
                     Alamat: item.address ?? "-",
@@ -1079,8 +1095,8 @@ export default function AdminRequestsPage() {
                     "Keluhan / Trouble": item.troubleDescription ?? "-",
                     "Tindakan / Perbaikan": item.reconditionedParts ?? "-",
                     Sparepart: item.replacedParts ?? "-",
-                    "Created At": formatDate(item.createdAt),
-                    "Completed At": formatDate(item.completedAt),
+                    "Created At": parseExcelDate(item.createdAt),
+                    "Completed At": parseExcelDate(item.completedAt),
                 };
             }),
         [],
@@ -1096,42 +1112,6 @@ export default function AdminRequestsPage() {
         setSearchParams({});
     };
 
-    const handleExportCsv = async () => {
-        if (filteredRequests.length === 0) {
-            await showAlert("Tidak ada data untuk didownload.", {
-                title: "Export",
-            });
-            return;
-        }
-
-        setExportLoading("csv");
-        try {
-            const rows = buildExportRows(filteredRequests);
-            const headers = Object.keys(rows[0] ?? {});
-            const csv = [
-                headers.map(escapeCsvValue).join(","),
-                ...rows.map((row) =>
-                    headers.map((header) => escapeCsvValue(row[header])).join(","),
-                ),
-            ].join("\r\n");
-            const blob = new Blob([`\uFEFF${csv}`], {
-                type: "text/csv;charset=utf-8;",
-            });
-            downloadBlob(
-                blob,
-                getExportFileName({
-                    extension: "csv",
-                    period: periodFilter,
-                    customStartDate,
-                    customEndDate,
-                    technicianName: selectedTechnicianName,
-                }),
-            );
-        } finally {
-            setExportLoading(null);
-        }
-    };
-
     const handleExportExcel = async () => {
         if (filteredRequests.length === 0) {
             await showAlert("Tidak ada data untuk didownload.", {
@@ -1142,20 +1122,197 @@ export default function AdminRequestsPage() {
 
         setExportLoading("excel");
         try {
-            const XLSX = await import("xlsx");
+            const ExcelJSModule = await import("exceljs");
+            const ExcelJS = ExcelJSModule.default ?? ExcelJSModule;
             const rows = buildExportRows(filteredRequests);
-            const worksheet = XLSX.utils.json_to_sheet(rows);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Pekerjaan");
-            XLSX.writeFile(
-                workbook,
-                getExportFileName({
-                    extension: "xlsx",
+            const headers = Object.keys(rows[0] ?? {});
+            const summary = buildStatusSummary(filteredRequests);
+            const statusLabel =
+                activeFilter === "all"
+                    ? "Semua Status"
+                    : FILTERS.find((item) => item.key === activeFilter)?.label ??
+                      activeFilter;
+            const technicianLabel =
+                canFilterByTechnician && selectedTechnicianName
+                    ? selectedTechnicianName
+                    : "Semua Teknisi";
+
+            const workbook = new ExcelJS.Workbook();
+            workbook.creator = "OneTrack";
+            workbook.created = new Date();
+            workbook.modified = new Date();
+
+            const worksheet = workbook.addWorksheet("Laporan Pekerjaan", {
+                views: [{ state: "frozen", ySplit: 8 }],
+            });
+            worksheet.properties.defaultRowHeight = 18;
+
+            const lastColumnNumber = headers.length;
+            const titleRow = worksheet.getRow(1);
+            worksheet.mergeCells(1, 1, 1, lastColumnNumber);
+            titleRow.getCell(1).value = "Laporan Pekerjaan OneTrack";
+            titleRow.getCell(1).font = {
+                bold: true,
+                size: 18,
+                color: { argb: "FF0F172A" },
+            };
+            titleRow.getCell(1).alignment = {
+                horizontal: "center",
+                vertical: "middle",
+            };
+            titleRow.height = 28;
+
+            const filterRows = [
+                ["Periode", activePeriodLabel],
+                ["Status", statusLabel],
+                ["Teknisi", technicianLabel],
+                ["Tanggal Export", new Date()],
+            ];
+            filterRows.forEach(([label, value], index) => {
+                const row = worksheet.getRow(index + 3);
+                row.getCell(1).value = label;
+                row.getCell(2).value = value;
+                row.getCell(1).font = { bold: true, color: { argb: "FF334155" } };
+                row.getCell(2).alignment = { vertical: "middle" };
+                if (value instanceof Date) {
+                    row.getCell(2).numFmt = "dd/mm/yyyy";
+                }
+            });
+
+            const headerRowNumber = 8;
+            const headerRow = worksheet.getRow(headerRowNumber);
+            headers.forEach((header, index) => {
+                const cell = headerRow.getCell(index + 1);
+                cell.value = header;
+                cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+                cell.fill = {
+                    type: "pattern",
+                    pattern: "solid",
+                    fgColor: { argb: "FF0284C7" },
+                };
+                cell.alignment = {
+                    horizontal: "center",
+                    vertical: "middle",
+                    wrapText: true,
+                };
+                cell.border = {
+                    top: { style: "thin", color: { argb: "FFCBD5E1" } },
+                    left: { style: "thin", color: { argb: "FFCBD5E1" } },
+                    bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+                    right: { style: "thin", color: { argb: "FFCBD5E1" } },
+                };
+            });
+            headerRow.height = 24;
+
+            rows.forEach((rowData, rowIndex) => {
+                const row = worksheet.getRow(headerRowNumber + 1 + rowIndex);
+                headers.forEach((header, columnIndex) => {
+                    const cell = row.getCell(columnIndex + 1);
+                    cell.value = rowData[header] ?? "-";
+                    cell.alignment = {
+                        vertical: "top",
+                        wrapText: [
+                            "Alamat",
+                            "Keluhan / Trouble",
+                            "Tindakan / Perbaikan",
+                            "Sparepart",
+                        ].includes(header),
+                    };
+                    cell.border = {
+                        top: { style: "thin", color: { argb: "FFE2E8F0" } },
+                        left: { style: "thin", color: { argb: "FFE2E8F0" } },
+                        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+                        right: { style: "thin", color: { argb: "FFE2E8F0" } },
+                    };
+                    if (rowIndex % 2 === 1) {
+                        cell.fill = {
+                            type: "pattern",
+                            pattern: "solid",
+                            fgColor: { argb: "FFF8FAFC" },
+                        };
+                    }
+                    if (["Tanggal", "Created At", "Completed At"].includes(header)) {
+                        cell.numFmt = "dd/mm/yyyy";
+                    }
+                });
+            });
+
+            const dataEndRowNumber = headerRowNumber + rows.length;
+            worksheet.autoFilter = {
+                from: { row: headerRowNumber, column: 1 },
+                to: { row: dataEndRowNumber, column: lastColumnNumber },
+            };
+
+            const summaryStartRow = dataEndRowNumber + 3;
+            worksheet.mergeCells(summaryStartRow, 1, summaryStartRow, 2);
+            const summaryTitle = worksheet.getRow(summaryStartRow).getCell(1);
+            summaryTitle.value = "Ringkasan Status";
+            summaryTitle.font = { bold: true, size: 13, color: { argb: "FF0F172A" } };
+
+            [
+                ["Total Pekerjaan", summary.total],
+                ["Pending", summary.pending],
+                ["In Progress", summary.in_progress],
+                ["Completed", summary.completed],
+                ["Cancelled", summary.cancelled],
+            ].forEach(([label, value], index) => {
+                const row = worksheet.getRow(summaryStartRow + 1 + index);
+                row.getCell(1).value = label;
+                row.getCell(2).value = value;
+                row.getCell(1).font = { bold: true };
+                [1, 2].forEach((column) => {
+                    const cell = row.getCell(column);
+                    cell.border = {
+                        top: { style: "thin", color: { argb: "FFCBD5E1" } },
+                        left: { style: "thin", color: { argb: "FFCBD5E1" } },
+                        bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+                        right: { style: "thin", color: { argb: "FFCBD5E1" } },
+                    };
+                    cell.alignment = { vertical: "middle" };
+                });
+            });
+
+            worksheet.columns.forEach((column, index) => {
+                const header = headers[index] ?? "";
+                let maxLength = String(header).length;
+                column.eachCell({ includeEmpty: true }, (cell) => {
+                    const value = cell.value;
+                    const text =
+                        value instanceof Date
+                            ? "dd/mm/yyyy"
+                            : String(value?.text ?? value ?? "");
+                    maxLength = Math.max(maxLength, text.length);
+                });
+                const isLongColumn = [
+                    "Alamat",
+                    "Keluhan / Trouble",
+                    "Tindakan / Perbaikan",
+                    "Sparepart",
+                    "Project / Lokasi",
+                ].includes(header);
+                column.width = Math.min(
+                    Math.max(maxLength + 2, isLongColumn ? 24 : 12),
+                    isLongColumn ? 48 : 26,
+                );
+            });
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            downloadBlob(
+                new Blob([buffer], {
+                    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                }),
+                getReadableExportFileName({
                     period: periodFilter,
                     customStartDate,
                     customEndDate,
                     technicianName: selectedTechnicianName,
                 }),
+            );
+        } catch (error) {
+            console.error("Failed to export Excel:", error);
+            await showAlert(
+                "Gagal menyiapkan file Excel. Jika sedang memakai dev server, restart Vite lalu coba lagi.",
+                { title: "Export Gagal" },
             );
         } finally {
             setExportLoading(null);
@@ -1867,17 +2024,6 @@ export default function AdminRequestsPage() {
                                 >
                                     <RotateCcw size={15} />
                                     Reset Filter
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleExportCsv}
-                                    disabled={Boolean(exportLoading)}
-                                    className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    <Download size={15} />
-                                    {exportLoading === "csv"
-                                        ? "Menyiapkan file..."
-                                        : "Download CSV"}
                                 </button>
                                 <button
                                     type="button"
