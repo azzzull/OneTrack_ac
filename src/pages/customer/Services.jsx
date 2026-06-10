@@ -7,6 +7,7 @@ import {
     Download,
     MapPin,
     Phone,
+    RotateCcw,
     Search,
     Wrench,
     X,
@@ -14,16 +15,31 @@ import {
 import { useSearchParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import ScopeDetailsCard from "../../components/ScopeDetailsCard";
+import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import useCustomerRequests from "../../hooks/useCustomerRequests";
 import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
+import {
+    exportStyledExcel,
+    makeExcelFileName,
+    parseExcelDate,
+} from "../../utils/excelExport";
 
 const FILTERS = [
     { key: "all", label: "All" },
     { key: "pending", label: "Pending" },
     { key: "in_progress", label: "In Progress" },
     { key: "completed", label: "Completed" },
+];
+
+const PERIOD_OPTIONS = [
+    { value: "all", label: "Semua Periode" },
+    { value: "today", label: "Hari Ini" },
+    { value: "week", label: "Minggu Ini" },
+    { value: "month", label: "Bulan Ini" },
+    { value: "year", label: "Tahun Ini" },
+    { value: "custom", label: "Custom Periode" },
 ];
 
 const getValidFilter = (value) =>
@@ -55,6 +71,13 @@ const normalizeStatusKey = (value) => {
     return "pending";
 };
 
+const getExportStatusLabel = (value) => {
+    const status = normalizeStatusKey(value);
+    if (status === "in_progress") return "Dalam Progress";
+    if (status === "completed") return "Selesai";
+    return "Pending";
+};
+
 const formatDate = (value) => {
     if (!value) return "-";
     const date = new Date(value);
@@ -80,9 +103,82 @@ const previewText = (value, max = 90) => {
     return `${raw.slice(0, max).trim()}...`;
 };
 
-const escapeCsvValue = (value) => {
-    const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-    return `"${raw.replace(/"/g, '""')}"`;
+const startOfDay = (date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const endOfDay = (date) =>
+    new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        23,
+        59,
+        59,
+        999,
+    );
+
+const getDateRangeForPeriod = (period, customStartDate, customEndDate) => {
+    const now = new Date();
+    let start = null;
+    let end = null;
+
+    if (period === "today") {
+        start = startOfDay(now);
+        end = endOfDay(now);
+    } else if (period === "week") {
+        const currentDay = now.getDay();
+        const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
+        start = startOfDay(
+            new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset),
+        );
+        end = endOfDay(
+            new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6),
+        );
+    } else if (period === "month") {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    } else if (period === "year") {
+        start = new Date(now.getFullYear(), 0, 1);
+        end = endOfDay(new Date(now.getFullYear(), 11, 31));
+    } else if (period === "custom") {
+        start = customStartDate ? startOfDay(new Date(customStartDate)) : null;
+        end = customEndDate ? endOfDay(new Date(customEndDate)) : null;
+    }
+
+    return { start, end };
+};
+
+const isDateInRange = (value, range) => {
+    if (!range.start && !range.end) return true;
+    if (!value) return false;
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+    if (range.start && date < range.start) return false;
+    if (range.end && date > range.end) return false;
+    return true;
+};
+
+const getPeriodLabel = (period, customStartDate, customEndDate) => {
+    if (period === "custom") {
+        if (customStartDate && customEndDate) {
+            return `${customStartDate} sampai ${customEndDate}`;
+        }
+        if (customStartDate) return `mulai ${customStartDate}`;
+        if (customEndDate) return `sampai ${customEndDate}`;
+    }
+
+    return (
+        PERIOD_OPTIONS.find((item) => item.value === period)?.label ??
+        "Semua Periode"
+    );
+};
+
+const getTechnicianFilterKey = (item) => {
+    const id = String(item?.technician_id ?? "").trim();
+    if (id) return `id:${id}`;
+    const name = String(item?.technician_name ?? "").trim();
+    return name && name !== "-" ? `name:${name.toLowerCase()}` : "";
 };
 
 function CustomerServicesPage() {
@@ -95,6 +191,10 @@ function CustomerServicesPage() {
     const [activeFilter, setActiveFilter] = useState(
         getValidFilter(searchParams.get("status") ?? "all"),
     );
+    const [periodFilter, setPeriodFilter] = useState("all");
+    const [customStartDate, setCustomStartDate] = useState("");
+    const [customEndDate, setCustomEndDate] = useState("");
+    const [selectedTechnicianKey, setSelectedTechnicianKey] = useState("all");
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedRequestId, setSelectedRequestId] = useState(null);
     const [photoPreview, setPhotoPreview] = useState({
@@ -119,31 +219,82 @@ function CustomerServicesPage() {
 
         if (!requestExists) {
             // Request was deleted, close modal and clear selection
-            setSelectedRequest(null);
+            setSelectedRequestId(null);
             setPhotoPreview({ open: false, url: "", label: "" });
         }
     }, [requests, selectedRequest]);
 
-    const filteredRequests = useMemo(() => {
+    const technicianOptions = useMemo(() => {
+        const map = new Map();
+        requests.forEach((item) => {
+            const key = getTechnicianFilterKey(item);
+            const name = String(item.technician_name ?? "").trim();
+            if (!key || !name || name === "-") return;
+            map.set(key, name);
+        });
+
+        return [
+            { value: "all", label: "Semua Teknisi" },
+            ...[...map.entries()]
+                .sort((left, right) => left[1].localeCompare(right[1]))
+                .map(([value, label]) => ({ value, label })),
+        ];
+    }, [requests]);
+
+    const selectedTechnicianLabel = useMemo(() => {
+        if (selectedTechnicianKey === "all") return "";
+        return (
+            technicianOptions.find((item) => item.value === selectedTechnicianKey)
+                ?.label ?? ""
+        );
+    }, [selectedTechnicianKey, technicianOptions]);
+
+    const activePeriodLabel = useMemo(
+        () => getPeriodLabel(periodFilter, customStartDate, customEndDate),
+        [customEndDate, customStartDate, periodFilter],
+    );
+
+    const baseFilteredRequests = useMemo(() => {
         const keyword = search.trim().toLowerCase();
+        const dateRange = getDateRangeForPeriod(
+            periodFilter,
+            customStartDate,
+            customEndDate,
+        );
+
         return requests.filter((item) => {
             const scopeSummary = getScopeSummaryMeta(
                 item.job_scope,
                 item.dynamic_data,
                 item.room_location,
             );
-            const matchFilter =
-                activeFilter === "all"
+            const matchPeriod = isDateInRange(item.created_at, dateRange);
+            const matchTechnician =
+                selectedTechnicianKey === "all"
                     ? true
-                    : normalizeStatusKey(item.status) === activeFilter;
+                    : getTechnicianFilterKey(item) === selectedTechnicianKey;
             const matchSearch = keyword
                 ? `${item.title ?? ""} ${scopeSummary.value ?? ""} ${item.trouble_description ?? ""} ${item.customer_name ?? ""} ${item.technician_name ?? ""} ${item.id ?? ""} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
-            return matchFilter && matchSearch;
+            return matchPeriod && matchTechnician && matchSearch;
         });
-    }, [activeFilter, requests, search]);
+    }, [
+        customEndDate,
+        customStartDate,
+        periodFilter,
+        requests,
+        search,
+        selectedTechnicianKey,
+    ]);
+
+    const filteredRequests = useMemo(() => {
+        if (activeFilter === "all") return baseFilteredRequests;
+        return baseFilteredRequests.filter(
+            (item) => normalizeStatusKey(item.status) === activeFilter,
+        );
+    }, [activeFilter, baseFilteredRequests]);
 
     const totalPages = Math.ceil(filteredRequests.length / ITEMS_PER_PAGE);
     const paginatedRequests = useMemo(() => {
@@ -153,7 +304,7 @@ function CustomerServicesPage() {
     }, [currentPage, filteredRequests]);
 
     const requestCounts = useMemo(() => {
-        return requests.reduce(
+        return baseFilteredRequests.reduce(
             (acc, item) => {
                 const status = normalizeStatusKey(item.status);
                 acc.all += 1;
@@ -169,11 +320,47 @@ function CustomerServicesPage() {
                 completed: 0,
             },
         );
-    }, [requests]);
+    }, [baseFilteredRequests]);
+
+    const hasActiveAdvancedFilter =
+        search.trim() !== "" ||
+        activeFilter !== "all" ||
+        periodFilter !== "all" ||
+        selectedTechnicianKey !== "all";
+
+    const filterSummary = useMemo(() => {
+        const statusLabel =
+            activeFilter === "all"
+                ? "semua status"
+                : FILTERS.find((item) => item.key === activeFilter)?.label ??
+                  activeFilter;
+        const periodLabel =
+            periodFilter === "all"
+                ? "semua periode"
+                : activePeriodLabel.toLowerCase();
+        const technicianLabel = selectedTechnicianLabel
+            ? ` oleh ${selectedTechnicianLabel}`
+            : "";
+
+        return `Menampilkan ${filteredRequests.length} pekerjaan ${statusLabel} ${periodLabel}${technicianLabel}.`;
+    }, [
+        activeFilter,
+        activePeriodLabel,
+        filteredRequests.length,
+        periodFilter,
+        selectedTechnicianLabel,
+    ]);
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeFilter, search]);
+    }, [
+        activeFilter,
+        customEndDate,
+        customStartDate,
+        periodFilter,
+        search,
+        selectedTechnicianKey,
+    ]);
 
     useEffect(() => {
         const nextFilter = getValidFilter(searchParams.get("status") ?? "all");
@@ -187,69 +374,122 @@ function CustomerServicesPage() {
         setPhotoPreview({ open: true, url, label });
     };
 
-    const downloadCsv = () => {
+    const resetFilters = () => {
+        setSearch("");
+        setActiveFilter("all");
+        setPeriodFilter("all");
+        setCustomStartDate("");
+        setCustomEndDate("");
+        setSelectedTechnicianKey("all");
+        setSearchParams({});
+    };
+
+    const downloadExcel = async () => {
         if (filteredRequests.length === 0) return;
 
-        const headers = [
-            "Order ID",
-            "Tanggal Dibuat",
-            "Status",
-            "Judul Pekerjaan",
-            "Customer",
-            "No. Telepon Customer",
-            "Teknisi",
-            "Lokasi",
-            "Alamat",
-            "Ruangan",
-            "Merk AC",
-            "Tipe AC",
-            "Kapasitas AC",
-            "Serial Number",
-            "Deskripsi Kendala",
-            "Part Diganti",
-            "Part Direkondisi",
+        const columns = [
+            { key: "orderId", header: "Order ID" },
+            { key: "createdAt", header: "Tanggal Dibuat" },
+            { key: "status", header: "Status" },
+            { key: "title", header: "Judul Pekerjaan" },
+            { key: "customer", header: "Customer" },
+            { key: "customerPhone", header: "No. Telepon Customer" },
+            { key: "technician", header: "Teknisi" },
+            { key: "location", header: "Lokasi" },
+            { key: "address", header: "Alamat" },
+            { key: "roomLocation", header: "Ruangan" },
+            { key: "acBrand", header: "Merk AC" },
+            { key: "acType", header: "Tipe AC" },
+            { key: "acCapacityPk", header: "Kapasitas AC" },
+            { key: "serialNumber", header: "Serial Number" },
+            { key: "troubleDescription", header: "Deskripsi Kendala" },
+            { key: "replacedParts", header: "Part Diganti" },
+            { key: "reconditionedParts", header: "Part Direkondisi" },
         ];
 
-        const rows = filteredRequests.map((item) => [
-            formatOrderId(item.id),
-            formatDate(item.created_at),
-            STATUS_LABELS[normalizeStatusKey(item.status)] ?? "PENDING",
-            item.title ?? "-",
-            item.customer_name ?? "-",
-            item.customer_phone ?? "-",
-            item.technician_name ?? "-",
-            item.location ?? "-",
-            item.address ?? "-",
-            item.room_location ?? "-",
-            item.ac_brand ?? "-",
-            item.ac_type ?? "-",
-            item.ac_capacity_pk ?? "-",
-            item.serial_number ?? "-",
-            item.trouble_description ?? "-",
-            item.replaced_parts ?? "-",
-            item.reconditioned_parts ?? "-",
-        ]);
+        const rows = filteredRequests.map((item) => ({
+            orderId: formatOrderId(item.id),
+            createdAt: parseExcelDate(item.created_at),
+            status: getExportStatusLabel(item.status),
+            title: item.title ?? "-",
+            customer: item.customer_name ?? "-",
+            customerPhone: item.customer_phone ?? "-",
+            technician: item.technician_name ?? "-",
+            location: item.location ?? "-",
+            address: item.address ?? "-",
+            roomLocation: item.room_location ?? "-",
+            acBrand: item.ac_brand ?? "-",
+            acType: item.ac_type ?? "-",
+            acCapacityPk: item.ac_capacity_pk ?? "-",
+            serialNumber: item.serial_number ?? "-",
+            troubleDescription: item.trouble_description ?? "-",
+            replacedParts: item.replaced_parts ?? "-",
+            reconditionedParts: item.reconditioned_parts ?? "-",
+        }));
 
-        const csvContent = [
-            headers.map(escapeCsvValue).join(","),
-            ...rows.map((row) => row.map(escapeCsvValue).join(",")),
-        ].join("\n");
-
-        const blob = new Blob([`\uFEFF${csvContent}`], {
-            type: "text/csv;charset=utf-8;",
-        });
-        const url = window.URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
         const suffix =
-            activeFilter === "all" ? "semua-status" : activeFilter.toLowerCase();
+            activeFilter === "all"
+                ? "Semua Status"
+                : FILTERS.find((item) => item.key === activeFilter)?.label ??
+                  activeFilter;
         const today = new Date().toISOString().split("T")[0];
+        const statusSummary = filteredRequests.reduce(
+            (acc, item) => {
+                const status = normalizeStatusKey(item.status);
+                acc.total += 1;
+                if (status === "pending") acc.pending += 1;
+                if (status === "in_progress") acc.in_progress += 1;
+                if (status === "completed") acc.completed += 1;
+                return acc;
+            },
+            { total: 0, pending: 0, in_progress: 0, completed: 0 },
+        );
 
-        anchor.href = url;
-        anchor.download = `customer-jobs-${suffix}-${today}.csv`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        window.URL.revokeObjectURL(url);
+        try {
+            await exportStyledExcel({
+                fileName: makeExcelFileName([
+                    "Laporan",
+                    "Pekerjaan",
+                    "Customer",
+                    selectedTechnicianLabel,
+                    activePeriodLabel,
+                    suffix,
+                    today,
+                ]),
+                sheetName: "Pekerjaan Customer",
+                title: "Laporan Pekerjaan Customer OneTrack",
+                filterRows: [
+                    ["Customer", user?.email ?? "Customer"],
+                    ["Periode", activePeriodLabel],
+                    ["Status", suffix],
+                    ["Teknisi", selectedTechnicianLabel || "Semua Teknisi"],
+                    ["Pencarian", search.trim() || "Semua Data"],
+                    ["Tanggal Export", new Date()],
+                ],
+                columns,
+                rows,
+                summaryTitle: "Ringkasan Pekerjaan",
+                summaryRows: [
+                    ["Total Pekerjaan", statusSummary.total],
+                    ["Pending", statusSummary.pending],
+                    ["In Progress", statusSummary.in_progress],
+                    ["Completed", statusSummary.completed],
+                ],
+                dateKeys: ["createdAt"],
+                wrapKeys: [
+                    "title",
+                    "location",
+                    "address",
+                    "roomLocation",
+                    "troubleDescription",
+                    "replacedParts",
+                    "reconditionedParts",
+                ],
+            });
+        } catch (error) {
+            console.error("Customer services Excel export failed:", error);
+            alert("Gagal menyiapkan file Excel. Restart dev server jika perlu.");
+        }
     };
 
     return (
@@ -270,72 +510,155 @@ function CustomerServicesPage() {
                         </p>
                     </div>
 
-                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm md:px-10 py-8">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
-                                <Wrench size={18} />
-                                Daftar Pekerjaan Anda
-                            </h2>
-                            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
-                                <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:min-w-sm md:max-w-sm">
-                                    <Search size={16} />
-                                    <input
-                                        type="text"
-                                        value={search}
-                                        onChange={(event) =>
-                                            setSearch(event.target.value)
-                                        }
-                                        placeholder="Cari pekerjaan..."
-                                        className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                    <section className="mt-6 rounded-2xl bg-white p-4 py-8 shadow-sm md:px-10">
+                        <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
+                            <Wrench size={18} />
+                            Daftar Pekerjaan Anda
+                        </h2>
+
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                            <label className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-500 md:px-4 md:py-3">
+                                <Search size={16} />
+                                <input
+                                    type="text"
+                                    value={search}
+                                    onChange={(event) =>
+                                        setSearch(event.target.value)
+                                    }
+                                    placeholder="Cari teknisi, customer, alamat, lokasi, atau nomor pekerjaan..."
+                                    className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 md:text-base"
+                                />
+                            </label>
+
+                            <div className="mt-4 grid gap-3 lg:grid-cols-[auto_220px_220px] lg:items-end">
+                                <div>
+                                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Status
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
+                                        {FILTERS.map((filter) => (
+                                            <button
+                                                key={filter.key}
+                                                type="button"
+                                                onClick={() => {
+                                                    setActiveFilter(filter.key);
+                                                    if (filter.key === "all") {
+                                                        setSearchParams({});
+                                                        return;
+                                                    }
+                                                    setSearchParams({
+                                                        status: filter.key,
+                                                    });
+                                                }}
+                                                className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-5 md:text-sm ${
+                                                    activeFilter === filter.key
+                                                        ? "bg-sky-500 font-semibold text-white"
+                                                        : "font-medium text-slate-600 hover:bg-slate-100"
+                                                }`}
+                                            >
+                                                <span className="inline-flex items-center gap-2">
+                                                    <span>{filter.label}</span>
+                                                    <span
+                                                        className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                                            activeFilter ===
+                                                            filter.key
+                                                                ? "bg-white/20 text-white"
+                                                                : "bg-slate-200 text-slate-700"
+                                                        }`}
+                                                    >
+                                                        {requestCounts[
+                                                            filter.key
+                                                        ] ?? 0}
+                                                    </span>
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <label className="block">
+                                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Periode
+                                    </span>
+                                    <CustomSelect
+                                        value={periodFilter}
+                                        onChange={setPeriodFilter}
+                                        options={PERIOD_OPTIONS}
                                     />
                                 </label>
-                                <button
-                                    type="button"
-                                    onClick={downloadCsv}
-                                    disabled={filteredRequests.length === 0}
-                                    className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-                                >
-                                    <Download size={16} />
-                                    Download CSV
-                                </button>
-                            </div>
-                        </div>
 
-                        <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
-                            {FILTERS.map((filter) => (
-                                <button
-                                    key={filter.key}
-                                    type="button"
-                                    onClick={() => {
-                                        setActiveFilter(filter.key);
-                                        if (filter.key === "all") {
-                                            setSearchParams({});
-                                            return;
-                                        }
-                                        setSearchParams({
-                                            status: filter.key,
-                                        });
-                                    }}
-                                    className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-6 md:text-sm ${
-                                        activeFilter === filter.key
-                                            ? "bg-sky-500 font-semibold text-white"
-                                            : "font-medium text-slate-600 hover:bg-slate-100"
-                                    }`}
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <span>{filter.label}</span>
-                                        <span
-                                            className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                                activeFilter === filter.key
-                                                    ? "bg-white/20 text-white"
-                                                    : "bg-slate-200 text-slate-700"
-                                            }`}
-                                        >
-                                            {requestCounts[filter.key] ?? 0}
-                                        </span>
+                                <label className="block">
+                                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Teknisi
                                     </span>
-                                </button>
-                            ))}
+                                    <CustomSelect
+                                        value={selectedTechnicianKey}
+                                        onChange={setSelectedTechnicianKey}
+                                        options={technicianOptions}
+                                    />
+                                </label>
+                            </div>
+
+                            {periodFilter === "custom" && (
+                                <div className="mt-3 grid gap-3 md:grid-cols-2 lg:max-w-xl">
+                                    <label className="block">
+                                        <span className="text-xs font-medium text-slate-600">
+                                            Start Date
+                                        </span>
+                                        <input
+                                            type="date"
+                                            value={customStartDate}
+                                            onChange={(event) =>
+                                                setCustomStartDate(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300 focus:bg-white"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-xs font-medium text-slate-600">
+                                            End Date
+                                        </span>
+                                        <input
+                                            type="date"
+                                            value={customEndDate}
+                                            onChange={(event) =>
+                                                setCustomEndDate(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300 focus:bg-white"
+                                        />
+                                    </label>
+                                </div>
+                            )}
+
+                            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 md:flex-row md:items-center md:justify-between">
+                                <p className="text-sm text-slate-600">
+                                    {filterSummary}
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={resetFilters}
+                                        disabled={!hasActiveAdvancedFilter}
+                                        className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <RotateCcw size={15} />
+                                        Reset Filter
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={downloadExcel}
+                                        disabled={filteredRequests.length === 0}
+                                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                    >
+                                        <Download size={16} />
+                                        Download Excel
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         {loading ? (
@@ -348,7 +671,7 @@ function CustomerServicesPage() {
                             </p>
                         ) : filteredRequests.length === 0 ? (
                             <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
-                                Tidak ada pekerjaan yang cocok dengan pencarian.
+                                Tidak ada pekerjaan yang sesuai dengan filter.
                             </p>
                         ) : (
                             <div className="mt-4 space-y-3">

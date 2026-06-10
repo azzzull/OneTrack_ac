@@ -61,15 +61,16 @@ export default function CustomerRequestFormPage() {
             null,
         [availableProjects, form.projectId],
     );
-    const activeJobScope = normalizeJobScope(
-        selectedProject?.job_scope ?? JOB_SCOPES.AC,
-    );
+    const hasSelectedProject = Boolean(form.projectId && selectedProject);
+    const activeJobScope = hasSelectedProject
+        ? normalizeJobScope(selectedProject?.job_scope ?? JOB_SCOPES.AC)
+        : "";
     const {
         fields: activeScopeDetailFields,
         checklist: activeScopeChecklist,
         loading: scopeFieldsLoading,
     } =
-        useScopeDetailFields(activeJobScope);
+        useScopeDetailFields(activeJobScope || JOB_SCOPES.AC);
     const activeScopeChecklistItems = useMemo(
         () =>
             activeScopeChecklist.map((item) =>
@@ -263,6 +264,13 @@ export default function CustomerRequestFormPage() {
             return;
         }
 
+        if (!selectedProject) {
+            await showAlert("Pilih project terlebih dahulu.", {
+                title: "Project Belum Dipilih",
+            });
+            return;
+        }
+
         if (scopeFieldsLoading) {
             await showAlert("Konfigurasi field scope masih dimuat.", {
                 title: "Mohon Tunggu",
@@ -407,6 +415,7 @@ export default function CustomerRequestFormPage() {
                                                     customerId:
                                                         picked?.customer_id ??
                                                         prev.customerId,
+                                                    scopeDetails: {},
                                                 };
                                             })
                                         }
@@ -425,101 +434,131 @@ export default function CustomerRequestFormPage() {
                                         placeholder="Pilih proyek customer"
                                     />
                                 </label>
-                                <label className="md:col-span-2">
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Scope Proyek
-                                    </span>
-                                    <input
-                                        value={
-                                            jobScopeLabels[activeJobScope] ??
-                                            JOB_SCOPE_LABELS[activeJobScope] ??
-                                            activeJobScope
-                                        }
-                                        readOnly
-                                        className={inputClass}
-                                    />
-                                </label>
-
-                                <div className="md:col-span-2">
-                                    <ScopeDetailFieldsRenderer
-                                        scopeCode={activeJobScope}
-                                        fields={activeScopeDetailFields}
-                                        values={form.scopeDetails}
-                                        onChange={setScopeDetail}
-                                        selectOptionsByFieldKey={
-                                            scopeFieldSelectOptions
-                                        }
-                                        supabaseClient={supabase}
-                                        loading={scopeFieldsLoading}
-                                    />
-                                </div>
-
-                                {activeScopeChecklist.length > 0 && (
-                                    <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                        <p className="text-sm font-medium text-slate-700">
-                                            Checklist Pekerjaan
-                                        </p>
-                                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-                                            {activeScopeChecklistItems.map((item) => {
-                                                const checked =
-                                                    Array.isArray(
-                                                        form.scopeDetails
-                                                            ?.checklist,
-                                                    ) &&
-                                                    form.scopeDetails.checklist.includes(
-                                                        item.label,
-                                                    );
-                                                return (
-                                                    <label
-                                                        key={item.key}
-                                                        className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                                                    >
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={checked}
-                                                            onChange={() =>
-                                                                toggleScopeChecklist(
-                                                                    item.label,
-                                                                )
-                                                            }
-                                                            className="mt-1"
-                                                        />
-                                                        <span>{item.label}</span>
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
+                                {!hasSelectedProject ? (
+                                    <div className="md:col-span-2 rounded-2xl border border-dashed border-sky-300 bg-sky-50 p-5 text-sm text-sky-700">
+                                        Pilih project terlebih dahulu agar field
+                                        pekerjaan yang sesuai dengan scope
+                                        project dapat ditampilkan.
                                     </div>
+                                ) : (
+                                    <>
+                                        <label className="md:col-span-2">
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Scope Proyek
+                                            </span>
+                                            <input
+                                                value={
+                                                    jobScopeLabels[
+                                                        activeJobScope
+                                                    ] ??
+                                                    JOB_SCOPE_LABELS[
+                                                        activeJobScope
+                                                    ] ??
+                                                    activeJobScope
+                                                }
+                                                readOnly
+                                                className={inputClass}
+                                            />
+                                        </label>
+
+                                        <div className="md:col-span-2">
+                                            <ScopeDetailFieldsRenderer
+                                                scopeCode={activeJobScope}
+                                                fields={activeScopeDetailFields}
+                                                values={form.scopeDetails}
+                                                onChange={setScopeDetail}
+                                                selectOptionsByFieldKey={
+                                                    scopeFieldSelectOptions
+                                                }
+                                                supabaseClient={supabase}
+                                                loading={scopeFieldsLoading}
+                                            />
+                                        </div>
+
+                                        {activeScopeChecklist.length > 0 && (
+                                            <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                                <p className="text-sm font-medium text-slate-700">
+                                                    Checklist Pekerjaan
+                                                </p>
+                                                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                                    {activeScopeChecklistItems.map(
+                                                        (item) => {
+                                                            const checked =
+                                                                Array.isArray(
+                                                                    form
+                                                                        .scopeDetails
+                                                                        ?.checklist,
+                                                                ) &&
+                                                                form.scopeDetails.checklist.includes(
+                                                                    item.label,
+                                                                );
+                                                            return (
+                                                                <label
+                                                                    key={
+                                                                        item.key
+                                                                    }
+                                                                    className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={
+                                                                            checked
+                                                                        }
+                                                                        onChange={() =>
+                                                                            toggleScopeChecklist(
+                                                                                item.label,
+                                                                            )
+                                                                        }
+                                                                        className="mt-1"
+                                                                    />
+                                                                    <span>
+                                                                        {
+                                                                            item.label
+                                                                        }
+                                                                    </span>
+                                                                </label>
+                                                            );
+                                                        },
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <label className="md:col-span-2">
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Keterangan Trouble
+                                            </span>
+                                            <textarea
+                                                value={
+                                                    form.troubleDescription
+                                                }
+                                                onChange={(e) =>
+                                                    setForm((prev) => ({
+                                                        ...prev,
+                                                        troubleDescription:
+                                                            e.target.value,
+                                                    }))
+                                                }
+                                                className={`${inputClass} min-h-24`}
+                                                placeholder="Jelaskan keluhan kerusakan"
+                                            />
+                                        </label>
+
+                                        <button
+                                            type="submit"
+                                            disabled={
+                                                submitting ||
+                                                scopeFieldsLoading
+                                            }
+                                            className="md:col-span-2 inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            <List size={16} />
+                                            {submitting
+                                                ? "Mengirim..."
+                                                : "Kirim Request"}
+                                        </button>
+                                    </>
                                 )}
-
-                                <label className="md:col-span-2">
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Keterangan Trouble
-                                    </span>
-                                    <textarea
-                                        value={form.troubleDescription}
-                                        onChange={(e) =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                troubleDescription:
-                                                    e.target.value,
-                                            }))
-                                        }
-                                        className={`${inputClass} min-h-24`}
-                                        placeholder="Jelaskan keluhan kerusakan"
-                                    />
-                                </label>
-
-                                <button
-                                    type="submit"
-                                    disabled={submitting || scopeFieldsLoading}
-                                    className="md:col-span-2 inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    <List size={16} />
-                                    {submitting
-                                        ? "Mengirim..."
-                                        : "Kirim Request"}
-                                </button>
                             </form>
                         )}
                     </section>
