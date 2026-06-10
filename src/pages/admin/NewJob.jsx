@@ -27,6 +27,7 @@ import {
 } from "../../utils/offlineQueue";
 import {
     buildScopeDetailValuesPayload,
+    getScopeDetailConfig,
     validateScopeDetailValues,
 } from "../../services/scopeDetailFieldsService";
 import { uploadJobPhotoFile } from "../../services/jobPhotoService";
@@ -100,6 +101,17 @@ const getCustomerDisplayName = (customer) =>
     String(customer?.name ?? "").trim() || "customer";
 
 const NEW_JOB_MASTER_CACHE_KEY = "new-job.master-data";
+
+const getProjectScopeCodes = (projects) => [
+    ...new Set(
+        [
+            ...Object.values(JOB_SCOPES),
+            ...(projects ?? []).map((project) => project?.job_scope),
+        ]
+            .map((scope) => normalizeJobScope(scope))
+            .filter(Boolean),
+    ),
+];
 
 const getSessionRole = (role, user) => {
     const metadataRole = String(user?.user_metadata?.role ?? "")
@@ -231,6 +243,12 @@ export default function AdminNewJobPage() {
             setAcTypes(nextMasterData.acTypes);
             setAcPks(nextMasterData.acPks);
             writeLocalCache(NEW_JOB_MASTER_CACHE_KEY, nextMasterData);
+
+            await Promise.allSettled(
+                getProjectScopeCodes(nextMasterData.projects).map((scopeCode) =>
+                    getScopeDetailConfig(scopeCode),
+                ),
+            );
         } catch (error) {
             console.error("Error loading master data for new job:", error);
             const cached = readLocalCache(NEW_JOB_MASTER_CACHE_KEY, {});
@@ -933,6 +951,16 @@ export default function AdminNewJobPage() {
                                         JOB_SCOPE_LABELS[activeJobScope] ??
                                         activeJobScope}
                                 </SectionTitle>
+                                {!isOnline &&
+                                    activeScopeDetailFields.length === 0 &&
+                                    activeScopeChecklist.length === 0 && (
+                                        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                                            Field untuk scope ini belum tersedia
+                                            offline. Buka New Job saat online
+                                            terlebih dahulu agar semua field
+                                            scope tersimpan.
+                                        </div>
+                                    )}
                                 <ScopeDetailFieldsRenderer
                                     scopeCode={activeJobScope}
                                     fields={activeScopeDetailFormFields}

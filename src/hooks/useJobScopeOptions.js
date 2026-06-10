@@ -6,6 +6,9 @@ import {
     buildJobScopeOptions,
     normalizeJobScopeCode,
 } from "../utils/jobScopeCatalog";
+import { readLocalCache, writeLocalCache } from "../utils/localDataCache";
+
+const JOB_SCOPE_CACHE_KEY = "job-scope-options";
 
 const normalizeRows = (rows) =>
     (rows ?? [])
@@ -29,6 +32,14 @@ export default function useJobScopeOptions() {
         setLoading(true);
         setError(null);
         try {
+            if (!navigator.onLine) {
+                const cachedRows = normalizeRows(
+                    readLocalCache(JOB_SCOPE_CACHE_KEY, []),
+                );
+                setRows(cachedRows.length ? cachedRows : DEFAULT_JOB_SCOPE_ROWS);
+                return;
+            }
+
             const { data, error: fetchError } = await supabase
                 .from("master_job_scopes")
                 .select("*")
@@ -37,9 +48,15 @@ export default function useJobScopeOptions() {
             if (fetchError) throw fetchError;
             const nextRows = normalizeRows(data);
             setRows(nextRows.length ? nextRows : DEFAULT_JOB_SCOPE_ROWS);
+            if (nextRows.length) {
+                writeLocalCache(JOB_SCOPE_CACHE_KEY, nextRows);
+            }
         } catch (err) {
             console.warn("Falling back to default job scopes:", err);
-            setRows(DEFAULT_JOB_SCOPE_ROWS);
+            const cachedRows = normalizeRows(
+                readLocalCache(JOB_SCOPE_CACHE_KEY, []),
+            );
+            setRows(cachedRows.length ? cachedRows : DEFAULT_JOB_SCOPE_ROWS);
             setError(err);
         } finally {
             setLoading(false);

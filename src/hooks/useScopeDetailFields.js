@@ -31,10 +31,10 @@ export default function useScopeDetailFields(scopeCode) {
             setChecklist(result.checklist ?? []);
         } catch (err) {
             console.error("Failed to load scope detail fields:", err);
+            setError(err);
             setScope(null);
             setFields([]);
             setChecklist([]);
-            setError(err);
         } finally {
             setLoading(false);
         }

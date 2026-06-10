@@ -123,56 +123,65 @@ export const getScopeDetailConfig = async (scopeCode) => {
     const cached = scopeConfigCache.get(normalizedScope);
     if (cached) return cached;
 
+    const localCached = readLocalCache(
+        getScopeConfigCacheKey(normalizedScope),
+        null,
+    );
+
     if (!navigator.onLine) {
-        const localCached = readLocalCache(
-            getScopeConfigCacheKey(normalizedScope),
-            null,
-        );
         if (localCached) {
             scopeConfigCache.set(normalizedScope, localCached);
             return localCached;
         }
     }
 
-    const { data: scopeRow, error: scopeError } = await supabase
-        .from("master_job_scopes")
-        .select("id, code, label")
-        .eq("code", normalizedScope)
-        .maybeSingle();
+    try {
+        const { data: scopeRow, error: scopeError } = await supabase
+            .from("master_job_scopes")
+            .select("id, code, label")
+            .eq("code", normalizedScope)
+            .maybeSingle();
 
-    if (scopeError) throw scopeError;
-    if (!scopeRow) {
-        const fallback = { scope: null, fields: [] };
-        scopeConfigCache.set(normalizedScope, fallback);
-        return fallback;
+        if (scopeError) throw scopeError;
+        if (!scopeRow) {
+            const fallback = { scope: null, fields: [], checklist: [] };
+            scopeConfigCache.set(normalizedScope, fallback);
+            return fallback;
+        }
+
+        const { data: fieldRows, error: fieldError } = await supabase
+            .from("scope_detail_fields")
+            .select("*")
+            .eq("scope_id", scopeRow.id)
+            .order("sort_order", { ascending: true })
+            .order("created_at", { ascending: true });
+
+        if (fieldError) throw fieldError;
+
+        const { data: checklistRows, error: checklistError } = await supabase
+            .from("scope_detail_checklist_items")
+            .select("*")
+            .eq("scope_id", scopeRow.id)
+            .order("sort_order", { ascending: true })
+            .order("created_at", { ascending: true });
+
+        if (checklistError) throw checklistError;
+
+        const result = {
+            scope: scopeRow,
+            fields: normalizeScopeDetailFields(fieldRows ?? []),
+            checklist: normalizeScopeDetailChecklistItems(checklistRows ?? []),
+        };
+        scopeConfigCache.set(normalizedScope, result);
+        writeLocalCache(getScopeConfigCacheKey(normalizedScope), result);
+        return result;
+    } catch (error) {
+        if (localCached) {
+            scopeConfigCache.set(normalizedScope, localCached);
+            return localCached;
+        }
+        throw error;
     }
-
-    const { data: fieldRows, error: fieldError } = await supabase
-        .from("scope_detail_fields")
-        .select("*")
-        .eq("scope_id", scopeRow.id)
-        .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: true });
-
-    if (fieldError) throw fieldError;
-
-    const { data: checklistRows, error: checklistError } = await supabase
-        .from("scope_detail_checklist_items")
-        .select("*")
-        .eq("scope_id", scopeRow.id)
-        .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: true });
-
-    if (checklistError) throw checklistError;
-
-    const result = {
-        scope: scopeRow,
-        fields: normalizeScopeDetailFields(fieldRows ?? []),
-        checklist: normalizeScopeDetailChecklistItems(checklistRows ?? []),
-    };
-    scopeConfigCache.set(normalizedScope, result);
-    writeLocalCache(getScopeConfigCacheKey(normalizedScope), result);
-    return result;
 };
 
 export const getScopeDetailFields = async (scopeCode) => {
