@@ -163,7 +163,7 @@ const isInvalidFcmToken = (payload: unknown) => {
 };
 
 const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
-    job_requested: ["technician"],
+    job_requested: ["admin", "management", "technician"],
     job_created_by_technician: ["admin", "management"],
     job_taken: ["admin", "management"],
     job_status_changed: ["admin", "management"],
@@ -392,9 +392,11 @@ Deno.serve(async (req) => {
 
     const genericRequestedRoles = [...requestedRoles];
 
-    if (type === "job_requested" && genericRequestedRoles.includes("technician")) {
+    if (type === "job_requested") {
         const technicianIndex = genericRequestedRoles.indexOf("technician");
-        genericRequestedRoles.splice(technicianIndex, 1);
+        if (technicianIndex >= 0) {
+            genericRequestedRoles.splice(technicianIndex, 1);
+        }
 
         if (referenceId) {
             const { data: jobTechnicians, error: jobTechniciansError } =
@@ -420,7 +422,7 @@ Deno.serve(async (req) => {
             }
         }
 
-        if (recipientMap.size === requestedUserIds.length && relatedCustomerId) {
+        if (relatedCustomerId) {
             const { data: assignmentRows, error: assignmentRowsError } =
                 await adminClient
                     .from("technician_customer_assignments")

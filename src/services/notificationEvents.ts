@@ -170,6 +170,51 @@ export const getAssignedTechnicianRecipients = async ({
         }
     }
 
+    if (userIds.length === 0 && customerId) {
+        const { data: assignmentRows, error: assignmentRowsError } =
+            await supabase
+                .from("technician_customer_assignments")
+                .select("technician_id")
+                .eq("customer_id", customerId)
+                .eq("is_active", true);
+
+        if (assignmentRowsError) {
+            console.warn(
+                "[notifyEvent] direct technician assignment lookup skipped:",
+                assignmentRowsError.message,
+            );
+        } else {
+            userIds.push(
+                ...((assignmentRows ?? []) as TechnicianRecipientRow[])
+                    .map((item) => item.technician_id)
+                    .filter(isNonEmptyString),
+            );
+        }
+    }
+
+    if (customerId) {
+        const { data: externalTechnicians, error: externalTechniciansError } =
+            await supabase
+                .from("profiles")
+                .select("id")
+                .eq("role", "technician")
+                .eq("technician_type", "external")
+                .eq("customer_id", customerId);
+
+        if (externalTechniciansError) {
+            console.warn(
+                "[notifyEvent] external technician lookup skipped:",
+                externalTechniciansError.message,
+            );
+        } else {
+            userIds.push(
+                ...((externalTechnicians ?? []) as TechnicianRecipientRow[])
+                    .map((item) => item.id)
+                    .filter(isNonEmptyString),
+            );
+        }
+    }
+
     return uniqueStrings(userIds);
 };
 
@@ -211,9 +256,10 @@ export const notifyEvent = async (
                 });
 
             return invokePushNotification({
+                recipientRoles: ["admin", "management"],
                 recipientUserIds: assignedTechnicianIds,
                 title: "Job Baru Tersedia",
-                body: `Customer ${customerName} membuat permintaan pekerjaan baru yang dapat kamu ambil.`,
+                body: `Customer ${customerName} membuat permintaan pekerjaan baru.`,
                 type,
                 referenceTable: "requests",
                 referenceId: requestId,
