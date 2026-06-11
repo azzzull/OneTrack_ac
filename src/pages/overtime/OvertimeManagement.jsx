@@ -57,7 +57,7 @@ export default function OvertimeManagement() {
     const [filters, setFilters] = useState({
         status: "all",
         technicianId: "",
-        period: "month",
+        period: "all",
         month: String(new Date().getMonth() + 1).padStart(2, "0"),
         year: String(new Date().getFullYear()),
         dateFrom: "",
@@ -121,7 +121,10 @@ export default function OvertimeManagement() {
             if (filters.status !== "all" && row.status !== filters.status) {
                 return false;
             }
-            if (filters.technicianId && row.technician_id !== filters.technicianId) {
+            if (
+                filters.technicianId &&
+                row.technician_id !== filters.technicianId
+            ) {
                 return false;
             }
             const rowDate = row.date || "";
@@ -132,7 +135,8 @@ export default function OvertimeManagement() {
             } else if (filters.period === "year") {
                 if (!rowDate.startsWith(filters.year)) return false;
             } else if (filters.period === "custom") {
-                if (filters.dateFrom && rowDate < filters.dateFrom) return false;
+                if (filters.dateFrom && rowDate < filters.dateFrom)
+                    return false;
                 if (filters.dateTo && rowDate > filters.dateTo) return false;
             }
             if (search) {
@@ -156,10 +160,11 @@ export default function OvertimeManagement() {
             pending: 0,
             approved: 0,
             rejected: 0,
-            not_submitted: 0,
+            durationMinutes: 0,
         };
         for (const row of filteredRequests) {
             if (counts[row.status] !== undefined) counts[row.status] += 1;
+            counts.durationMinutes += row.duration_minutes || 0;
         }
         return counts;
     }, [filteredRequests]);
@@ -171,9 +176,17 @@ export default function OvertimeManagement() {
                 ...payload,
                 requestedBy: user.id,
                 profile:
-                    technicians.find((tech) => tech.id === payload.technicianId) ||
-                    profile,
+                    technicians.find(
+                        (tech) => tech.id === payload.technicianId,
+                    ) || profile,
             });
+            setFilters((prev) => ({
+                ...prev,
+                status: "all",
+                period: "all",
+                technicianId: "",
+                search: "",
+            }));
             setModalOpen(false);
             await loadData();
         } finally {
@@ -235,12 +248,57 @@ export default function OvertimeManagement() {
                     )}
 
                     <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-                        <SummaryCard label="Total Pengajuan" value={summary.total} />
-                        <SummaryCard label="Menunggu Approval" value={summary.pending} tone="blue" />
-                        <SummaryCard label="Disetujui" value={summary.approved} tone="green" />
-                        <SummaryCard label="Ditolak" value={summary.rejected} tone="red" />
-                        <SummaryCard label="Tidak Diajukan" value={summary.not_submitted} tone="slate" />
+                        <SummaryCard
+                            label="Total Pengajuan"
+                            value={summary.total}
+                        />
+                        <SummaryCard
+                            label="Menunggu Approval"
+                            value={summary.pending}
+                            tone="blue"
+                        />
+                        <SummaryCard
+                            label="Disetujui"
+                            value={summary.approved}
+                            tone="green"
+                        />
+                        <SummaryCard
+                            label="Ditolak"
+                            value={summary.rejected}
+                            tone="red"
+                        />
+                        <SummaryCard
+                            label="Manual"
+                            value={
+                                filteredRequests.filter(
+                                    (row) => row.overtime_type === "manual",
+                                ).length
+                            }
+                            tone="slate"
+                        />
                     </div>
+
+                    {filters.technicianId && (
+                        <div className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-indigo-800">
+                            <p className="text-xs font-semibold uppercase tracking-wide">
+                                Total Waktu Lembur Teknisi
+                            </p>
+                            <p className="mt-2 text-2xl font-bold">
+                                {formatOvertimeDuration(
+                                    summary.durationMinutes,
+                                )}
+                            </p>
+                            <p className="mt-1 text-sm">
+                                {getProfileName(
+                                    technicians.find(
+                                        (tech) =>
+                                            tech.id === filters.technicianId,
+                                    ),
+                                )}{" "}
+                                berdasarkan filter aktif.
+                            </p>
+                        </div>
+                    )}
 
                     <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                         <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -251,14 +309,16 @@ export default function OvertimeManagement() {
                             <CustomSelect
                                 value={filters.status}
                                 onChange={(value) =>
-                                    setFilters((prev) => ({ ...prev, status: value }))
+                                    setFilters((prev) => ({
+                                        ...prev,
+                                        status: value,
+                                    }))
                                 }
                                 options={[
                                     { value: "all", label: "Semua" },
                                     { value: "pending", label: "Pending" },
                                     { value: "approved", label: "Approved" },
                                     { value: "rejected", label: "Rejected" },
-                                    { value: "not_submitted", label: "Not Submitted" },
                                 ]}
                             />
                             {canReview && (
@@ -282,7 +342,10 @@ export default function OvertimeManagement() {
                             <CustomSelect
                                 value={filters.period}
                                 onChange={(value) =>
-                                    setFilters((prev) => ({ ...prev, period: value }))
+                                    setFilters((prev) => ({
+                                        ...prev,
+                                        period: value,
+                                    }))
                                 }
                                 options={[
                                     { value: "all", label: "Semua Periode" },
@@ -297,7 +360,8 @@ export default function OvertimeManagement() {
                                         type="month"
                                         value={`${filters.year}-${filters.month}`}
                                         onChange={(e) => {
-                                            const [year, month] = e.target.value.split("-");
+                                            const [year, month] =
+                                                e.target.value.split("-");
                                             setFilters((prev) => ({
                                                 ...prev,
                                                 year,
@@ -383,20 +447,35 @@ export default function OvertimeManagement() {
                                 <table className="w-full text-sm">
                                     <thead className="border-b border-slate-200 bg-slate-100 text-left text-slate-700">
                                         <tr>
-                                            <th className="px-4 py-3">Teknisi</th>
-                                            <th className="px-4 py-3">Tanggal</th>
+                                            <th className="px-4 py-3">
+                                                Teknisi
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Tanggal
+                                            </th>
                                             <th className="px-4 py-3">Jenis</th>
-                                            <th className="px-4 py-3">Durasi</th>
-                                            <th className="px-4 py-3">Lokasi</th>
-                                            <th className="px-4 py-3">Status</th>
+                                            <th className="px-4 py-3">
+                                                Durasi
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Lokasi
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Status
+                                            </th>
                                             <th className="px-4 py-3">Aksi</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-200">
                                         {filteredRequests.map((row) => (
-                                            <tr key={row.id} className="hover:bg-slate-50">
+                                            <tr
+                                                key={row.id}
+                                                className="hover:bg-slate-50"
+                                            >
                                                 <td className="px-4 py-3 font-medium text-slate-800">
-                                                    {getProfileName(row.technician)}
+                                                    {getProfileName(
+                                                        row.technician,
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3 text-slate-600">
                                                     {row.date}
@@ -405,7 +484,9 @@ export default function OvertimeManagement() {
                                                     {row.overtime_type}
                                                 </td>
                                                 <td className="px-4 py-3 text-slate-600">
-                                                    {formatOvertimeDuration(row.duration_minutes)}
+                                                    {formatOvertimeDuration(
+                                                        row.duration_minutes,
+                                                    )}
                                                 </td>
                                                 <td className="max-w-xs px-4 py-3 text-slate-600">
                                                     <span className="line-clamp-2">
@@ -414,9 +495,13 @@ export default function OvertimeManagement() {
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <span
-                                                        className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${getOvertimeStatusClass(row.status)}`}
+                                                        className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${getOvertimeStatusClass(
+                                                            row.status,
+                                                        )}`}
                                                     >
-                                                        {getOvertimeStatusLabel(row.status)}
+                                                        {getOvertimeStatusLabel(
+                                                            row.status,
+                                                        )}
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3">
@@ -424,7 +509,10 @@ export default function OvertimeManagement() {
                                                         type="button"
                                                         onClick={() => {
                                                             setDetail(row);
-                                                            setReviewNotes(row.review_notes || "");
+                                                            setReviewNotes(
+                                                                row.review_notes ||
+                                                                    "",
+                                                            );
                                                         }}
                                                         className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                                                     >
@@ -475,15 +563,40 @@ export default function OvertimeManagement() {
                                 className="max-h-96 w-full rounded-xl border border-slate-200 object-contain"
                             />
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <DetailItem label="Teknisi" value={getProfileName(detail.technician)} />
-                                <DetailItem label="Status" value={getOvertimeStatusLabel(detail.status)} />
-                                <DetailItem label="Mulai" value={formatDateTime(detail.start_at)} />
-                                <DetailItem label="Selesai" value={formatDateTime(detail.end_at)} />
-                                <DetailItem label="Durasi" value={formatOvertimeDuration(detail.duration_minutes)} />
-                                <DetailItem label="Lokasi" value={detail.location_address} />
+                                <DetailItem
+                                    label="Teknisi"
+                                    value={getProfileName(detail.technician)}
+                                />
+                                <DetailItem
+                                    label="Status"
+                                    value={getOvertimeStatusLabel(
+                                        detail.status,
+                                    )}
+                                />
+                                <DetailItem
+                                    label="Mulai"
+                                    value={formatDateTime(detail.start_at)}
+                                />
+                                <DetailItem
+                                    label="Selesai"
+                                    value={formatDateTime(detail.end_at)}
+                                />
+                                <DetailItem
+                                    label="Durasi"
+                                    value={formatOvertimeDuration(
+                                        detail.duration_minutes,
+                                    )}
+                                />
+                                <DetailItem
+                                    label="Lokasi"
+                                    value={detail.location_address}
+                                />
                             </div>
                             {detail.notes && (
-                                <DetailItem label="Catatan" value={detail.notes} />
+                                <DetailItem
+                                    label="Catatan"
+                                    value={detail.notes}
+                                />
                             )}
                             {canReview && detail.status === "pending" && (
                                 <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -493,7 +606,9 @@ export default function OvertimeManagement() {
                                         </span>
                                         <textarea
                                             value={reviewNotes}
-                                            onChange={(e) => setReviewNotes(e.target.value)}
+                                            onChange={(e) =>
+                                                setReviewNotes(e.target.value)
+                                            }
                                             rows={3}
                                             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                                         />
@@ -501,7 +616,9 @@ export default function OvertimeManagement() {
                                     <div className="flex gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => handleReview("rejected")}
+                                            onClick={() =>
+                                                handleReview("rejected")
+                                            }
                                             disabled={saving}
                                             className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-60"
                                         >
@@ -510,7 +627,9 @@ export default function OvertimeManagement() {
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() => handleReview("approved")}
+                                            onClick={() =>
+                                                handleReview("approved")
+                                            }
                                             disabled={saving}
                                             className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
                                         >
@@ -550,7 +669,9 @@ function DetailItem({ label, value }) {
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-3">
             <p className="text-xs font-medium text-slate-500">{label}</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">{value || "-"}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">
+                {value || "-"}
+            </p>
         </div>
     );
 }
