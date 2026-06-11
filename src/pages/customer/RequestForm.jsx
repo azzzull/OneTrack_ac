@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { List } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
@@ -32,6 +33,7 @@ export default function CustomerRequestFormPage() {
     const { user } = useAuth();
     const { alert: showAlert } = useDialog();
     const { labels: jobScopeLabels } = useJobScopeOptions();
+    const navigate = useNavigate();
 
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -368,6 +370,7 @@ export default function CustomerRequestFormPage() {
             await showAlert("Request pekerjaan berhasil dikirim.", {
                 title: "Request Terkirim",
             });
+            navigate("/services");
         } catch (error) {
             console.error("Error creating customer request:", error);
             await showAlert("Gagal mengirim request. Silahkan hubungi Admin.", {
