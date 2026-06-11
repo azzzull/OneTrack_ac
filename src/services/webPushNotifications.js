@@ -50,7 +50,7 @@ export const getWebPushReadiness = () => {
     if (!WEB_PUSH_VAPID_PUBLIC_KEY) {
         return {
             canEnable: false,
-            reason: "VITE_WEB_PUSH_VAPID_PUBLIC_KEY belum dikonfigurasi.",
+            reason: "Notifikasi web belum siap. Hubungi admin untuk mengaktifkan konfigurasi push notification.",
         };
     }
 

@@ -54,12 +54,10 @@ export default function WebPushActivation({ compact = false }) {
     };
 
     if (!standalone) {
+        if (compact) return null;
+
         return (
-            <div
-                className={`rounded-xl border border-sky-200 bg-sky-50 text-sky-800 ${
-                    compact ? "p-3 text-xs" : "p-4 text-sm"
-                }`}
-            >
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
                 <p className="font-semibold">Aktifkan PWA OneTrack</p>
                 <p className="mt-1">
                     {ios
