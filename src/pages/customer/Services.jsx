@@ -407,7 +407,7 @@ function CustomerServicesPage() {
                     ? true
                     : getTechnicianFilterKey(item) === selectedTechnicianKey;
             const matchSearch = keyword
-                ? `${item.title ?? ""} ${scopeSummary.value ?? ""} ${item.trouble_description ?? ""} ${item.customer_name ?? ""} ${item.technician_names ?? item.technician_name ?? ""} ${item.id ?? ""} ${formatOrderId(item.id)}`
+                ? `${item.title ?? ""} ${scopeSummary.value ?? ""} ${item.job_brief ?? ""} ${item.trouble_description ?? ""} ${item.customer_name ?? ""} ${item.technician_names ?? item.technician_name ?? ""} ${item.id ?? ""} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
@@ -535,6 +535,7 @@ function CustomerServicesPage() {
             { key: "acType", header: "Tipe AC" },
             { key: "acCapacityPk", header: "Kapasitas AC" },
             { key: "serialNumber", header: "Serial Number" },
+            { key: "jobBrief", header: "Brief Pekerjaan" },
             { key: "troubleDescription", header: "Deskripsi Kendala" },
             { key: "replacedParts", header: "Part Diganti" },
             { key: "reconditionedParts", header: "Part Direkondisi" },
@@ -555,6 +556,7 @@ function CustomerServicesPage() {
             acType: item.ac_type ?? "-",
             acCapacityPk: item.ac_capacity_pk ?? "-",
             serialNumber: item.serial_number ?? "-",
+            jobBrief: item.job_brief ?? "-",
             troubleDescription: item.trouble_description ?? "-",
             replacedParts: item.replaced_parts ?? "-",
             reconditionedParts: item.reconditioned_parts ?? "-",
@@ -848,9 +850,9 @@ function CustomerServicesPage() {
                                                     )}
                                                 </p>
                                                 <p className="mt-1 text-xs text-slate-500">
-                                                    Deskripsi:{" "}
+                                                    Brief:{" "}
                                                     {previewText(
-                                                        item.trouble_description,
+                                                        item.job_brief,
                                                     )}
                                                 </p>
                                             </div>
@@ -1118,6 +1120,16 @@ function CustomerServicesPage() {
                                     <CalendarDays size={12} />
                                     Dibuat{" "}
                                     {formatDate(selectedRequest.created_at)}
+                                </p>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-200 p-4 md:col-span-2">
+                                <p className="inline-flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+                                    <ClipboardList size={14} />
+                                    Brief Pekerjaan
+                                </p>
+                                <p className="mt-2 text-sm text-slate-700">
+                                    {selectedRequest.job_brief ?? "-"}
                                 </p>
                             </div>
 

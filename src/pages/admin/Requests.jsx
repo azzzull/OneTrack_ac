@@ -380,6 +380,7 @@ const normalizeRequest = (row, creatorName = "", jobTechnicians = []) => {
         acCapacityPk: pickFirst(row, ["ac_capacity_pk"], "-"),
         roomLocation: pickFirst(row, ["room_location"], "-"),
         serialNumber: pickFirst(row, ["serial_number"], "-"),
+        jobBrief: pickFirst(row, ["job_brief", "brief"], "-"),
         jobScope: pickFirst(row, ["job_scope"], "AC"),
         dynamicData:
             row?.dynamic_data && typeof row.dynamic_data === "object"
@@ -1012,7 +1013,7 @@ export default function AdminRequestsPage() {
                     ? true
                     : technicianIds.includes(String(selectedTechnicianId));
             const matchSearch = keyword
-                ? `${item.title} ${item.address} ${scopeSummary.value} ${item.troubleDescription} ${item.assignee} ${(item.technicianNames ?? []).join(" ")} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
+                ? `${item.title} ${item.address} ${scopeSummary.value} ${item.jobBrief} ${item.troubleDescription} ${item.assignee} ${(item.technicianNames ?? []).join(" ")} ${item.requester} ${item.id} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
@@ -1121,6 +1122,7 @@ export default function AdminRequestsPage() {
                         item.assignee ||
                         "-",
                     "Jenis Pekerjaan / Scope": item.jobScope ?? "-",
+                    "Brief Pekerjaan": item.jobBrief ?? "-",
                     "Keluhan / Trouble": item.troubleDescription ?? "-",
                     "Tindakan / Perbaikan": item.reconditionedParts ?? "-",
                     Sparepart: item.replacedParts ?? "-",
@@ -1434,6 +1436,24 @@ export default function AdminRequestsPage() {
         role === "admin" ||
         role === "management" ||
         (Boolean(user?.id) && String(creatorTechnicianId) === String(user?.id));
+    const currentTechnicianIsAssigned = useMemo(
+        () =>
+            Boolean(user?.id) &&
+            selectedRequestTechnicians.some(
+                (item) => String(item.technician_id) === String(user.id),
+            ),
+        [selectedRequestTechnicians, user?.id],
+    );
+    const selectedRequestNeedsClaim =
+        role === "technician" &&
+        Boolean(user?.id) &&
+        Boolean(selectedRequest) &&
+        !currentTechnicianIsAssigned &&
+        ["pending", "requested"].includes(
+            normalizeStatusKey(selectedRequest?.status),
+        );
+    const canEditSelectedRequest =
+        role !== "technician" || !selectedRequestNeedsClaim;
 
     useEffect(() => {
         if (!selectedRequest) return;
@@ -1613,8 +1633,58 @@ export default function AdminRequestsPage() {
         return queueItem;
     };
 
+    const claimSelectedRequest = async () => {
+        if (!selectedRequest || role !== "technician" || !user?.id) return;
+
+        try {
+            setSaving(true);
+            await claimPendingRequestJob({
+                jobId: selectedRequest.id,
+                technicianId: user.id,
+            });
+
+            const technicianName =
+                getNotificationName(user?.user_metadata?.full_name, user?.email) ||
+                "Teknisi";
+            const customerName =
+                getNotificationName(selectedRequest.requester) || "customer";
+
+            await notifyEvent(NOTIFICATION_EVENT_TYPES.JOB_TAKEN, {
+                request_id: selectedRequest.id,
+                technician_id: user.id,
+                technician_name: technicianName,
+                customer_id: selectedRequest.customerId,
+                customer_name: customerName,
+            });
+
+            await loadRequests();
+            await reloadSelectedRequestTechnicians();
+            await showAlert(
+                "Pekerjaan berhasil diambil. Anda sekarang bisa mengisi form pekerjaan.",
+                { title: "Pekerjaan Diambil" },
+            );
+        } catch (error) {
+            console.error("Error claiming request:", error);
+            await showAlert(
+                error?.message ??
+                    "Gagal mengambil pekerjaan. Pastikan Anda di-assign ke customer ini.",
+                { title: "Gagal" },
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const saveChanges = async () => {
         if (!selectedRequest) return;
+
+        if (selectedRequestNeedsClaim) {
+            await showAlert(
+                "Ambil pekerjaan ini terlebih dahulu sebelum mengisi form pekerjaan.",
+                { title: "Ambil Pekerjaan" },
+            );
+            return;
+        }
 
         // Check if there are any changes to save
         const nextTrouble = (repairNotes.troubleDescription ?? "").trim();
@@ -2148,9 +2218,9 @@ export default function AdminRequestsPage() {
                                                                     )}
                                                                 </p>
                                                                 <p className="mt-1 text-xs text-slate-500">
-                                                                    Deskripsi:{" "}
+                                                                    Brief:{" "}
                                                                     {previewText(
-                                                                        item.troubleDescription,
+                                                                        item.jobBrief,
                                                                     )}
                                                                 </p>
                                                             </div>
@@ -2355,6 +2425,12 @@ export default function AdminRequestsPage() {
                                     <CalendarDays size={14} />
                                     {formatDate(selectedRequest.date)}
                                 </p>
+                                <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+                                    <span className="font-semibold">
+                                        Brief:
+                                    </span>{" "}
+                                    {selectedRequest.jobBrief}
+                                </div>
                             </div>
 
                             <div className="rounded-2xl border border-slate-200 p-4 flex flex-col items-start gap-2">
@@ -2536,7 +2612,28 @@ export default function AdminRequestsPage() {
                                     <CheckCircle2 size={14} />
                                     Detail Perbaikan
                                 </p>
-                                {role === "technician" ? (
+                                {selectedRequestNeedsClaim ? (
+                                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                        <p className="text-sm font-semibold text-amber-800">
+                                            Pekerjaan ini belum diambil.
+                                        </p>
+                                        <p className="mt-1 text-sm text-amber-700">
+                                            Ambil pekerjaan terlebih dahulu untuk
+                                            mulai mengisi form pekerjaan dan
+                                            menambahkan teknisi terlibat.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={claimSelectedRequest}
+                                            disabled={saving}
+                                            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {saving
+                                                ? "Mengambil Pekerjaan..."
+                                                : "Ambil Pekerjaan"}
+                                        </button>
+                                    </div>
+                                ) : role === "technician" ? (
                                     <div className="mt-3 space-y-3">
                                         <label className="block">
                                             <span className="text-xs font-medium text-slate-600">
@@ -2704,7 +2801,8 @@ export default function AdminRequestsPage() {
                                 ))}
                             </div>
 
-                            {selectedRequest.status !== "completed" && (
+                            {selectedRequest.status !== "completed" &&
+                                canEditSelectedRequest && (
                                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                                     <div>
                                         <label className="mb-2 block text-sm font-medium text-slate-700">
@@ -2814,16 +2912,18 @@ export default function AdminRequestsPage() {
                                 </div>
                             )}
 
-                            <button
-                                type="button"
-                                onClick={saveChanges}
-                                disabled={saving}
-                                className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {saving
-                                    ? "Menyimpan Perubahan..."
-                                    : "Simpan Perubahan"}
-                            </button>
+                            {canEditSelectedRequest && (
+                                <button
+                                    type="button"
+                                    onClick={saveChanges}
+                                    disabled={saving}
+                                    className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {saving
+                                        ? "Menyimpan Perubahan..."
+                                        : "Simpan Perubahan"}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

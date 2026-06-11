@@ -46,6 +46,7 @@ const initialForm = {
     acCapacityPk: "",
     roomLocation: "",
     serialNumber: "",
+    jobBrief: "",
     troubleDescription: "",
     replacedParts: "",
     reconditionedParts: "",
@@ -573,6 +574,7 @@ export default function AdminNewJobPage() {
                 ac_capacity_pk: detailValues.ac_capacity_pk ?? null,
                 room_location: detailValues.room_location ?? null,
                 serial_number: detailValues.serial_number ?? null,
+                job_brief: form.jobBrief,
                 trouble_description: form.troubleDescription,
                 replaced_parts: form.replacedParts,
                 reconditioned_parts: form.reconditionedParts,
@@ -1143,6 +1145,22 @@ export default function AdminNewJobPage() {
                                         Detail Perbaikan
                                     </SectionTitle>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <label className="md:col-span-2">
+                                            <span className="text-sm font-medium text-slate-700">
+                                                Brief Pekerjaan
+                                            </span>
+                                            <textarea
+                                                value={form.jobBrief}
+                                                onChange={(e) =>
+                                                    setField(
+                                                        "jobBrief",
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                placeholder="Tulis brief pekerjaan"
+                                                className={`${inputClass} min-h-20`}
+                                            />
+                                        </label>
                                         <label className="md:col-span-2">
                                             <span className="text-sm font-medium text-slate-700">
                                                 Deskripsi Masalah / Trouble

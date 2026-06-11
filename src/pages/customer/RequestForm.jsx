@@ -47,6 +47,7 @@ export default function CustomerRequestFormPage() {
         acType: "",
         acCapacityPk: "",
         roomLocation: "",
+        jobBrief: "",
         troubleDescription: "",
         scopeDetails: {},
     });
@@ -278,6 +279,13 @@ export default function CustomerRequestFormPage() {
             return;
         }
 
+        if (!String(form.jobBrief ?? "").trim()) {
+            await showAlert("Isi brief pekerjaan terlebih dahulu.", {
+                title: "Brief Belum Diisi",
+            });
+            return;
+        }
+
         const missingFields = validateScopeDetailValues(
             activeScopeDetailFields,
             form.scopeDetails,
@@ -322,7 +330,8 @@ export default function CustomerRequestFormPage() {
                 ac_capacity_pk: detailValues.ac_capacity_pk ?? null,
                 room_location: detailValues.room_location ?? null,
                 serial_number: detailValues.serial_number ?? null,
-                trouble_description: form.troubleDescription,
+                job_brief: form.jobBrief.trim(),
+                trouble_description: null,
                 dynamic_data: {
                     ...detailValues,
                     ...(Array.isArray(form.scopeDetails?.checklist) &&
@@ -352,7 +361,7 @@ export default function CustomerRequestFormPage() {
                 acType: "",
                 acCapacityPk: "",
                 roomLocation: "",
-                troubleDescription: "",
+                jobBrief: "",
                 scopeDetails: {},
             }));
 
@@ -526,21 +535,18 @@ export default function CustomerRequestFormPage() {
 
                                         <label className="md:col-span-2">
                                             <span className="text-sm font-medium text-slate-700">
-                                                Keterangan Trouble
+                                                Brief Pekerjaan
                                             </span>
                                             <textarea
-                                                value={
-                                                    form.troubleDescription
-                                                }
+                                                value={form.jobBrief}
                                                 onChange={(e) =>
                                                     setForm((prev) => ({
                                                         ...prev,
-                                                        troubleDescription:
-                                                            e.target.value,
+                                                        jobBrief: e.target.value,
                                                     }))
                                                 }
                                                 className={`${inputClass} min-h-24`}
-                                                placeholder="Jelaskan keluhan kerusakan"
+                                                placeholder="Tulis kebutuhan atau brief pekerjaan dari customer"
                                             />
                                         </label>
 

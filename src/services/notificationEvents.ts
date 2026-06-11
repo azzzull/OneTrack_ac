@@ -249,15 +249,9 @@ export const notifyEvent = async (
         const amount = payload.amount ?? 0;
 
         if (type === NOTIFICATION_EVENT_TYPES.JOB_REQUESTED) {
-            const assignedTechnicianIds =
-                await getAssignedTechnicianRecipients({
-                    requestId,
-                    customerId: String(payload.customer_id ?? ""),
-                });
-
             return invokePushNotification({
                 recipientRoles: ["admin", "management"],
-                recipientUserIds: assignedTechnicianIds,
+                recipientUserIds: [],
                 title: "Job Baru Tersedia",
                 body: `Customer ${customerName} membuat permintaan pekerjaan baru.`,
                 type,
