@@ -25,10 +25,20 @@ type NotifyEventPayload = Record<string, unknown> & {
     status?: string | null;
 };
 
+type TechnicianRecipientRow = {
+    technician_id?: string | null;
+    profile_id?: string | null;
+    user_id?: string | null;
+    id?: string | null;
+};
+
 const uniqueStrings = (values: Array<string | null | undefined>) =>
     [...new Set(values.map((value) => String(value ?? "").trim()))].filter(
         Boolean,
     );
+
+const isNonEmptyString = (value: unknown): value is string =>
+    typeof value === "string" && value.trim() !== "";
 
 export const formatRupiah = (value: unknown) =>
     new Intl.NumberFormat("id-ID", {
@@ -104,6 +114,65 @@ export const getCustomerUserRecipients = async (customerId?: string | null) => {
     return uniqueStrings(userIds);
 };
 
+export const getAssignedTechnicianRecipients = async ({
+    requestId,
+    customerId,
+}: {
+    requestId?: string | null;
+    customerId?: string | null;
+}) => {
+    const userIds: string[] = [];
+
+    if (requestId) {
+        const { data: jobTechnicians, error: jobTechniciansError } =
+            await supabase
+                .from("job_technicians")
+                .select("technician_id")
+                .eq("job_id", requestId);
+
+        if (jobTechniciansError) {
+            console.warn(
+                "[notifyEvent] job technician lookup skipped:",
+                jobTechniciansError.message,
+            );
+        } else {
+            userIds.push(
+                ...((jobTechnicians ?? []) as TechnicianRecipientRow[])
+                    .map((item) => item.technician_id)
+                    .filter(isNonEmptyString),
+            );
+        }
+    }
+
+    if (userIds.length === 0 && customerId) {
+        const { data: assignedTechnicians, error: assignedTechniciansError } =
+            await supabase.rpc("get_technicians_for_customer", {
+                p_customer_id: customerId,
+            });
+
+        if (assignedTechniciansError) {
+            console.warn(
+                "[notifyEvent] customer technician lookup skipped:",
+                assignedTechniciansError.message,
+            );
+        } else {
+            userIds.push(
+                ...((assignedTechnicians ?? []) as TechnicianRecipientRow[])
+                    .map(
+                        (item) =>
+                            item.technician_id ??
+                            item.profile_id ??
+                            item.user_id ??
+                            item.id,
+                    )
+                    .filter(isNonEmptyString),
+            );
+        }
+    }
+
+    return uniqueStrings(userIds);
+};
+
 const invokePushNotification = async (body: Record<string, unknown>) => {
     console.info("[notifyEvent] resolved payload:", body);
     const { data, error } = await supabase.functions.invoke(
@@ -135,8 +204,14 @@ export const notifyEvent = async (
         const amount = payload.amount ?? 0;
 
         if (type === NOTIFICATION_EVENT_TYPES.JOB_REQUESTED) {
+            const assignedTechnicianIds =
+                await getAssignedTechnicianRecipients({
+                    requestId,
+                    customerId: String(payload.customer_id ?? ""),
+                });
+
             return invokePushNotification({
-                recipientRoles: ["technician"],
+                recipientUserIds: assignedTechnicianIds,
                 title: "Job Baru Tersedia",
                 body: `Customer ${customerName} membuat permintaan pekerjaan baru yang dapat kamu ambil.`,
                 type,

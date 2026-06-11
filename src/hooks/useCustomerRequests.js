@@ -19,6 +19,61 @@ const upsertRequest = (items, row) => {
     return sortByCreatedAtDesc(next);
 };
 
+const normalizeTechnicianName = (value) => {
+    const name = String(value ?? "").trim();
+    return name && name !== "-" ? name : "";
+};
+
+const enrichRequestsWithTechnicians = async (rows) => {
+    const requests = rows ?? [];
+    const requestIds = requests.map((row) => row.id).filter(Boolean);
+    if (requestIds.length === 0) return requests;
+
+    const { data, error } = await supabase.rpc(
+        "get_request_technician_summaries",
+        { p_request_ids: requestIds },
+    );
+
+    if (error) {
+        console.warn(
+            "[useCustomerRequests] Technician summaries skipped:",
+            error.message,
+        );
+        return requests;
+    }
+
+    const technicianMap = (data ?? []).reduce((acc, row) => {
+        if (!row.job_id) return acc;
+        if (!acc[row.job_id]) acc[row.job_id] = [];
+        acc[row.job_id].push(row);
+        return acc;
+    }, {});
+
+    return requests.map((request) => {
+        const technicians = technicianMap[request.id] ?? [];
+        const creator =
+            technicians.find((item) => item.role === "creator") ??
+            technicians[0] ??
+            null;
+        const technicianName =
+            normalizeTechnicianName(creator?.technician_name) ||
+            normalizeTechnicianName(request.technician_name) ||
+            "-";
+
+        return {
+            ...request,
+            technician_id:
+                request.technician_id ?? creator?.technician_id ?? null,
+            technician_name: technicianName,
+            technician_names:
+                technicians
+                    .map((item) => normalizeTechnicianName(item.technician_name))
+                    .filter(Boolean)
+                    .join(", ") || technicianName,
+        };
+    });
+};
+
 export default function useCustomerRequests(user) {
     const [loading, setLoading] = useState(true);
     const [requests, setRequests] = useState([]);
@@ -50,8 +105,10 @@ export default function useCustomerRequests(user) {
                 .order("created_at", { ascending: false });
 
             if (requestError) throw requestError;
+            const enrichedRequests =
+                await enrichRequestsWithTechnicians(requestData);
             if (isMountedRef.current) {
-                setRequests(requestData ?? []);
+                setRequests(enrichedRequests);
             }
         } catch (error) {
             console.error("Error loading customer requests:", error);
@@ -137,10 +194,14 @@ export default function useCustomerRequests(user) {
                             schema: "public",
                             table: "requests",
                         },
-                        (payload) => {
+                        async (payload) => {
+                            if (!isMountedRef.current) return;
+                            const [row] = await enrichRequestsWithTechnicians([
+                                payload.new,
+                            ]);
                             if (!isMountedRef.current) return;
                             setRequests((current) =>
-                                upsertRequest(current, payload.new),
+                                upsertRequest(current, row ?? payload.new),
                             );
                         },
                     )
@@ -151,11 +212,27 @@ export default function useCustomerRequests(user) {
                             schema: "public",
                             table: "requests",
                         },
-                        (payload) => {
+                        async (payload) => {
+                            if (!isMountedRef.current) return;
+                            const [row] = await enrichRequestsWithTechnicians([
+                                payload.new,
+                            ]);
                             if (!isMountedRef.current) return;
                             setRequests((current) =>
-                                upsertRequest(current, payload.new),
+                                upsertRequest(current, row ?? payload.new),
                             );
+                        },
+                    )
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "*",
+                            schema: "public",
+                            table: "job_technicians",
+                        },
+                        () => {
+                            if (!isMountedRef.current) return;
+                            fetchCustomerRequests();
                         },
                     );
 

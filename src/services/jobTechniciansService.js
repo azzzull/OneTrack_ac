@@ -158,6 +158,36 @@ export const getTechnicianJobIds = async (technicianId) => {
     return [...new Set((data ?? []).map((item) => item.job_id).filter(Boolean))];
 };
 
+export const getTechnicianVisibleJobIds = async (technicianId) => {
+    if (!technicianId) return [];
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "get_technician_visible_job_ids",
+        { p_technician_id: technicianId },
+    );
+
+    if (!rpcError) {
+        return [
+            ...new Set((rpcData ?? []).map((item) => item.job_id).filter(Boolean)),
+        ];
+    }
+
+    return getTechnicianJobIds(technicianId);
+};
+
+export const claimPendingRequestJob = async ({ jobId, technicianId }) => {
+    if (!jobId) throw new Error("jobId wajib diisi.");
+    if (!technicianId) throw new Error("technicianId wajib diisi.");
+
+    const { data, error } = await supabase.rpc("claim_pending_request_job", {
+        p_request_id: jobId,
+        p_technician_id: technicianId,
+    });
+
+    if (error) throw error;
+    return data;
+};
+
 export const addJobTechnician = async ({
     jobId,
     technicianId,

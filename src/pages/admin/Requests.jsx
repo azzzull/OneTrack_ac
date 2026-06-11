@@ -41,7 +41,9 @@ import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import { createOfflineQueueItem } from "../../utils/offlineQueue";
 import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
 import {
+    claimPendingRequestJob,
     getTechnicianJobIds,
+    getTechnicianVisibleJobIds,
     syncJobTechnicians,
 } from "../../services/jobTechniciansService";
 import {
@@ -313,11 +315,12 @@ const isNetworkFailure = (error) => {
 
 const normalizeRequest = (row, creatorName = "", jobTechnicians = []) => {
     const status = normalizeStatusKey(pickFirst(row, ["status"], "pending"));
+    const directTechnicianId = pickFirst(row, ["technician_id"], "");
     const technicianIds = [
         ...new Set(
             [
                 ...jobTechnicians.map((item) => item.technician_id),
-                pickFirst(row, ["technician_id"], ""),
+                directTechnicianId,
             ]
                 .filter(Boolean)
                 .map((id) => String(id)),
@@ -330,6 +333,17 @@ const normalizeRequest = (row, creatorName = "", jobTechnicians = []) => {
                 .filter((name) => name && name !== "-"),
         ),
     ];
+    const assignedTechnicianName = technicianNames.join(", ");
+    const directTechnicianName =
+        technicianIds.length > 0
+            ? pickFirst(
+                  row,
+                  ["technician_name", "assignee", "crew_name", "team_name"],
+                  "",
+              )
+            : "";
+    const displayTechnicianName =
+        assignedTechnicianName || directTechnicianName || "-";
 
     return {
         id: pickFirst(row, ["id"], `${Math.random()}`),
@@ -350,19 +364,11 @@ const normalizeRequest = (row, creatorName = "", jobTechnicians = []) => {
         ),
         createdBy: pickFirst(row, ["created_by"], ""),
         customerId: pickFirst(row, ["customer_id"], ""),
-        technicianId: pickFirst(row, ["technician_id"], ""),
+        technicianId: directTechnicianId,
         technicianIds,
         technicianNames,
-        assignee: pickFirst(
-            row,
-            ["technician_name", "assignee", "crew_name", "team_name"],
-            technicianNames.join(", ") || creatorName || "-",
-        ),
-        technicianName: pickFirst(
-            row,
-            ["technician_name", "assignee", "crew_name", "team_name"],
-            technicianNames.join(", ") || creatorName || "-",
-        ),
+        assignee: displayTechnicianName,
+        technicianName: displayTechnicianName,
         createdByName: creatorName || "-",
         requester: pickFirst(
             row,
@@ -469,13 +475,9 @@ const shouldIncludeRequestForRole = (row, role, userId) => {
     if (role !== "technician") return true;
     if (!row) return false;
 
-    const status = normalizeStatusKey(row.status);
     const technicianId = row.technician_id ?? "";
 
-    return (
-        (status === "pending" && !technicianId) ||
-        (Boolean(userId) && technicianId === userId)
-    );
+    return Boolean(userId) && technicianId === userId;
 };
 
 export default function AdminRequestsPage() {
@@ -556,7 +558,7 @@ export default function AdminRequestsPage() {
                 .order("created_at", { ascending: false });
 
             if (roleRef.current === "technician" && userIdRef.current) {
-                const technicianJobIds = await getTechnicianJobIds(
+                const technicianJobIds = await getTechnicianVisibleJobIds(
                     userIdRef.current,
                 );
                 if (technicianJobIds.length === 0) {
@@ -793,6 +795,11 @@ export default function AdminRequestsPage() {
                                 return;
                             }
 
+                            if (roleRef.current === "technician") {
+                                loadRequests();
+                                return;
+                            }
+
                             if (
                                 !shouldIncludeRequestForRole(
                                     payload.new,
@@ -828,6 +835,11 @@ export default function AdminRequestsPage() {
                                 return;
                             }
 
+                            if (roleRef.current === "technician") {
+                                loadRequests();
+                                return;
+                            }
+
                             const shouldInclude = shouldIncludeRequestForRole(
                                 payload.new,
                                 roleRef.current,
@@ -860,6 +872,23 @@ export default function AdminRequestsPage() {
                             });
                         },
                     );
+
+                channelRef.current.on(
+                    "postgres_changes",
+                    {
+                        event: "*",
+                        schema: "public",
+                        table: "job_technicians",
+                    },
+                    () => {
+                        if (!isMountedRef.current) return;
+                        if (deferRefreshRef.current) {
+                            setHasDeferredRefresh(true);
+                            return;
+                        }
+                        loadRequests();
+                    },
+                );
 
                 const { error } = await channelRef.current.subscribe();
 
@@ -1354,15 +1383,10 @@ export default function AdminRequestsPage() {
             ) ?? null;
         return (
             creatorRow?.technician_id ??
-            selectedRequest?.createdBy ??
             selectedRequest?.technicianId ??
             ""
         );
-    }, [
-        selectedRequest?.createdBy,
-        selectedRequest?.technicianId,
-        selectedRequestTechnicians,
-    ]);
+    }, [selectedRequest?.technicianId, selectedRequestTechnicians]);
     const selectedRequestTechniciansForDisplay = useMemo(() => {
         if (selectedRequestTechnicians.length > 0) {
             return selectedRequestTechnicians;
@@ -1370,23 +1394,18 @@ export default function AdminRequestsPage() {
 
         if (!selectedRequest) return [];
 
-        const fallbackTechnicianId =
-            selectedRequest.createdBy || selectedRequest.technicianId || user?.id;
+        const fallbackTechnicianId = selectedRequest.technicianId;
         if (!fallbackTechnicianId) return [];
 
         const directoryProfile =
             technicianDirectory.find(
                 (item) => String(item.id) === String(fallbackTechnicianId),
             ) ?? null;
-        const authProfile =
-            String(user?.id) === String(fallbackTechnicianId) ? profile : null;
-        const fallbackProfile = directoryProfile ?? authProfile;
+        const fallbackProfile = directoryProfile;
         const profileName = getProfileDisplayName(fallbackProfile);
         const fallbackName =
             (profileName && profileName !== "-" ? profileName : "") ||
             selectedRequest.technicianName ||
-            user?.user_metadata?.full_name ||
-            user?.email ||
             "Teknisi";
 
         return [
@@ -1407,11 +1426,9 @@ export default function AdminRequestsPage() {
             },
         ];
     }, [
-        profile,
         selectedRequest,
         selectedRequestTechnicians,
         technicianDirectory,
-        user,
     ]);
     const canManageTechnicians =
         role === "admin" ||
@@ -1701,16 +1718,26 @@ export default function AdminRequestsPage() {
                 return;
             }
 
+            const technicianAlreadyAssigned =
+                role === "technician" &&
+                user?.id &&
+                selectedRequestTechnicians.some(
+                    (item) => String(item.technician_id) === String(user.id),
+                );
+
+            if (role === "technician" && user?.id && !technicianAlreadyAssigned) {
+                await claimPendingRequestJob({
+                    jobId: selectedRequest.id,
+                    technicianId: user.id,
+                });
+            }
+
             const { error } = await supabase
                 .from("requests")
                 .update(payload)
                 .eq("id", selectedRequest.id);
 
             if (error) throw error;
-
-            const technicianAlreadyAssigned = selectedRequestTechnicians.some(
-                (item) => String(item.technician_id) === String(user?.id),
-            );
 
             if (role === "technician" && user?.id) {
                 const currentTechnician = selectedRequestTechnicians.find(
@@ -1727,17 +1754,19 @@ export default function AdminRequestsPage() {
                     getNotificationName(selectedRequest.requester) ||
                     "customer";
 
-                await syncJobTechnicians({
-                    jobId: selectedRequest.id,
-                    creatorId: creatorTechnicianId || user.id,
-                    technicianIds: [
-                        ...selectedRequestTechnicians
-                            .filter((item) => item.role !== "creator")
-                            .map((item) => item.technician_id),
-                        user.id,
-                    ],
-                    addedBy: user.id,
-                });
+                if (technicianAlreadyAssigned) {
+                    await syncJobTechnicians({
+                        jobId: selectedRequest.id,
+                        creatorId: creatorTechnicianId || user.id,
+                        technicianIds: [
+                            ...selectedRequestTechnicians
+                                .filter((item) => item.role !== "creator")
+                                .map((item) => item.technician_id),
+                            user.id,
+                        ],
+                        addedBy: user.id,
+                    });
+                }
 
                 if (!technicianAlreadyAssigned) {
                     await notifyEvent(NOTIFICATION_EVENT_TYPES.JOB_TAKEN, {
@@ -2436,8 +2465,10 @@ export default function AdminRequestsPage() {
                                                                                             jobId: selectedRequest.id,
                                                                                             creatorId:
                                                                                                 creatorTechnicianId ||
-                                                                                                selectedRequest.createdBy ||
-                                                                                                user?.id ||
+                                                                                                (role ===
+                                                                                                "technician"
+                                                                                                    ? user?.id
+                                                                                                    : null) ||
                                                                                                 item.technician_id,
                                                                                             technicianIds:
                                                                                                 selectedRequestTechnicians
@@ -2805,9 +2836,7 @@ export default function AdminRequestsPage() {
                 selectedTechnicianIds={selectedRequestTechnicians
                     .filter((item) => item.role !== "creator")
                     .map((item) => item.technician_id)}
-                creatorTechnicianId={
-                    creatorTechnicianId || selectedRequest?.createdBy || null
-                }
+                creatorTechnicianId={creatorTechnicianId || null}
                 creatorLabel="Pembuat"
                 saving={saving}
                 onClose={() => setJobTechnicianModalOpen(false)}
@@ -2818,8 +2847,8 @@ export default function AdminRequestsPage() {
                             jobId: selectedRequest.id,
                             creatorId:
                                 creatorTechnicianId ||
-                                selectedRequest.createdBy ||
-                                user?.id ||
+                                (role === "technician" ? user?.id : null) ||
+                                nextIds[0] ||
                                 null,
                             technicianIds: nextIds,
                             addedBy: user?.id ?? null,

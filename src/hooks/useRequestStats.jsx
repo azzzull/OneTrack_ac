@@ -2,7 +2,10 @@ import { useEffect, useId, useRef, useState, useCallback } from "react";
 import supabase from "../supabaseClient";
 import { useAuth } from "../context/useAuth";
 import { createUniqueChannelName } from "../utils/realtimeChannelManager";
-import { getTechnicianJobIds } from "../services/jobTechniciansService";
+import {
+    getTechnicianJobIds,
+    getTechnicianVisibleJobIds,
+} from "../services/jobTechniciansService";
 
 const INITIAL_STATS = {
     pending: 0,
@@ -32,6 +35,32 @@ const countByStatus = async (status, { jobIds = [] } = {}) => {
 
     if (error) throw error;
     return count ?? 0;
+};
+
+const countUnclaimedPendingRequests = async () => {
+    const { data: pendingRows, error } = await supabase
+        .from("requests")
+        .select("id, technician_id")
+        .in("status", ["pending", "requested"])
+        .is("technician_id", null);
+
+    if (error) throw error;
+
+    const pendingIds = (pendingRows ?? []).map((row) => row.id).filter(Boolean);
+    if (pendingIds.length === 0) return 0;
+
+    const { data: technicianRows, error: technicianError } = await supabase
+        .from("job_technicians")
+        .select("job_id")
+        .in("job_id", pendingIds);
+
+    if (technicianError) throw technicianError;
+
+    const claimedJobIds = new Set(
+        (technicianRows ?? []).map((row) => String(row.job_id)),
+    );
+
+    return pendingIds.filter((id) => !claimedJobIds.has(String(id))).length;
 };
 
 export default function useRequestStats() {
@@ -70,9 +99,17 @@ export default function useRequestStats() {
                 roleRef.current === "technician"
                     ? await getTechnicianJobIds(userIdRef.current)
                     : undefined;
+            const technicianVisibleJobIds =
+                roleRef.current === "technician"
+                    ? await getTechnicianVisibleJobIds(userIdRef.current)
+                    : undefined;
 
             const [pending, inProgress, completed] = await Promise.all([
-                countByStatus("pending", { jobIds: technicianJobIds }),
+                ["admin", "management"].includes(roleRef.current)
+                    ? countUnclaimedPendingRequests()
+                    : countByStatus("pending", {
+                          jobIds: technicianVisibleJobIds ?? technicianJobIds,
+                      }),
                 countByStatus("in_progress", { jobIds: technicianJobIds }),
                 countByStatus("completed", { jobIds: technicianJobIds }),
             ]);
@@ -128,20 +165,35 @@ export default function useRequestStats() {
                 }
 
                 // Create new channel
-                const channel = supabase.channel(channelName).on(
-                    "postgres_changes",
-                    {
-                        event: "*",
-                        schema: "public",
-                        table: "requests",
-                    },
-                    () => {
-                        // Only call loadStats if mounted
-                        if (isMountedRef.current) {
-                            loadStats();
-                        }
-                    },
-                );
+                const channel = supabase
+                    .channel(channelName)
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "*",
+                            schema: "public",
+                            table: "requests",
+                        },
+                        () => {
+                            // Only call loadStats if mounted
+                            if (isMountedRef.current) {
+                                loadStats();
+                            }
+                        },
+                    )
+                    .on(
+                        "postgres_changes",
+                        {
+                            event: "*",
+                            schema: "public",
+                            table: "job_technicians",
+                        },
+                        () => {
+                            if (isMountedRef.current) {
+                                loadStats();
+                            }
+                        },
+                    );
 
                 const { error } = await channel.subscribe();
 

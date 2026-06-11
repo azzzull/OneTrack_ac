@@ -303,7 +303,7 @@ export default function CustomerRequestFormPage() {
             );
             const payload = {
                 title: selectedProject?.project_name ?? "",
-                status: "requested",
+                status: "pending",
                 job_scope: activeJobScope,
                 location:
                     selectedProject?.location ??

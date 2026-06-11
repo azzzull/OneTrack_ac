@@ -390,11 +390,86 @@ Deno.serve(async (req) => {
         }
     }
 
-    if (requestedRoles.length > 0) {
+    const genericRequestedRoles = [...requestedRoles];
+
+    if (type === "job_requested" && genericRequestedRoles.includes("technician")) {
+        const technicianIndex = genericRequestedRoles.indexOf("technician");
+        genericRequestedRoles.splice(technicianIndex, 1);
+
+        if (referenceId) {
+            const { data: jobTechnicians, error: jobTechniciansError } =
+                await adminClient
+                    .from("job_technicians")
+                    .select("technician_id")
+                    .eq("job_id", referenceId);
+
+            if (jobTechniciansError) {
+                console.warn(
+                    "[send-push-notification] job technician lookup skipped:",
+                    jobTechniciansError.message,
+                );
+            } else {
+                for (const row of (jobTechnicians ?? []) as Array<{ technician_id?: string }>) {
+                    if (isUuid(row.technician_id)) {
+                        recipientMap.set(row.technician_id, {
+                            id: row.technician_id,
+                            role: "technician",
+                        });
+                    }
+                }
+            }
+        }
+
+        if (recipientMap.size === requestedUserIds.length && relatedCustomerId) {
+            const { data: assignmentRows, error: assignmentRowsError } =
+                await adminClient
+                    .from("technician_customer_assignments")
+                    .select("technician_id")
+                    .eq("customer_id", relatedCustomerId)
+                    .eq("is_active", true);
+
+            if (assignmentRowsError) {
+                console.warn(
+                    "[send-push-notification] technician assignment lookup skipped:",
+                    assignmentRowsError.message,
+                );
+            } else {
+                for (const row of (assignmentRows ?? []) as Array<{ technician_id?: string }>) {
+                    if (isUuid(row.technician_id)) {
+                        recipientMap.set(row.technician_id, {
+                            id: row.technician_id,
+                            role: "technician",
+                        });
+                    }
+                }
+            }
+
+            const { data: externalTechnicians, error: externalTechniciansError } =
+                await adminClient
+                    .from("profiles")
+                    .select("id, role")
+                    .eq("role", "technician")
+                    .eq("technician_type", "external")
+                    .eq("customer_id", relatedCustomerId);
+
+            if (externalTechniciansError) {
+                console.warn(
+                    "[send-push-notification] external technician lookup skipped:",
+                    externalTechniciansError.message,
+                );
+            } else {
+                for (const user of (externalTechnicians ?? []) as ResolvedUser[]) {
+                    if (isUuid(user.id)) recipientMap.set(user.id, user);
+                }
+            }
+        }
+    }
+
+    if (genericRequestedRoles.length > 0) {
         const { data: roleUsers, error: roleUsersError } = await adminClient
             .from("profiles")
             .select("id, role")
-            .in("role", requestedRoles);
+            .in("role", genericRequestedRoles);
 
         if (roleUsersError) {
             return jsonResponse(

@@ -16,7 +16,10 @@ import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
-import { getTechnicianJobIds } from "../../services/jobTechniciansService";
+import {
+    getTechnicianJobIds,
+    getTechnicianVisibleJobIds,
+} from "../../services/jobTechniciansService";
 import { buildStatusSegments } from "../../utils/dashboardStatus";
 
 const normalizeStatusKey = (value) => {
@@ -112,6 +115,7 @@ export default function TechnicianDashboard() {
 
         try {
             const jobIds = await getTechnicianJobIds(userIdRef.current);
+            let nextTasks = [];
             if (jobIds.length === 0) {
                 if (isMountedRef.current) setTasks([]);
             } else {
@@ -122,16 +126,37 @@ export default function TechnicianDashboard() {
                     .order("created_at", { ascending: false });
 
                 if (error) throw error;
-                if (isMountedRef.current) setTasks(data ?? []);
+                nextTasks = data ?? [];
+                if (isMountedRef.current) setTasks(nextTasks);
             }
 
-            const { count, error: availableError } = await supabase
-                .from("requests")
-                .select("id", { count: "exact", head: true })
-                .in("status", ["pending", "requested"]);
+            const availableAssignedJobs = nextTasks.filter(
+                (item) => normalizeStatusKey(item.status) === "pending",
+            ).length;
+            const visibleJobIds = await getTechnicianVisibleJobIds(
+                userIdRef.current,
+            );
+            const pendingVisibleJobIds = visibleJobIds.filter(
+                (id) => !jobIds.includes(id),
+            );
 
-            if (availableError) throw availableError;
-            if (isMountedRef.current) setAvailableJobs(count ?? 0);
+            let availableCustomerRequests = 0;
+            if (pendingVisibleJobIds.length > 0) {
+                const { count, error: availableError } = await supabase
+                    .from("requests")
+                    .select("id", { count: "exact", head: true })
+                    .in("id", pendingVisibleJobIds)
+                    .in("status", ["pending", "requested"]);
+
+                if (availableError) throw availableError;
+                availableCustomerRequests = count ?? 0;
+            }
+
+            if (isMountedRef.current) {
+                setAvailableJobs(
+                    availableAssignedJobs + availableCustomerRequests,
+                );
+            }
         } catch (error) {
             console.error("Error loading technician dashboard data:", error);
             if (isMountedRef.current) {

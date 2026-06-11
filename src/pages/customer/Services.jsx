@@ -19,7 +19,9 @@ import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import useCustomerRequests from "../../hooks/useCustomerRequests";
-import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
+import {
+    getScopeSummaryMeta,
+} from "../../utils/jobScopeCatalog";
 import {
     exportStyledExcel,
     makeExcelFileName,
@@ -177,8 +179,137 @@ const getPeriodLabel = (period, customStartDate, customEndDate) => {
 const getTechnicianFilterKey = (item) => {
     const id = String(item?.technician_id ?? "").trim();
     if (id) return `id:${id}`;
-    const name = String(item?.technician_name ?? "").trim();
+    const name = String(item?.technician_names ?? item?.technician_name ?? "").trim();
     return name && name !== "-" ? `name:${name.toLowerCase()}` : "";
+};
+
+const stringifyMetaValue = (value) => {
+    if (value === null || value === undefined) return "";
+    if (Array.isArray(value)) {
+        return value
+            .map((item) =>
+                typeof item === "object" && item
+                    ? item.item_label ?? item.label ?? item.name ?? ""
+                    : item,
+            )
+            .filter(Boolean)
+            .join(", ");
+    }
+    if (typeof value === "object") {
+        return String(value.name ?? value.label ?? value.value ?? "").trim();
+    }
+    return String(value).trim();
+};
+
+const pickFirstMetaValue = (sources, keys) => {
+    for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        for (const key of keys) {
+            const value = stringifyMetaValue(source[key]);
+            if (value) return value;
+        }
+    }
+    return "";
+};
+
+const pickFirstMetaValueByKeyPattern = (source, patterns) => {
+    if (!source || typeof source !== "object") return "";
+
+    for (const [key, value] of Object.entries(source)) {
+        const normalizedKey = String(key ?? "").toLowerCase();
+        if (!patterns.some((pattern) => pattern.test(normalizedKey))) {
+            continue;
+        }
+        const text = stringifyMetaValue(value);
+        if (text) return text;
+    }
+
+    return "";
+};
+
+const getRequestMetaItems = (item) => {
+    const details =
+        item?.dynamic_data && typeof item.dynamic_data === "object"
+            ? item.dynamic_data
+            : {};
+    const type =
+        pickFirstMetaValue([item, details], [
+            "ac_type",
+            "type",
+            "jenis",
+            "jenis_pekerjaan",
+            "jenis_perangkat",
+            "device_type",
+            "equipment_type",
+            "unit_type",
+            "asset_type",
+            "service_type",
+            "work_type",
+            "category",
+            "kategori",
+        ]) ||
+        pickFirstMetaValueByKeyPattern(details, [
+            /(^|_)jenis($|_)/,
+            /jenis.*perangkat/,
+            /(^|_)type($|_)/,
+            /(^|_)tipe($|_)/,
+            /(^|_)kategori($|_)/,
+            /(^|_)category($|_)/,
+        ]);
+    const brand =
+        pickFirstMetaValue([item, details], [
+            "ac_brand",
+            "brand",
+            "merk",
+            "merek",
+            "unit_brand",
+            "device_brand",
+            "equipment_brand",
+            "manufacturer",
+        ]) ||
+        pickFirstMetaValueByKeyPattern(details, [
+            /(^|_)brand($|_)/,
+            /(^|_)merk($|_)/,
+            /(^|_)merek($|_)/,
+        ]);
+    const room =
+        pickFirstMetaValue(
+            [
+                { room_location: item?.room_location },
+                details,
+            ],
+            [
+                "room_location",
+                "room",
+                "ruangan",
+                "lokasi_ruangan",
+                "unit_location",
+                "panel_location",
+                "door_location",
+            ],
+        ) ||
+        pickFirstMetaValueByKeyPattern(details, [
+            /(^|_)room($|_)/,
+            /(^|_)ruangan($|_)/,
+            /lokasi_ruangan/,
+        ]);
+
+    const metaItems = [
+        {
+            label: "Jenis",
+            value: type || "-",
+        },
+        {
+            label: "Merk",
+            value: brand || "-",
+        },
+        {
+            label: "Ruangan",
+            value: room || "-",
+        },
+    ];
+
+    return metaItems;
 };
 
 function CustomerServicesPage() {
@@ -228,7 +359,9 @@ function CustomerServicesPage() {
         const map = new Map();
         requests.forEach((item) => {
             const key = getTechnicianFilterKey(item);
-            const name = String(item.technician_name ?? "").trim();
+            const name = String(
+                item.technician_names ?? item.technician_name ?? "",
+            ).trim();
             if (!key || !name || name === "-") return;
             map.set(key, name);
         });
@@ -274,7 +407,7 @@ function CustomerServicesPage() {
                     ? true
                     : getTechnicianFilterKey(item) === selectedTechnicianKey;
             const matchSearch = keyword
-                ? `${item.title ?? ""} ${scopeSummary.value ?? ""} ${item.trouble_description ?? ""} ${item.customer_name ?? ""} ${item.technician_name ?? ""} ${item.id ?? ""} ${formatOrderId(item.id)}`
+                ? `${item.title ?? ""} ${scopeSummary.value ?? ""} ${item.trouble_description ?? ""} ${item.customer_name ?? ""} ${item.technician_names ?? item.technician_name ?? ""} ${item.id ?? ""} ${formatOrderId(item.id)}`
                       .toLowerCase()
                       .includes(keyword)
                 : true;
@@ -414,7 +547,7 @@ function CustomerServicesPage() {
             title: item.title ?? "-",
             customer: item.customer_name ?? "-",
             customerPhone: item.customer_phone ?? "-",
-            technician: item.technician_name ?? "-",
+            technician: item.technician_names ?? item.technician_name ?? "-",
             location: item.location ?? "-",
             address: item.address ?? "-",
             roomLocation: item.room_location ?? "-",
@@ -675,14 +808,16 @@ function CustomerServicesPage() {
                             </p>
                         ) : (
                             <div className="mt-4 space-y-3">
-                                {paginatedRequests.map((item) => (
-                                    <article
-                                        key={item.id}
-                                        className="cursor-pointer rounded-xl border border-slate-200 p-4 transition hover:border-sky-300 hover:bg-sky-50/40"
-                                        onClick={() =>
-                                            setSelectedRequestId(item.id)
-                                        }
-                                    >
+                                {paginatedRequests.map((item) => {
+                                    const metaItems = getRequestMetaItems(item);
+                                    return (
+                                        <article
+                                            key={item.id}
+                                            className="cursor-pointer rounded-xl border border-slate-200 p-4 transition hover:border-sky-300 hover:bg-sky-50/40"
+                                            onClick={() =>
+                                                setSelectedRequestId(item.id)
+                                            }
+                                        >
                                         <div className="flex flex-wrap items-start justify-between gap-3">
                                             {(() => {
                                                 const scopeSummary =
@@ -739,23 +874,35 @@ function CustomerServicesPage() {
                                             })()}
                                         </div>
 
-                                        <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                                             <span className="inline-flex items-center gap-1">
                                                 <CalendarDays size={13} />
                                                 {formatDate(item.created_at)}
                                             </span>
-                                            <span>{item.ac_brand ?? "-"}</span>
-                                            <span>{item.ac_type ?? "-"}</span>
-                                            <span>
-                                                {item.ac_capacity_pk ?? "-"}
-                                            </span>
+                                            {metaItems.map((meta) => (
+                                                <span
+                                                    key={`${meta.label}-${meta.value}`}
+                                                    className="inline-flex max-w-full items-center rounded-full bg-slate-100 px-2 py-1 text-slate-600"
+                                                    title={`${meta.label}: ${meta.value}`}
+                                                >
+                                                    <span className="font-medium">
+                                                        {meta.label}:
+                                                    </span>
+                                                    <span className="ml-1 max-w-40 truncate">
+                                                        {meta.value}
+                                                    </span>
+                                                </span>
+                                            ))}
                                             <span className="font-medium text-slate-600">
                                                 Teknisi:{" "}
-                                                {item.technician_name ?? "-"}
+                                                {item.technician_names ??
+                                                    item.technician_name ??
+                                                    "-"}
                                             </span>
                                         </div>
                                     </article>
-                                ))}
+                                    );
+                                })}
 
                                 {filteredRequests.length > ITEMS_PER_PAGE && (
                                     <div className="mt-6 flex items-center justify-center sm:justify-between">
@@ -963,7 +1110,9 @@ function CustomerServicesPage() {
                                     Teknisi
                                 </p>
                                 <p className="mt-2 text-sm font-medium text-slate-700">
-                                    {selectedRequest.technician_name ?? "-"}
+                                    {selectedRequest.technician_names ??
+                                        selectedRequest.technician_name ??
+                                        "-"}
                                 </p>
                                 <p className="mt-1 inline-flex items-center gap-1 text-xs text-slate-500">
                                     <CalendarDays size={12} />
