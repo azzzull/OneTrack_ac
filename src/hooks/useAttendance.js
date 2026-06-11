@@ -3,6 +3,7 @@ import supabase from "../supabaseClient";
 import { getCurrentLocationWithRetry } from "../utils/geoLocation";
 import { reverseGeocode } from "../utils/nominatim";
 import { formatDateUniversal } from "../utils/dateFormatter";
+import { calculateAttendanceOvertime } from "../utils/overtime";
 
 /**
  * Hook for attendance check-in/check-out operations
@@ -140,8 +141,6 @@ export const useAttendance = () => {
                     );
                 }
 
-                // Get today's attendance record to calculate working hours
-                const today = new Date().toISOString().split("T")[0];
                 const checkOutTime = new Date().toISOString();
 
                 const { data: existingRecord, error: selectError } =
@@ -149,7 +148,9 @@ export const useAttendance = () => {
                         .from("attendance")
                         .select("*")
                         .eq("technician_id", technicianId)
-                        .eq("attendance_date", today)
+                        .is("check_out_time", null)
+                        .order("check_in_time", { ascending: false })
+                        .limit(1)
                         .maybeSingle();
 
                 if (selectError || !existingRecord) {
@@ -164,6 +165,10 @@ export const useAttendance = () => {
                 const workingMinutes = Math.floor(
                     (checkOutDateTime - checkInTime) / (1000 * 60),
                 );
+                const overtime = calculateAttendanceOvertime({
+                    checkInTime: existingRecord.check_in_time,
+                    checkOutTime,
+                });
 
                 // Update record with check-out data
                 const { data, error: updateError } = await supabase
@@ -178,6 +183,14 @@ export const useAttendance = () => {
                         check_out_postal_code: addressData.postalCode || null,
                         check_out_accuracy_meters: location.accuracy || null,
                         working_hours_minutes: workingMinutes,
+                        overtime_eligible: overtime.eligible,
+                        overtime_submission_status: overtime.eligible
+                            ? "eligible"
+                            : "not_eligible",
+                        overtime_eligible_duration_minutes: overtime.eligible
+                            ? overtime.durationMinutes
+                            : null,
+                        overtime_not_submitted_reason: null,
                     })
                     .eq("id", existingRecord.id)
                     .select()
@@ -220,6 +233,24 @@ export const useAttendance = () => {
 
         try {
             const today = new Date().toISOString().split("T")[0];
+
+            const { data: openRecord, error: openError } = await supabase
+                .from("attendance")
+                .select("*")
+                .eq("technician_id", technicianId)
+                .is("check_out_time", null)
+                .order("check_in_time", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (openError) {
+                throw openError;
+            }
+
+            if (openRecord) {
+                setLoading(false);
+                return { status: "checked_in_only", data: openRecord };
+            }
 
             const { data, error: selectError } = await supabase
                 .from("attendance")

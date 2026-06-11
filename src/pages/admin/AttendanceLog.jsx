@@ -28,6 +28,10 @@ import {
     makeExcelFileName,
     parseExcelDate,
 } from "../../utils/excelExport";
+import {
+    getOvertimeStatusClass,
+    getOvertimeStatusLabel,
+} from "../../utils/overtime";
 
 const getCompactPagination = (currentPage, totalPages) => {
     if (totalPages <= 5) {
@@ -529,6 +533,7 @@ const AttendanceLog = () => {
             { key: "checkOutLocation", header: "Lokasi Pulang" },
             { key: "checkOutDistrict", header: "Kecamatan Pulang" },
             { key: "workingHours", header: "Jam Kerja" },
+            { key: "overtimeStatus", header: "Status Lembur" },
             { key: "status", header: "Status" },
         ];
 
@@ -544,6 +549,9 @@ const AttendanceLog = () => {
             workingHours: record.working_hours_minutes
                 ? formatWorkingHours(record.working_hours_minutes)
                 : "-",
+            overtimeStatus: getOvertimeStatusLabel(
+                record.overtime_submission_status,
+            ),
             status: getDailyStatus(record),
         }));
 
@@ -1133,6 +1141,9 @@ const AttendanceLog = () => {
                                                     <th className="px-4 py-3 text-left font-semibold text-slate-700">
                                                         Jam Kerja
                                                     </th>
+                                                    <th className="px-4 py-3 text-left font-semibold text-slate-700">
+                                                        Status Lembur
+                                                    </th>
                                                     <th className="px-4 py-3 text-center font-semibold text-slate-700">
                                                         Aksi
                                                     </th>
@@ -1340,6 +1351,17 @@ const AttendanceLog = () => {
                                                                               record.working_hours_minutes,
                                                                           )
                                                                         : "Belum Selesai"}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                <span
+                                                                    className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${getOvertimeStatusClass(
+                                                                        record.overtime_submission_status,
+                                                                    )}`}
+                                                                >
+                                                                    {getOvertimeStatusLabel(
+                                                                        record.overtime_submission_status,
+                                                                    )}
                                                                 </span>
                                                             </td>
                                                             <td className="px-4 py-3">

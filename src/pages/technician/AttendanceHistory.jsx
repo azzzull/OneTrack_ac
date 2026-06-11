@@ -13,6 +13,10 @@ import {
 import AttendanceMapModal from "../../components/AttendanceMapModal";
 import { getLocationLabel, hasLocationData } from "../../utils/nominatim";
 import supabase from "../../supabaseClient";
+import {
+    getOvertimeStatusClass,
+    getOvertimeStatusLabel,
+} from "../../utils/overtime";
 
 const AttendanceHistory = () => {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
@@ -319,6 +323,9 @@ const AttendanceHistory = () => {
                                             <th className="px-4 py-3 text-left font-semibold text-slate-700">
                                                 Jam Kerja
                                             </th>
+                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">
+                                                Status Lembur
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-200">
@@ -469,6 +476,17 @@ const AttendanceHistory = () => {
                                                                   record.working_hours_minutes,
                                                               )
                                                             : "-"}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span
+                                                        className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${getOvertimeStatusClass(
+                                                            record.overtime_submission_status,
+                                                        )}`}
+                                                    >
+                                                        {getOvertimeStatusLabel(
+                                                            record.overtime_submission_status,
+                                                        )}
                                                     </span>
                                                 </td>
                                             </tr>

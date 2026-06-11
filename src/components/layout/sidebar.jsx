@@ -12,6 +12,7 @@ import {
     MoreHorizontal,
     X,
     CalendarDays,
+    Clock3,
     Wallet,
     BarChart3,
 } from "lucide-react";
@@ -42,6 +43,7 @@ const menuByRole = {
         },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
+        { label: "Lembur", path: "/overtime", icon: Clock3 },
     ],
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
@@ -55,6 +57,7 @@ const menuByRole = {
         },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
+        { label: "Lembur", path: "/overtime", icon: Clock3 },
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
@@ -65,6 +68,7 @@ const menuByRole = {
             path: "/technician/attendance",
             icon: CalendarDays,
         },
+        { label: "Lembur", path: "/overtime", icon: Clock3 },
     ],
     customer: [
         { label: "Dashboard", path: "/customer", icon: LayoutDashboard },

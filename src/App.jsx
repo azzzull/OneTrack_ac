@@ -14,6 +14,7 @@ import AdminRequestsPage from "@/pages/admin/Requests";
 import AdminAttendanceLogPage from "@/pages/admin/AttendanceLog";
 import AccommodationPage from "@/pages/accommodation/AccommodationPage";
 import AccommodationReports from "@/pages/accommodation/AccommodationReports";
+import OvertimeManagement from "@/pages/overtime/OvertimeManagement";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
 import TechnicianAttendanceHistoryPage from "@/pages/technician/AttendanceHistory";
 import CustomerDashboard from "@/pages/customer/Dashboard";
@@ -195,6 +196,16 @@ function App() {
                     element={
                         <ProtectedRoute allowedRoles={["admin", "management"]}>
                             <AdminAttendanceLogPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/overtime"
+                    element={
+                        <ProtectedRoute
+                            allowedRoles={["admin", "management", "technician"]}
+                        >
+                            <OvertimeManagement />
                         </ProtectedRoute>
                     }
                 />
