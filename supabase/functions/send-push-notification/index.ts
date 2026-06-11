@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import webpush from "https://esm.sh/web-push@3.6.7";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -14,6 +15,10 @@ const firebaseProjectId = Deno.env.get("FIREBASE_PROJECT_ID") ?? "";
 const firebaseClientEmail = Deno.env.get("FIREBASE_CLIENT_EMAIL") ?? "";
 const firebasePrivateKey = Deno.env.get("FIREBASE_PRIVATE_KEY") ?? "";
 const scheduledReminderSecret = Deno.env.get("SCHEDULED_REMINDER_SECRET") ?? "";
+const vapidPublicKey = Deno.env.get("WEB_PUSH_VAPID_PUBLIC_KEY") ?? "";
+const vapidPrivateKey = Deno.env.get("WEB_PUSH_VAPID_PRIVATE_KEY") ?? "";
+const vapidSubject =
+    Deno.env.get("WEB_PUSH_VAPID_SUBJECT") ?? "mailto:admin@onetrack.app";
 
 type PushRequestBody = {
     recipientUserIds?: unknown;
@@ -34,6 +39,8 @@ type ResolvedUser = {
 type PushToken = {
     user_id: string;
     token: string;
+    platform?: string | null;
+    web_push_subscription?: unknown;
 };
 
 type SendError = {
@@ -174,6 +181,12 @@ const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
     accommodation_unrealized_reminder: ["technician"],
     realization_unreviewed_reminder: ["admin", "management"],
     attendance_reminder: ["technician"],
+    attendance_status_changed: ["technician", "admin", "management"],
+    overtime_requested: ["admin", "management"],
+    overtime_approved: ["technician"],
+    overtime_rejected: ["technician"],
+    overtime_status_changed: ["technician", "admin", "management"],
+    attendance_status_changed: ["technician", "admin", "management"],
 };
 
 const canUseBusinessRecipients = (
@@ -202,18 +215,11 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Method not allowed" }, 405);
     }
 
-    if (
-        !supabaseUrl ||
-        !anonKey ||
-        !serviceRoleKey ||
-        !firebaseProjectId ||
-        !firebaseClientEmail ||
-        !firebasePrivateKey
-    ) {
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
         return jsonResponse(
             {
                 success: false,
-                error: "Missing Supabase or Firebase Edge Function secrets",
+                error: "Missing Supabase Edge Function secrets",
             },
             500,
         );
@@ -505,7 +511,7 @@ Deno.serve(async (req) => {
 
     const { data: tokens, error: tokenError } = await adminClient
         .from("user_push_tokens")
-        .select("user_id, token")
+        .select("user_id, token, platform, web_push_subscription")
         .in("user_id", recipientIds);
 
     if (tokenError) {
@@ -522,7 +528,7 @@ Deno.serve(async (req) => {
     const tokenMap = new Map<string, PushToken>();
     for (const row of (tokens ?? []) as PushToken[]) {
         const token = String(row.token ?? "").trim();
-        if (token) tokenMap.set(token, { user_id: row.user_id, token });
+        if (token) tokenMap.set(token, row);
     }
     const uniqueTokens = [...tokenMap.values()];
 
@@ -572,25 +578,74 @@ Deno.serve(async (req) => {
         });
     }
 
-    let accessToken: string;
-    try {
-        accessToken = await getFirebaseAccessToken();
-    } catch (error) {
+    const webPushTokens = uniqueTokens.filter(
+        (row) => row.platform === "web" && row.web_push_subscription,
+    );
+    const fcmTokens = uniqueTokens.filter((row) => row.platform !== "web");
+
+    let accessToken: string | null = null;
+    if (fcmTokens.length > 0) {
+        if (!firebaseProjectId || !firebaseClientEmail || !firebasePrivateKey) {
+            return jsonResponse(
+                {
+                    success: false,
+                    error: "Missing Firebase Edge Function secrets",
+                    recipientCount: recipientIds.length,
+                    tokenCount: uniqueTokens.length,
+                    notificationInsertedCount: insertedNotifications?.length ?? 0,
+                    sentCount: 0,
+                    failedCount: fcmTokens.length,
+                    errors: [
+                        {
+                            message: "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY are required for FCM tokens",
+                        },
+                    ],
+                },
+                502,
+            );
+        }
+
+        try {
+            accessToken = await getFirebaseAccessToken();
+        } catch (error) {
+            return jsonResponse(
+                {
+                    success: false,
+                    error: error instanceof Error ? error.message : "Firebase OAuth failed",
+                    recipientCount: recipientIds.length,
+                    tokenCount: uniqueTokens.length,
+                    notificationInsertedCount: insertedNotifications?.length ?? 0,
+                    sentCount: 0,
+                    failedCount: uniqueTokens.length,
+                    errors: [
+                        {
+                            message:
+                                error instanceof Error
+                                    ? error.message
+                                    : "Firebase OAuth failed",
+                        },
+                    ],
+                },
+                502,
+            );
+        }
+    }
+
+    if (webPushTokens.length > 0 && vapidPublicKey && vapidPrivateKey) {
+        webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    } else if (webPushTokens.length > 0) {
         return jsonResponse(
             {
                 success: false,
-                error: error instanceof Error ? error.message : "Firebase OAuth failed",
+                error: "Missing Web Push VAPID keys",
                 recipientCount: recipientIds.length,
                 tokenCount: uniqueTokens.length,
                 notificationInsertedCount: insertedNotifications?.length ?? 0,
                 sentCount: 0,
-                failedCount: uniqueTokens.length,
+                failedCount: webPushTokens.length,
                 errors: [
                     {
-                        message:
-                            error instanceof Error
-                                ? error.message
-                                : "Firebase OAuth failed",
+                        message: "WEB_PUSH_VAPID_PUBLIC_KEY and WEB_PUSH_VAPID_PRIVATE_KEY are required",
                     },
                 ],
             },
@@ -604,11 +659,11 @@ Deno.serve(async (req) => {
     const invalidTokens: string[] = [];
     let sentCount = 0;
 
-    for (const row of uniqueTokens) {
+    for (const row of fcmTokens) {
         const response = await fetch(endpoint, {
             method: "POST",
             headers: {
-                Authorization: `Bearer ${accessToken}`,
+                Authorization: `Bearer ${accessToken ?? ""}`,
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
@@ -645,6 +700,45 @@ Deno.serve(async (req) => {
 
         if (isInvalidFcmToken(responsePayload)) {
             invalidTokens.push(row.token);
+        }
+    }
+
+    const webPayload = JSON.stringify({
+        title,
+        body,
+        type,
+        referenceTable,
+        referenceId,
+        data: fcmData,
+        icon: "/icons/icon-192.webp",
+        badge: "/icons/icon-96.webp",
+    });
+
+    for (const row of webPushTokens) {
+        try {
+            await webpush.sendNotification(
+                row.web_push_subscription as never,
+                webPayload,
+            );
+            sentCount += 1;
+        } catch (error) {
+            errors.push({
+                token: row.token,
+                userId: row.user_id,
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Web Push send failed",
+                details: error,
+            });
+            if (
+                typeof error === "object" &&
+                error &&
+                "statusCode" in error &&
+                [404, 410].includes(Number(error.statusCode))
+            ) {
+                invalidTokens.push(row.token);
+            }
         }
     }
 

@@ -4,6 +4,10 @@ import { getCurrentLocationWithRetry } from "../utils/geoLocation";
 import { reverseGeocode } from "../utils/nominatim";
 import { formatDateUniversal } from "../utils/dateFormatter";
 import { calculateAttendanceOvertime } from "../utils/overtime";
+import {
+    NOTIFICATION_EVENT_TYPES,
+    notifyEvent,
+} from "../services/notificationEvents";
 
 /**
  * Hook for attendance check-in/check-out operations
@@ -81,6 +85,17 @@ export const useAttendance = () => {
                     }
                     throw insertError;
                 }
+
+                notifyEvent(NOTIFICATION_EVENT_TYPES.ATTENDANCE_STATUS_CHANGED, {
+                    technician_id: technicianId,
+                    attendance_id: data.id,
+                    status: "check_in",
+                }).catch((notifyError) => {
+                    console.warn(
+                        "[Attendance] notification skipped:",
+                        notifyError,
+                    );
+                });
 
                 setLoading(false);
                 return {
@@ -199,6 +214,19 @@ export const useAttendance = () => {
                 if (updateError) {
                     throw updateError;
                 }
+
+                notifyEvent(NOTIFICATION_EVENT_TYPES.ATTENDANCE_STATUS_CHANGED, {
+                    technician_id: technicianId,
+                    attendance_id: data.id,
+                    status: overtime.eligible
+                        ? "checkout_overtime_eligible"
+                        : "check_out",
+                }).catch((notifyError) => {
+                    console.warn(
+                        "[Attendance] notification skipped:",
+                        notifyError,
+                    );
+                });
 
                 setLoading(false);
                 return {

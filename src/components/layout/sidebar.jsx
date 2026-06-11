@@ -22,6 +22,7 @@ import supabase from "../../supabaseClient";
 import useRequestStats from "../../hooks/useRequestStats";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import NotificationCenter from "../notifications/NotificationCenter";
+import WebPushActivation from "../notifications/WebPushActivation";
 import {
     clearOfflineQueueItems,
     getOfflineQueueStats,
@@ -553,6 +554,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             collapsed ? "space-y-3" : "space-y-5"
                         } pb-2`}
                     >
+                        {!collapsed && <WebPushActivation compact />}
                         <button
                             type="button"
                             onClick={() => {
@@ -794,6 +796,9 @@ export function MobileBottomNav() {
                                 Profile
                             </button>
                         )}
+                        <div className="mt-2">
+                            <WebPushActivation compact />
+                        </div>
                         <button
                             type="button"
                             onClick={handleLogout}

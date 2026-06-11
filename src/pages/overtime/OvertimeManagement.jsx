@@ -21,6 +21,10 @@ import {
     reviewOvertimeRequest,
 } from "../../services/overtimeService";
 import {
+    NOTIFICATION_EVENT_TYPES,
+    notifyEvent,
+} from "../../services/notificationEvents";
+import {
     formatOvertimeDuration,
     getOvertimeStatusClass,
     getOvertimeStatusLabel,
@@ -172,13 +176,19 @@ export default function OvertimeManagement() {
     const handleManualSubmit = async (payload) => {
         setSaving(true);
         try {
-            await createManualOvertimeRequest({
+            const selectedTechnician =
+                technicians.find((tech) => tech.id === payload.technicianId) ||
+                profile;
+            const created = await createManualOvertimeRequest({
                 ...payload,
                 requestedBy: user.id,
-                profile:
-                    technicians.find(
-                        (tech) => tech.id === payload.technicianId,
-                    ) || profile,
+                profile: selectedTechnician,
+            });
+            await notifyEvent(NOTIFICATION_EVENT_TYPES.OVERTIME_REQUESTED, {
+                technician_id: created.technician_id,
+                technician_name: getProfileName(selectedTechnician),
+                overtime_id: created.id,
+                duration_minutes: created.duration_minutes,
             });
             setFilters((prev) => ({
                 ...prev,
@@ -198,12 +208,23 @@ export default function OvertimeManagement() {
         if (!detail) return;
         setSaving(true);
         try {
-            await reviewOvertimeRequest({
+            const reviewed = await reviewOvertimeRequest({
                 requestId: detail.id,
                 status,
                 notes: reviewNotes,
                 userId: user.id,
             });
+            await notifyEvent(
+                status === "approved"
+                    ? NOTIFICATION_EVENT_TYPES.OVERTIME_APPROVED
+                    : NOTIFICATION_EVENT_TYPES.OVERTIME_REJECTED,
+                {
+                    technician_id: detail.technician_id,
+                    overtime_id: detail.id,
+                    status: reviewed.status,
+                    duration_minutes: detail.duration_minutes,
+                },
+            );
             setDetail(null);
             setReviewNotes("");
             await loadData();

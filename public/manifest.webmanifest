@@ -2,31 +2,38 @@
   "id": "/",
   "short_name": "OneTrack",
   "name": "OneTrack",
-  "description": "AC Service Management Application",
+  "description": "OneTrack AC Service Management Application",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "window-controls-overlay", "browser"],
+  "orientation": "portrait",
+  "theme_color": "#38bdf8",
+  "background_color": "#ffffff",
   "icons": [
     {
       "src": "/icons/icon-48.webp",
       "type": "image/webp",
       "sizes": "48x48",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-72.webp",
       "type": "image/webp",
       "sizes": "72x72",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-96.webp",
       "type": "image/webp",
       "sizes": "96x96",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-128.webp",
       "type": "image/webp",
       "sizes": "128x128",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-192.webp",
@@ -46,12 +53,5 @@
       "sizes": "512x512",
       "purpose": "any maskable"
     }
-  ],
-  "start_url": "/",
-  "scope": "/",
-  "display": "standalone",
-  "display_override": ["standalone", "window-controls-overlay", "browser"],
-  "theme_color": "#38bdf8",
-  "background_color": "#ffffff",
-  "orientation": "portrait"
+  ]
 }

@@ -6,8 +6,9 @@ const CACHE_NAME = "onetrack-v2";
 const URLS_TO_CACHE = [
     "/",
     "/index.html",
-    "/manifest.json",
+    "/manifest.webmanifest",
     "/OneTrackLogo.svg",
+    "/apple-touch-icon.png",
 ];
 
 // Install event - cache static assets
@@ -137,6 +138,61 @@ self.addEventListener("message", (event) => {
             console.log("[SW] Sync registration triggered");
         }
     }
+});
+
+self.addEventListener("push", (event) => {
+    let payload = {};
+    try {
+        payload = event.data ? event.data.json() : {};
+    } catch {
+        payload = { body: event.data?.text() };
+    }
+
+    const title = payload.title || "OneTrack";
+    const options = {
+        body: payload.body || "",
+        icon: payload.icon || "/icons/icon-192.webp",
+        badge: payload.badge || "/icons/icon-96.webp",
+        data: payload.data || payload,
+        tag: payload.tag || payload.type || "onetrack-notification",
+        renotify: true,
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+    event.notification.close();
+    const data = event.notification.data || {};
+    const referenceTable = String(
+        data.referenceTable || data.reference_table || "",
+    ).toLowerCase();
+    let targetUrl = "/";
+
+    if (referenceTable === "requests" || referenceTable === "jobs") {
+        targetUrl = "/requests";
+    } else if (referenceTable === "overtime_requests") {
+        targetUrl = "/overtime";
+    } else if (referenceTable.includes("attendance")) {
+        targetUrl = "/admin/attendance";
+    } else if (referenceTable.includes("accommodation")) {
+        targetUrl = "/admin/accommodation";
+    }
+
+    event.waitUntil(
+        self.clients
+            .matchAll({ type: "window", includeUncontrolled: true })
+            .then((clients) => {
+                const existingClient = clients.find((client) =>
+                    client.url.startsWith(self.location.origin),
+                );
+                if (existingClient) {
+                    existingClient.focus();
+                    return existingClient.navigate(targetUrl);
+                }
+                return self.clients.openWindow(targetUrl);
+            }),
+    );
 });
 
 console.log("[SW] Service Worker loaded");

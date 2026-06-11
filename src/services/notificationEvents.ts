@@ -9,6 +9,11 @@ export const NOTIFICATION_EVENT_TYPES = {
     ACCOMMODATION_APPROVED: "accommodation_approved",
     ACCOMMODATION_REJECTED: "accommodation_rejected",
     REALIZATION_NEED_REVIEW: "realization_need_review",
+    OVERTIME_REQUESTED: "overtime_requested",
+    OVERTIME_APPROVED: "overtime_approved",
+    OVERTIME_REJECTED: "overtime_rejected",
+    OVERTIME_STATUS_CHANGED: "overtime_status_changed",
+    ATTENDANCE_STATUS_CHANGED: "attendance_status_changed",
 } as const;
 
 type NotificationEventType =
@@ -23,6 +28,9 @@ type NotifyEventPayload = Record<string, unknown> & {
     accommodation_id?: string | null;
     amount?: number | string | null;
     status?: string | null;
+    overtime_id?: string | null;
+    attendance_id?: string | null;
+    duration_minutes?: number | string | null;
 };
 
 type TechnicianRecipientRow = {
@@ -61,6 +69,9 @@ export const formatStatusLabel = (value: unknown) => {
         cancelled: "Dibatalkan",
         approved: "Disetujui",
         rejected: "Ditolak",
+        check_in: "Absen Masuk",
+        check_out: "Absen Pulang",
+        checkout_overtime_eligible: "Checkout Eligible Lembur",
     };
     return labels[key] ?? String(value ?? "-");
 };
@@ -395,6 +406,68 @@ export const notifyEvent = async (
                     technician_id: payload.technician_id ?? null,
                     amount,
                     accommodation_id: accommodationId,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.OVERTIME_REQUESTED) {
+            return invokePushNotification({
+                recipientRoles: ["admin", "management"],
+                title: "Pengajuan Lembur Baru",
+                body: `${technicianName} mengajukan lembur dan menunggu approval.`,
+                type,
+                referenceTable: "overtime_requests",
+                referenceId: String(payload.overtime_id ?? "").trim() || null,
+                data: {
+                    technician_name: technicianName,
+                    technician_id: payload.technician_id ?? null,
+                    overtime_id: payload.overtime_id ?? null,
+                    duration_minutes: payload.duration_minutes ?? null,
+                },
+            });
+        }
+
+        if (
+            type === NOTIFICATION_EVENT_TYPES.OVERTIME_APPROVED ||
+            type === NOTIFICATION_EVENT_TYPES.OVERTIME_REJECTED ||
+            type === NOTIFICATION_EVENT_TYPES.OVERTIME_STATUS_CHANGED
+        ) {
+            const statusLabel = formatStatusLabel(payload.status);
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([String(payload.technician_id ?? "")]),
+                title:
+                    type === NOTIFICATION_EVENT_TYPES.OVERTIME_APPROVED
+                        ? "Lembur Disetujui"
+                        : type === NOTIFICATION_EVENT_TYPES.OVERTIME_REJECTED
+                          ? "Lembur Ditolak"
+                          : "Status Lembur Berubah",
+                body: `Status pengajuan lembur Anda: ${statusLabel}.`,
+                type,
+                referenceTable: "overtime_requests",
+                referenceId: String(payload.overtime_id ?? "").trim() || null,
+                data: {
+                    technician_id: payload.technician_id ?? null,
+                    overtime_id: payload.overtime_id ?? null,
+                    status: payload.status ?? null,
+                    duration_minutes: payload.duration_minutes ?? null,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.ATTENDANCE_STATUS_CHANGED) {
+            return invokePushNotification({
+                recipientRoles: ["admin", "management"],
+                recipientUserIds: uniqueStrings([String(payload.technician_id ?? "")]),
+                title: "Status Absensi Berubah",
+                body: `${technicianName} memperbarui status absensi: ${formatStatusLabel(payload.status)}.`,
+                type,
+                referenceTable: "attendance",
+                referenceId: String(payload.attendance_id ?? "").trim() || null,
+                data: {
+                    technician_name: technicianName,
+                    technician_id: payload.technician_id ?? null,
+                    attendance_id: payload.attendance_id ?? null,
+                    status: payload.status ?? null,
                 },
             });
         }

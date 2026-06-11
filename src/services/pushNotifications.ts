@@ -70,6 +70,15 @@ const getNotificationTargetPath = (data: Record<string, unknown>, role: string |
         return "/admin/accommodation";
     }
 
+    if (table === "overtime_requests" || table === "overtime") {
+        return "/overtime";
+    }
+
+    if (table === "attendance") {
+        if (role === "technician") return "/technician/attendance";
+        return "/admin/attendance";
+    }
+
     if (role === "technician") return "/technician";
     if (role === "customer") return "/customer";
     return "/admin";
