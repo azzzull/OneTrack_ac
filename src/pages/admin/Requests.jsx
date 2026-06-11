@@ -328,7 +328,11 @@ const normalizeRequest = (row, creatorName = "", jobTechnicians = []) => {
     ];
     const technicianNames = [
         ...new Set(
-            jobTechnicians
+            [...jobTechnicians]
+                .sort((left, right) => {
+                    if (left.role === right.role) return 0;
+                    return left.role === "creator" ? -1 : 1;
+                })
                 .map((item) => item.technician_name)
                 .filter((name) => name && name !== "-"),
         ),
@@ -623,10 +627,43 @@ export default function AdminRequestsPage() {
 
             let jobTechnicianMap = {};
             if (requestIds.length > 0) {
+                const {
+                    data: technicianSummaryRows,
+                    error: technicianSummaryError,
+                } = await supabase.rpc("get_request_technician_summaries", {
+                    p_request_ids: requestIds,
+                });
+
+                if (!technicianSummaryError) {
+                    jobTechnicianMap = (technicianSummaryRows ?? []).reduce(
+                        (acc, row) => {
+                            const jobId = row.job_id;
+                            if (!jobId) return acc;
+                            if (!acc[jobId]) acc[jobId] = [];
+                            acc[jobId].push({
+                                technician_id: row.technician_id,
+                                technician_name:
+                                    row.technician_name ??
+                                    "Teknisi tidak ditemukan",
+                                role: row.role,
+                            });
+                            return acc;
+                        },
+                        {},
+                    );
+                } else {
+                    console.warn(
+                        "Technician summary lookup skipped:",
+                        technicianSummaryError.message,
+                    );
+                }
+            }
+
+            if (requestIds.length > 0 && Object.keys(jobTechnicianMap).length === 0) {
                 const { data: jobTechnicianRows, error: jobTechniciansError } =
                     await supabase
                         .from("job_technicians")
-                        .select("job_id, technician_id")
+                        .select("job_id, technician_id, role")
                         .in("job_id", requestIds);
 
                 if (jobTechniciansError) {
@@ -678,6 +715,7 @@ export default function AdminRequestsPage() {
                                 technician_name:
                                     technicianNameMap[row.technician_id] ??
                                     "Teknisi tidak ditemukan",
+                                role: row.role,
                             });
                             return acc;
                         },
