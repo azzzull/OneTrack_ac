@@ -9,6 +9,63 @@ import {
     notifyEvent,
 } from "../services/notificationEvents";
 
+const getLocalDateKey = (date = new Date()) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+const getRecentAttendanceDateKeys = () => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    return [getLocalDateKey(today), getLocalDateKey(yesterday)];
+};
+
+const OPEN_SESSION_LOOKBACK_HOURS = 36;
+
+const isRecentOpenAttendance = (record, now = new Date()) => {
+    if (!record?.check_in_time || record.check_out_time) return false;
+
+    const recentDateKeys = getRecentAttendanceDateKeys();
+    if (recentDateKeys.includes(record.attendance_date)) return true;
+
+    const checkInTime = new Date(record.check_in_time);
+    if (Number.isNaN(checkInTime.getTime())) return false;
+
+    const ageHours = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+    return ageHours >= 0 && ageHours <= OPEN_SESSION_LOOKBACK_HOURS;
+};
+
+const getActiveOpenAttendance = async (technicianId, attendanceId = null) => {
+    let query = supabase
+        .from("attendance")
+        .select("*")
+        .eq("technician_id", technicianId)
+        .is("check_out_time", null);
+
+    if (attendanceId) {
+        query = query.eq("id", attendanceId).limit(1);
+    } else {
+        query = query
+            .in("attendance_date", getRecentAttendanceDateKeys())
+            .order("check_in_time", { ascending: false })
+            .limit(10);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    const active = rows.find((row) => isRecentOpenAttendance(row));
+
+    return {
+        active: active || null,
+        staleOpenRecords: rows.filter((row) => !isRecentOpenAttendance(row)),
+    };
+};
+
 /**
  * Hook for attendance check-in/check-out operations
  */
@@ -52,7 +109,7 @@ export const useAttendance = () => {
                 }
 
                 // Insert attendance record with check-in data
-                const today = new Date().toISOString().split("T")[0];
+                const today = getLocalDateKey();
                 const checkInTime = new Date().toISOString();
 
                 const { data, error: insertError } = await supabase
@@ -125,9 +182,10 @@ export const useAttendance = () => {
      * Record check-out to database (update existing today's record)
      * @param {string} technicianId - Technician ID
      * @param {object} locationData - Optional pre-captured location data (from modal)
+     * @param {string} attendanceId - Optional active attendance row ID shown in UI
      */
     const recordCheckOut = useCallback(
-        async (technicianId, locationData = null) => {
+        async (technicianId, locationData = null, attendanceId = null) => {
             setLoading(true);
             setError(null);
 
@@ -158,19 +216,18 @@ export const useAttendance = () => {
 
                 const checkOutTime = new Date().toISOString();
 
-                const { data: existingRecord, error: selectError } =
-                    await supabase
-                        .from("attendance")
-                        .select("*")
-                        .eq("technician_id", technicianId)
-                        .is("check_out_time", null)
-                        .order("check_in_time", { ascending: false })
-                        .limit(1)
-                        .maybeSingle();
+                const {
+                    active: existingRecord,
+                    staleOpenRecords,
+                } = await getActiveOpenAttendance(technicianId, attendanceId);
 
-                if (selectError || !existingRecord) {
+                if (!existingRecord) {
+                    const staleMessage =
+                        staleOpenRecords.length > 0
+                            ? "Ada data absensi lama yang belum checkout. Data lama itu tidak dipakai untuk checkout hari ini; minta admin menutup atau memperbaikinya."
+                            : "Tidak ada sesi check-in aktif untuk hari ini.";
                     throw new Error(
-                        "Tidak ada record check-in untuk hari ini. Silakan lakukan check-in terlebih dahulu.",
+                        staleMessage,
                     );
                 }
 
@@ -260,20 +317,9 @@ export const useAttendance = () => {
         setError(null);
 
         try {
-            const today = new Date().toISOString().split("T")[0];
-
-            const { data: openRecord, error: openError } = await supabase
-                .from("attendance")
-                .select("*")
-                .eq("technician_id", technicianId)
-                .is("check_out_time", null)
-                .order("check_in_time", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (openError) {
-                throw openError;
-            }
+            const today = getLocalDateKey();
+            const { active: openRecord } =
+                await getActiveOpenAttendance(technicianId);
 
             if (openRecord) {
                 setLoading(false);
@@ -285,6 +331,8 @@ export const useAttendance = () => {
                 .select("*")
                 .eq("technician_id", technicianId)
                 .eq("attendance_date", today)
+                .order("check_in_time", { ascending: false })
+                .limit(1)
                 .maybeSingle();
 
             if (selectError) {

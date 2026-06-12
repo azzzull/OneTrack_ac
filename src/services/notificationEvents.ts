@@ -40,6 +40,13 @@ type TechnicianRecipientRow = {
     id?: string | null;
 };
 
+type ProfileNameRow = {
+    first_name?: string | null;
+    last_name?: string | null;
+    name?: string | null;
+    email?: string | null;
+};
+
 const uniqueStrings = (values: Array<string | null | undefined>) =>
     [...new Set(values.map((value) => String(value ?? "").trim()))].filter(
         Boolean,
@@ -54,6 +61,30 @@ export const formatRupiah = (value: unknown) =>
         currency: "IDR",
         maximumFractionDigits: 0,
     }).format(Number(value ?? 0));
+
+const getProfileDisplayName = (profile?: ProfileNameRow | null) =>
+    `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() ||
+    String(profile?.name ?? "").trim() ||
+    String(profile?.email ?? "").trim() ||
+    "";
+
+const getTechnicianName = async (technicianId?: unknown) => {
+    const id = String(technicianId ?? "").trim();
+    if (!id) return "";
+
+    const { data, error } = await supabase
+        .from("profiles")
+        .select("first_name, last_name, name, email")
+        .eq("id", id)
+        .maybeSingle();
+
+    if (error) {
+        console.warn("[notifyEvent] technician profile lookup skipped:", error.message);
+        return "";
+    }
+
+    return getProfileDisplayName(data);
+};
 
 export const formatStatusLabel = (value: unknown) => {
     const key = String(value ?? "")
@@ -253,7 +284,11 @@ export const notifyEvent = async (
 
     try {
         const customerName = String(payload.customer_name ?? "customer").trim();
-        const technicianName = String(payload.technician_name ?? "Teknisi").trim();
+        let technicianName = String(payload.technician_name ?? "").trim();
+        if (!technicianName) {
+            technicianName = await getTechnicianName(payload.technician_id);
+        }
+        if (!technicianName) technicianName = "Teknisi";
         const requestId = String(payload.request_id ?? "").trim() || null;
         const accommodationId =
             String(payload.accommodation_id ?? "").trim() || null;
@@ -455,16 +490,18 @@ export const notifyEvent = async (
         }
 
         if (type === NOTIFICATION_EVENT_TYPES.ATTENDANCE_STATUS_CHANGED) {
+            const attendanceActorName =
+                technicianName === "Teknisi" ? "Pengguna" : technicianName;
             return invokePushNotification({
                 recipientRoles: ["admin", "management"],
                 recipientUserIds: uniqueStrings([String(payload.technician_id ?? "")]),
                 title: "Status Absensi Berubah",
-                body: `${technicianName} memperbarui status absensi: ${formatStatusLabel(payload.status)}.`,
+                body: `${attendanceActorName} memperbarui status absensi: ${formatStatusLabel(payload.status)}.`,
                 type,
                 referenceTable: "attendance",
                 referenceId: String(payload.attendance_id ?? "").trim() || null,
                 data: {
-                    technician_name: technicianName,
+                    technician_name: attendanceActorName,
                     technician_id: payload.technician_id ?? null,
                     attendance_id: payload.attendance_id ?? null,
                     status: payload.status ?? null,

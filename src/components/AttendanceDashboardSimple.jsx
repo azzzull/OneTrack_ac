@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Clock, CheckCircle2, X } from "lucide-react";
+import { Clock, CheckCircle2 } from "lucide-react";
 import { useRealtimeClock } from "../hooks/useRealtimeClock";
 import { useAttendance, formatTimeShort } from "../hooks/useAttendance";
 import AttendanceCheckInModal from "./AttendanceCheckInModal";
@@ -26,7 +26,6 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
     const [overtimeConfirmOpen, setOvertimeConfirmOpen] = useState(false);
     const [overtimeSubmitOpen, setOvertimeSubmitOpen] = useState(false);
     const [overtimeSaving, setOvertimeSaving] = useState(false);
-    const [declineReason, setDeclineReason] = useState("Tidak Lembur");
     const [loadingAttendance, setLoadingAttendance] = useState(true);
 
     React.useEffect(() => {
@@ -55,7 +54,11 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
             if (modalType === "check-in") {
                 result = await recordCheckIn(technicianId, locationData);
             } else {
-                result = await recordCheckOut(technicianId, locationData);
+                result = await recordCheckOut(
+                    technicianId,
+                    locationData,
+                    todayAttendance?.id,
+                );
             }
 
             if (result.success) {
@@ -118,12 +121,12 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
         try {
             await markAttendanceOvertimeNotSubmitted({
                 attendanceId: todayAttendance.id,
-                reason: declineReason,
+                reason: "Tidak Lembur",
             });
             setTodayAttendance((prev) => ({
                 ...prev,
                 overtime_submission_status: "not_submitted",
-                overtime_not_submitted_reason: declineReason,
+                overtime_not_submitted_reason: "Tidak Lembur",
             }));
             setOvertimeConfirmOpen(false);
             onDataChange?.();
@@ -257,51 +260,27 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
             {overtimeConfirmOpen && todayAttendance && (
                 <div className="fixed inset-0 z-9999 flex items-center justify-center bg-slate-950/50 p-4">
                     <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-                        <div className="mb-4 flex items-start justify-between gap-3">
-                            <div>
-                                <h2 className="text-lg font-semibold text-slate-900">
-                                    Checkout Melebihi Jam Kerja Normal
-                                </h2>
-                                <p className="mt-2 text-sm text-slate-600">
-                                    Anda checkout pada pukul{" "}
-                                    <span className="font-semibold">
-                                        {formatTimeShort(
-                                            todayAttendance.check_out_time,
-                                        )}
-                                    </span>
-                                    . Sistem mendeteksi potensi lembur selama{" "}
-                                    <span className="font-semibold">
-                                        {formatOvertimeDuration(
-                                            todayAttendance.overtime_eligible_duration_minutes,
-                                        )}
-                                    </span>
-                                    . Apakah Anda ingin mengajukan lembur?
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => setOvertimeConfirmOpen(false)}
-                                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
-                            >
-                                <X size={18} />
-                            </button>
+                        <div className="mb-5">
+                            <h2 className="text-lg font-semibold text-slate-900">
+                                Potensi Lembur Terdeteksi
+                            </h2>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">
+                                Anda checkout pada pukul{" "}
+                                <span className="font-semibold">
+                                    {formatTimeShort(
+                                        todayAttendance.check_out_time,
+                                    )}
+                                </span>
+                                , melewati batas jam kerja normal. Sistem
+                                mendeteksi potensi lembur selama{" "}
+                                <span className="font-semibold">
+                                    {formatOvertimeDuration(
+                                        todayAttendance.overtime_eligible_duration_minutes,
+                                    )}
+                                </span>
+                                . Apakah Anda ingin mengajukan lembur?
+                            </p>
                         </div>
-
-                        <label className="mb-4 block">
-                            <span className="mb-2 block text-xs font-medium text-slate-600">
-                                Alasan jika tidak mengajukan
-                            </span>
-                            <select
-                                value={declineReason}
-                                onChange={(event) =>
-                                    setDeclineReason(event.target.value)
-                                }
-                                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                            >
-                                <option>Lupa Checkout</option>
-                                <option>Tidak Lembur</option>
-                                <option>Lainnya</option>
-                            </select>
-                        </label>
 
                         <div className="flex gap-2">
                             <button
@@ -310,7 +289,7 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                                 disabled={overtimeSaving}
                                 className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                             >
-                                Tidak Mengajukan
+                                Tidak
                             </button>
                             <button
                                 type="button"
@@ -321,7 +300,7 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
                                 disabled={overtimeSaving}
                                 className="flex-1 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600 disabled:opacity-60"
                             >
-                                Ajukan Lembur
+                                Ya, Ajukan
                             </button>
                         </div>
                     </div>

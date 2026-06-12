@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, MapPin, Loader, AlertCircle } from "lucide-react";
 import LeafletMap from "./Maps/LeafletMap";
 import { getCurrentLocationWithRetry } from "../utils/geoLocation";
@@ -14,6 +14,7 @@ const AttendanceCheckInModal = ({
     const [gpsLoading, setGpsLoading] = useState(false);
     const [locationData, setLocationData] = useState(null);
     const [error, setError] = useState(null);
+    const previousOpenRef = useRef(false);
 
     const handleGetLocation = async () => {
         setGpsLoading(true);
@@ -55,10 +56,18 @@ const AttendanceCheckInModal = ({
     };
 
     useEffect(() => {
-        if (isOpen && type === "check-in" && !locationData && !gpsLoading) {
+        if (isOpen && !previousOpenRef.current) {
+            setLocationData(null);
+            setError(null);
+        }
+        previousOpenRef.current = isOpen;
+    }, [isOpen, type]);
+
+    useEffect(() => {
+        if (isOpen && !locationData && !gpsLoading) {
             handleGetLocation();
         }
-    }, [isOpen, type, locationData, gpsLoading]);
+    }, [isOpen, locationData, gpsLoading]);
 
     if (!isOpen) return null;
 
@@ -123,8 +132,8 @@ const AttendanceCheckInModal = ({
                             ) : (
                                 <>
                                     <p className="text-sm text-slate-600">
-                                        Klik tombol di bawah untuk mengambil
-                                        lokasi Anda dengan GPS
+                                        Mengambil lokasi GPS otomatis untuk
+                                        absen pulang...
                                     </p>
                                     {error && (
                                         <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3">
@@ -137,26 +146,23 @@ const AttendanceCheckInModal = ({
                                             </p>
                                         </div>
                                     )}
-                                    <button
-                                        onClick={handleGetLocation}
-                                        disabled={gpsLoading}
-                                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 py-3 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-70"
-                                    >
-                                        {gpsLoading ? (
-                                            <>
-                                                <Loader
-                                                    size={16}
-                                                    className="animate-spin"
-                                                />
-                                                Mengambil Lokasi...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <MapPin size={16} />
-                                                Ambil Lokasi GPS
-                                            </>
-                                        )}
-                                    </button>
+                                    <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 py-3 text-sm font-medium text-slate-700">
+                                        <Loader
+                                            size={16}
+                                            className="animate-spin"
+                                        />
+                                        Mengambil Lokasi...
+                                    </div>
+                                    {error && (
+                                        <button
+                                            onClick={handleGetLocation}
+                                            disabled={gpsLoading}
+                                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-70"
+                                        >
+                                            <MapPin size={16} />
+                                            Coba Lagi Ambil GPS
+                                        </button>
+                                    )}
                                 </>
                             )}
                         </div>
