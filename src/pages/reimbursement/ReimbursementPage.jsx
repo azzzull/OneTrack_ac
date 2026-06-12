@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     Banknote,
+    BarChart3,
     Camera,
     Check,
-    Download,
     Eye,
     FileImage,
     Filter,
@@ -19,13 +19,9 @@ import ImagePreviewModal from "../../components/ImagePreviewModal";
 import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
+import { useNavigate } from "react-router-dom";
 import supabase from "../../supabaseClient";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
-import {
-    exportStyledExcel,
-    makeExcelFileName,
-    parseExcelDate,
-} from "../../utils/excelExport";
 import {
     REIMBURSEMENT_STATUS_LABELS,
     REIMBURSEMENT_STATUS_STYLES,
@@ -106,54 +102,6 @@ const matchesPeriod = (row, filters) => {
         if (filters.dateTo && dateKey > filters.dateTo) return false;
     }
     return true;
-};
-
-const SummaryCard = ({ label, value, tone = "sky", className = "" }) => {
-    const toneClass =
-        {
-            sky: {
-                card: "bg-blue-50 border-blue-200",
-                label: "text-blue-600",
-                value: "text-blue-900",
-            },
-            amber: {
-                card: "bg-yellow-50 border-yellow-200",
-                label: "text-yellow-600",
-                value: "text-yellow-900",
-            },
-            emerald: {
-                card: "bg-green-50 border-green-200",
-                label: "text-green-600",
-                value: "text-green-900",
-            },
-            red: {
-                card: "bg-red-50 border-red-200",
-                label: "text-red-600",
-                value: "text-red-900",
-            },
-            slate: {
-                card: "bg-purple-50 border-purple-200",
-                label: "text-purple-600",
-                value: "text-purple-900",
-            },
-        }[tone] ?? {
-            card: "bg-blue-50 border-blue-200",
-            label: "text-blue-600",
-            value: "text-blue-900",
-        };
-
-    return (
-        <div
-            className={`rounded-2xl border-2 p-4 ${toneClass.card} ${className}`}
-        >
-            <p className={`text-sm font-medium ${toneClass.label}`}>
-                {label}
-            </p>
-            <p className={`mt-2 break-words text-3xl font-bold ${toneClass.value}`}>
-                {value}
-            </p>
-        </div>
-    );
 };
 
 const FilePicker = ({ files, onAddFiles, onRemoveFile }) => {
@@ -383,6 +331,7 @@ function FilePreview({ file, onRemove }) {
 export default function ReimbursementPage() {
     const { collapsed, toggle } = useSidebarCollapsed();
     const { user, role } = useAuth();
+    const navigate = useNavigate();
     const [rows, setRows] = useState([]);
     const [requesters, setRequesters] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -495,26 +444,6 @@ export default function ReimbursementPage() {
             return true;
         });
     }, [filters, rows]);
-
-    const summary = useMemo(() => {
-        const result = {
-            total: filteredRows.length,
-            pending: 0,
-            approved: 0,
-            rejected: 0,
-            claimAmount: 0,
-            approvedAmount: 0,
-        };
-        for (const row of filteredRows) {
-            if (result[row.status] !== undefined) result[row.status] += 1;
-            result.claimAmount += Number(row.claim_amount ?? 0);
-            result.approvedAmount += Number(row.approved_amount ?? 0);
-        }
-        return {
-            ...result,
-            difference: result.claimAmount - result.approvedAmount,
-        };
-    }, [filteredRows]);
 
     const addReceiptFiles = (fileList) => {
         const nextFiles = Array.from(fileList ?? []);
@@ -662,66 +591,6 @@ export default function ReimbursementPage() {
         window.open(url, "_blank", "noopener,noreferrer");
     };
 
-    const exportExcel = async () => {
-        const rowsForExcel = filteredRows.map((row, index) => {
-            const claim = Number(row.claim_amount ?? 0);
-            const approved = Number(row.approved_amount ?? 0);
-            return {
-                no: index + 1,
-                id: row.id,
-                requesterName: getDisplayName(row.requester),
-                role: row.requester?.role ?? "-",
-                createdAt: parseExcelDate(row.created_at),
-                transactionDate: parseExcelDate(row.transaction_date),
-                description: row.description,
-                claimAmount: claim,
-                approvedAmount: approved,
-                difference: claim - approved,
-                status: REIMBURSEMENT_STATUS_LABELS[row.status] ?? row.status,
-                approvedBy: getDisplayName(row.approver),
-                approvedAt: parseExcelDate(row.approved_at),
-                rejectionReason: row.rejection_reason || "-",
-                approvalNote: row.approval_note || "-",
-            };
-        });
-
-        await exportStyledExcel({
-            fileName: makeExcelFileName(["reimburse", todayKey().slice(0, 7)]),
-            sheetName: "Reimburse",
-            title: "Laporan Reimburse",
-            filterRows: [
-                ["Periode", filters.period],
-                ["Status", filters.status],
-                ["Pengaju", filters.requesterId ? getDisplayName(requesters.find((item) => item.id === filters.requesterId)) : "Semua"],
-            ],
-            columns: [
-                { key: "no", header: "No" },
-                { key: "id", header: "ID Reimburse" },
-                { key: "requesterName", header: "Nama Pengaju" },
-                { key: "role", header: "Role" },
-                { key: "createdAt", header: "Tanggal Pengajuan" },
-                { key: "transactionDate", header: "Tanggal Transaksi" },
-                { key: "description", header: "Keterangan" },
-                { key: "claimAmount", header: "Nominal Klaim" },
-                { key: "approvedAmount", header: "Nominal Disetujui" },
-                { key: "difference", header: "Selisih" },
-                { key: "status", header: "Status" },
-                { key: "approvedBy", header: "Approved By" },
-                { key: "approvedAt", header: "Tanggal Approval" },
-                { key: "rejectionReason", header: "Alasan Penolakan" },
-                { key: "approvalNote", header: "Catatan Approval" },
-            ],
-            rows: rowsForExcel,
-            dateKeys: ["createdAt", "transactionDate", "approvedAt"],
-            currencyKeys: ["claimAmount", "approvedAmount", "difference"],
-            wrapKeys: ["description", "rejectionReason", "approvalNote"],
-            summaryRows: [
-                ["Total Nominal Klaim", summary.claimAmount, "currency"],
-                ["Total Nominal Disetujui", summary.approvedAmount, "currency"],
-            ],
-        });
-    };
-
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="flex min-h-screen">
@@ -739,12 +608,11 @@ export default function ReimbursementPage() {
                         {canReview && (
                             <button
                                 type="button"
-                                onClick={exportExcel}
-                                disabled={filteredRows.length === 0}
-                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
+                                onClick={() => navigate("/reimburse/reports")}
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
                             >
-                                <Download size={16} />
-                                Export Excel
+                                <BarChart3 size={16} />
+                                Report Reimburse
                             </button>
                         )}
                     </div>
@@ -752,27 +620,6 @@ export default function ReimbursementPage() {
                     {error && (
                         <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                             {error}
-                        </div>
-                    )}
-
-                    {canReview && (
-                        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3">
-                            <SummaryCard label="Total Klaim" value={summary.total} />
-                            <SummaryCard label="Pending" value={summary.pending} tone="amber" />
-                            <SummaryCard label="Approved" value={summary.approved} tone="emerald" />
-                            <SummaryCard label="Rejected" value={summary.rejected} tone="red" />
-                            <SummaryCard
-                                label="Nominal Klaim"
-                                value={formatCurrency(summary.claimAmount)}
-                                className="col-span-2 md:col-span-1"
-                            />
-                            <SummaryCard
-                                label="Disetujui"
-                                value={formatCurrency(summary.approvedAmount)}
-                                tone="emerald"
-                                className="col-span-2 md:col-span-1"
-                            />
-                            <SummaryCard label="Selisih" value={formatCurrency(summary.difference)} tone="slate" />
                         </div>
                     )}
 

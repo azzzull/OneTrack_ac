@@ -16,6 +16,7 @@ import AccommodationPage from "@/pages/accommodation/AccommodationPage";
 import AccommodationReports from "@/pages/accommodation/AccommodationReports";
 import OvertimeManagement from "@/pages/overtime/OvertimeManagement";
 import ReimbursementPage from "@/pages/reimbursement/ReimbursementPage";
+import ReimbursementReports from "@/pages/reimbursement/ReimbursementReports";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
 import TechnicianAttendanceHistoryPage from "@/pages/technician/AttendanceHistory";
 import CustomerDashboard from "@/pages/customer/Dashboard";
@@ -230,6 +231,14 @@ function App() {
                             allowedRoles={["admin", "management", "technician"]}
                         >
                             <ReimbursementPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/reimburse/reports"
+                    element={
+                        <ProtectedRoute allowedRoles={["admin", "management"]}>
+                            <ReimbursementReports />
                         </ProtectedRoute>
                     }
                 />
