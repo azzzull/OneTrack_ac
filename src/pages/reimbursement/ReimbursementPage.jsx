@@ -1,0 +1,1068 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    Banknote,
+    Check,
+    Download,
+    Eye,
+    FileImage,
+    Filter,
+    Loader,
+    Plus,
+    Receipt,
+    Search,
+    Upload,
+    X,
+} from "lucide-react";
+import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import ImagePreviewModal from "../../components/ImagePreviewModal";
+import CustomSelect from "../../components/ui/CustomSelect";
+import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
+import { useAuth } from "../../context/useAuth";
+import supabase from "../../supabaseClient";
+import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
+import {
+    exportStyledExcel,
+    makeExcelFileName,
+    parseExcelDate,
+} from "../../utils/excelExport";
+import {
+    REIMBURSEMENT_STATUS_LABELS,
+    REIMBURSEMENT_STATUS_STYLES,
+    addReimbursementAttachments,
+    approveReimbursement,
+    createReimbursement,
+    formatCurrency,
+    getDisplayName,
+    loadReimbursementRequesters,
+    loadReimbursements,
+    rejectReimbursement,
+    uploadReimbursementFile,
+} from "../../services/reimbursementService";
+
+const todayKey = () => new Date().toISOString().slice(0, 10);
+
+const formatDate = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+    });
+};
+
+const formatDateTime = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+};
+
+const toDateKey = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toISOString().slice(0, 10);
+};
+
+const isImageUrl = (url) =>
+    /\.(png|jpe?g|webp|gif|bmp|avif)(\?.*)?$/i.test(String(url ?? ""));
+
+const getWeekStart = (date) => {
+    const next = new Date(date);
+    const day = next.getDay() || 7;
+    next.setDate(next.getDate() - day + 1);
+    next.setHours(0, 0, 0, 0);
+    return next.toISOString().slice(0, 10);
+};
+
+const matchesPeriod = (row, filters) => {
+    const dateKey = toDateKey(row.transaction_date);
+    if (!dateKey) return false;
+    const now = new Date();
+
+    if (filters.period === "today") return dateKey === todayKey();
+    if (filters.period === "week") return dateKey >= getWeekStart(now);
+    if (filters.period === "month") return dateKey.startsWith(todayKey().slice(0, 7));
+    if (filters.period === "year") return dateKey.startsWith(String(now.getFullYear()));
+    if (filters.period === "custom") {
+        if (filters.dateFrom && dateKey < filters.dateFrom) return false;
+        if (filters.dateTo && dateKey > filters.dateTo) return false;
+    }
+    return true;
+};
+
+const SummaryCard = ({ label, value, tone = "sky", className = "" }) => {
+    const toneClass =
+        {
+            sky: {
+                card: "bg-blue-50 border-blue-200",
+                label: "text-blue-600",
+                value: "text-blue-900",
+            },
+            amber: {
+                card: "bg-yellow-50 border-yellow-200",
+                label: "text-yellow-600",
+                value: "text-yellow-900",
+            },
+            emerald: {
+                card: "bg-green-50 border-green-200",
+                label: "text-green-600",
+                value: "text-green-900",
+            },
+            red: {
+                card: "bg-red-50 border-red-200",
+                label: "text-red-600",
+                value: "text-red-900",
+            },
+            slate: {
+                card: "bg-purple-50 border-purple-200",
+                label: "text-purple-600",
+                value: "text-purple-900",
+            },
+        }[tone] ?? {
+            card: "bg-blue-50 border-blue-200",
+            label: "text-blue-600",
+            value: "text-blue-900",
+        };
+
+    return (
+        <div
+            className={`rounded-2xl border-2 p-4 ${toneClass.card} ${className}`}
+        >
+            <p className={`text-sm font-medium ${toneClass.label}`}>
+                {label}
+            </p>
+            <p className={`mt-2 break-words text-3xl font-bold ${toneClass.value}`}>
+                {value}
+            </p>
+        </div>
+    );
+};
+
+const FilePicker = ({ files, onAddFiles, onRemoveFile }) => (
+    <div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm font-semibold text-sky-700 hover:bg-sky-100">
+                <FileImage size={16} />
+                Upload file
+                <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => onAddFiles(event.target.files)}
+                />
+            </label>
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                <Upload size={16} />
+                Kamera
+                <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => onAddFiles(event.target.files)}
+                />
+            </label>
+        </div>
+        {files.length > 0 && (
+            <div className="mt-3 space-y-2">
+                {files.map((file, index) => (
+                    <div
+                        key={`${file.name}-${file.lastModified}-${index}`}
+                        className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                    >
+                        <span className="truncate">{file.name}</span>
+                        <button
+                            type="button"
+                            onClick={() => onRemoveFile(index)}
+                            className="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            aria-label="Hapus file"
+                        >
+                            <X size={15} />
+                        </button>
+                    </div>
+                ))}
+            </div>
+        )}
+    </div>
+);
+
+export default function ReimbursementPage() {
+    const { collapsed, toggle } = useSidebarCollapsed();
+    const { user, role } = useAuth();
+    const [rows, setRows] = useState([]);
+    const [requesters, setRequesters] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+    const [requestModalOpen, setRequestModalOpen] = useState(false);
+    const [selected, setSelected] = useState(null);
+    const [reviewTarget, setReviewTarget] = useState(null);
+    const [reviewMode, setReviewMode] = useState("approve");
+    const [preview, setPreview] = useState({ src: "", title: "" });
+    const [form, setForm] = useState({
+        transactionDate: todayKey(),
+        claimAmount: "",
+        description: "",
+        receiptFiles: [],
+    });
+    const [reviewForm, setReviewForm] = useState({
+        approvedAmount: "",
+        approvalNote: "",
+        rejectionReason: "",
+        transferFile: null,
+    });
+    const [filters, setFilters] = useState({
+        period: "month",
+        dateFrom: "",
+        dateTo: "",
+        requesterId: "",
+        status: "all",
+        search: "",
+    });
+    const channelRef = useRef(null);
+
+    const canReview = ["admin", "management"].includes(role);
+    const canCreate = ["technician", "admin", "management"].includes(role);
+
+    const loadData = useCallback(async () => {
+        if (!user?.id || !role) return;
+        setLoading(true);
+        setError("");
+        try {
+            const [reimbursements, requesterRows] = await Promise.all([
+                loadReimbursements({ role, userId: user.id }),
+                canReview ? loadReimbursementRequesters() : Promise.resolve([]),
+            ]);
+            setRows(reimbursements);
+            setRequesters(requesterRows);
+        } catch (loadError) {
+            console.error("Reimbursement load failed:", loadError);
+            const message = loadError.message || "Gagal memuat data reimburse.";
+            setError(
+                message.includes("schema cache") ||
+                    message.includes("reimbursements")
+                    ? "Tabel reimbursements belum tersedia di database Supabase. Jalankan migrasi Reimburse, lalu refresh schema cache/project."
+                    : message,
+            );
+            setRows([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [canReview, role, user?.id]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    useEffect(() => {
+        if (!user?.id) return undefined;
+        const channelName = createUniqueChannelName("reimbursements", user.id);
+        channelRef.current = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "reimbursements" },
+                loadData,
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "reimbursement_attachments",
+                },
+                loadData,
+            )
+            .subscribe();
+
+        return () => {
+            if (channelRef.current) supabase.removeChannel(channelRef.current);
+        };
+    }, [loadData, user?.id]);
+
+    const filteredRows = useMemo(() => {
+        const search = filters.search.trim().toLowerCase();
+        return rows.filter((row) => {
+            if (filters.status !== "all" && row.status !== filters.status) return false;
+            if (filters.requesterId && row.requester_id !== filters.requesterId) return false;
+            if (!matchesPeriod(row, filters)) return false;
+            if (search) {
+                const text = [
+                    getDisplayName(row.requester),
+                    row.description,
+                    row.claim_amount,
+                    row.approved_amount,
+                    REIMBURSEMENT_STATUS_LABELS[row.status],
+                ]
+                    .join(" ")
+                    .toLowerCase();
+                if (!text.includes(search)) return false;
+            }
+            return true;
+        });
+    }, [filters, rows]);
+
+    const summary = useMemo(() => {
+        const result = {
+            total: filteredRows.length,
+            pending: 0,
+            approved: 0,
+            rejected: 0,
+            claimAmount: 0,
+            approvedAmount: 0,
+        };
+        for (const row of filteredRows) {
+            if (result[row.status] !== undefined) result[row.status] += 1;
+            result.claimAmount += Number(row.claim_amount ?? 0);
+            result.approvedAmount += Number(row.approved_amount ?? 0);
+        }
+        return {
+            ...result,
+            difference: result.claimAmount - result.approvedAmount,
+        };
+    }, [filteredRows]);
+
+    const addReceiptFiles = (fileList) => {
+        const nextFiles = Array.from(fileList ?? []);
+        setForm((prev) => ({
+            ...prev,
+            receiptFiles: [...prev.receiptFiles, ...nextFiles],
+        }));
+    };
+
+    const resetForm = () => {
+        setForm({
+            transactionDate: todayKey(),
+            claimAmount: "",
+            description: "",
+            receiptFiles: [],
+        });
+    };
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        if (!canCreate || !user?.id) return;
+        if (Number(form.claimAmount) <= 0) {
+            alert("Nominal klaim wajib lebih dari 0.");
+            return;
+        }
+        if (!form.description.trim()) {
+            alert("Keterangan wajib diisi.");
+            return;
+        }
+        if (!form.transactionDate) {
+            alert("Tanggal transaksi wajib diisi.");
+            return;
+        }
+        if (form.receiptFiles.length === 0) {
+            alert("Minimal upload 1 bukti nota.");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const created = await createReimbursement({
+                requesterId: user.id,
+                transactionDate: form.transactionDate,
+                claimAmount: form.claimAmount,
+                description: form.description.trim(),
+            });
+            const uploadedFiles = await Promise.all(
+                form.receiptFiles.map((file) =>
+                    uploadReimbursementFile({
+                        file,
+                        reimbursementId: created.id,
+                        kind: "receipt",
+                    }),
+                ),
+            );
+            await addReimbursementAttachments({
+                reimbursementId: created.id,
+                files: uploadedFiles,
+                uploadedBy: user.id,
+            });
+            resetForm();
+            setRequestModalOpen(false);
+            await loadData();
+        } catch (submitError) {
+            alert(submitError.message || "Gagal membuat reimburse.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const openReview = (row, mode) => {
+        setReviewTarget(row);
+        setReviewMode(mode);
+        setReviewForm({
+            approvedAmount: row.claim_amount ? String(Number(row.claim_amount)) : "",
+            approvalNote: "",
+            rejectionReason: "",
+            transferFile: null,
+        });
+    };
+
+    const handleReviewSubmit = async (event) => {
+        event.preventDefault();
+        if (!reviewTarget || !user?.id) return;
+
+        if (reviewMode === "approve") {
+            if (Number(reviewForm.approvedAmount) <= 0) {
+                alert("Nominal disetujui wajib lebih dari 0.");
+                return;
+            }
+            if (!reviewForm.transferFile) {
+                alert("Bukti transfer wajib diupload.");
+                return;
+            }
+        } else if (!reviewForm.rejectionReason.trim()) {
+            alert("Alasan penolakan wajib diisi.");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            if (reviewMode === "approve") {
+                const uploaded = await uploadReimbursementFile({
+                    file: reviewForm.transferFile,
+                    reimbursementId: reviewTarget.id,
+                    kind: "transfer",
+                });
+                await approveReimbursement({
+                    reimbursement: reviewTarget,
+                    approvedAmount: reviewForm.approvedAmount,
+                    transferProofUrl: uploaded.url,
+                    approvalNote: reviewForm.approvalNote.trim(),
+                    approvedBy: user.id,
+                });
+            } else {
+                await rejectReimbursement({
+                    reimbursement: reviewTarget,
+                    rejectionReason: reviewForm.rejectionReason.trim(),
+                    approvedBy: user.id,
+                });
+            }
+            setReviewTarget(null);
+            setSelected(null);
+            await loadData();
+        } catch (reviewError) {
+            alert(reviewError.message || "Gagal memproses reimburse.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const openFile = (url, title) => {
+        if (!url) return;
+        if (isImageUrl(url)) {
+            setPreview({ src: url, title });
+            return;
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
+    };
+
+    const exportExcel = async () => {
+        const rowsForExcel = filteredRows.map((row, index) => {
+            const claim = Number(row.claim_amount ?? 0);
+            const approved = Number(row.approved_amount ?? 0);
+            return {
+                no: index + 1,
+                id: row.id,
+                requesterName: getDisplayName(row.requester),
+                role: row.requester?.role ?? "-",
+                createdAt: parseExcelDate(row.created_at),
+                transactionDate: parseExcelDate(row.transaction_date),
+                description: row.description,
+                claimAmount: claim,
+                approvedAmount: approved,
+                difference: claim - approved,
+                status: REIMBURSEMENT_STATUS_LABELS[row.status] ?? row.status,
+                approvedBy: getDisplayName(row.approver),
+                approvedAt: parseExcelDate(row.approved_at),
+                rejectionReason: row.rejection_reason || "-",
+                approvalNote: row.approval_note || "-",
+            };
+        });
+
+        await exportStyledExcel({
+            fileName: makeExcelFileName(["reimburse", todayKey().slice(0, 7)]),
+            sheetName: "Reimburse",
+            title: "Laporan Reimburse",
+            filterRows: [
+                ["Periode", filters.period],
+                ["Status", filters.status],
+                ["Pengaju", filters.requesterId ? getDisplayName(requesters.find((item) => item.id === filters.requesterId)) : "Semua"],
+            ],
+            columns: [
+                { key: "no", header: "No" },
+                { key: "id", header: "ID Reimburse" },
+                { key: "requesterName", header: "Nama Pengaju" },
+                { key: "role", header: "Role" },
+                { key: "createdAt", header: "Tanggal Pengajuan" },
+                { key: "transactionDate", header: "Tanggal Transaksi" },
+                { key: "description", header: "Keterangan" },
+                { key: "claimAmount", header: "Nominal Klaim" },
+                { key: "approvedAmount", header: "Nominal Disetujui" },
+                { key: "difference", header: "Selisih" },
+                { key: "status", header: "Status" },
+                { key: "approvedBy", header: "Approved By" },
+                { key: "approvedAt", header: "Tanggal Approval" },
+                { key: "rejectionReason", header: "Alasan Penolakan" },
+                { key: "approvalNote", header: "Catatan Approval" },
+            ],
+            rows: rowsForExcel,
+            dateKeys: ["createdAt", "transactionDate", "approvedAt"],
+            currencyKeys: ["claimAmount", "approvedAmount", "difference"],
+            wrapKeys: ["description", "rejectionReason", "approvalNote"],
+            summaryRows: [
+                ["Total Nominal Klaim", summary.claimAmount, "currency"],
+                ["Total Nominal Disetujui", summary.approvedAmount, "currency"],
+            ],
+        });
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-50">
+            <div className="flex min-h-screen">
+                <Sidebar collapsed={collapsed} onToggle={toggle} />
+                <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
+                    <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
+                                Reimburse
+                            </h1>
+                            <p className="mt-1 text-sm text-slate-600">
+                                Pengajuan klaim, approval, dan laporan reimburse.
+                            </p>
+                        </div>
+                        {canReview && (
+                            <button
+                                type="button"
+                                onClick={exportExcel}
+                                disabled={filteredRows.length === 0}
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
+                            >
+                                <Download size={16} />
+                                Export Excel
+                            </button>
+                        )}
+                    </div>
+
+                    {error && (
+                        <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            {error}
+                        </div>
+                    )}
+
+                    <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3">
+                        <SummaryCard label={canReview ? "Total Klaim" : "Total Saya"} value={summary.total} />
+                        <SummaryCard label="Pending" value={summary.pending} tone="amber" />
+                        <SummaryCard label="Approved" value={summary.approved} tone="emerald" />
+                        <SummaryCard label="Rejected" value={summary.rejected} tone="red" />
+                        <SummaryCard
+                            label="Nominal Klaim"
+                            value={formatCurrency(summary.claimAmount)}
+                            className="col-span-2 md:col-span-1"
+                        />
+                        <SummaryCard
+                            label="Disetujui"
+                            value={formatCurrency(summary.approvedAmount)}
+                            tone="emerald"
+                            className="col-span-2 md:col-span-1"
+                        />
+                        {canReview && (
+                            <SummaryCard label="Selisih" value={formatCurrency(summary.difference)} tone="slate" />
+                        )}
+                    </div>
+
+                    <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                            <Filter size={16} />
+                            Filter
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                            <CustomSelect
+                                value={filters.period}
+                                onChange={(value) => setFilters((prev) => ({ ...prev, period: value }))}
+                                options={[
+                                    { value: "today", label: "Hari ini" },
+                                    { value: "week", label: "Minggu ini" },
+                                    { value: "month", label: "Bulan ini" },
+                                    { value: "year", label: "Tahun ini" },
+                                    { value: "custom", label: "Custom range" },
+                                ]}
+                            />
+                            {filters.period === "custom" && (
+                                <>
+                                    <input
+                                        type="date"
+                                        value={filters.dateFrom}
+                                        onChange={(event) => setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
+                                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                                    />
+                                    <input
+                                        type="date"
+                                        value={filters.dateTo}
+                                        onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+                                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                                    />
+                                </>
+                            )}
+                            {canReview && (
+                                <CustomSelect
+                                    value={filters.requesterId}
+                                    onChange={(value) => setFilters((prev) => ({ ...prev, requesterId: value }))}
+                                    options={[
+                                        { value: "", label: "Semua pengaju" },
+                                        ...requesters.map((item) => ({
+                                            value: item.id,
+                                            label: getDisplayName(item),
+                                        })),
+                                    ]}
+                                />
+                            )}
+                            <CustomSelect
+                                value={filters.status}
+                                onChange={(value) => setFilters((prev) => ({ ...prev, status: value }))}
+                                options={[
+                                    { value: "all", label: "Semua status" },
+                                    { value: "pending", label: "Pending" },
+                                    { value: "approved", label: "Approved" },
+                                    { value: "rejected", label: "Rejected" },
+                                ]}
+                            />
+                            <label className="relative block">
+                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="search"
+                                    value={filters.search}
+                                    onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
+                                    placeholder="Search"
+                                    className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
+                                />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        {loading ? (
+                            <div className="flex items-center justify-center gap-2 p-8 text-slate-600">
+                                <Loader size={18} className="animate-spin" />
+                                Memuat data...
+                            </div>
+                        ) : filteredRows.length === 0 ? (
+                            <div className="p-8 text-center text-sm text-slate-500">
+                                Tidak ada data reimburse.
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-slate-100">
+                                {filteredRows.map((row) => (
+                                    <div key={row.id} className="p-4">
+                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="font-semibold text-slate-900">
+                                                        {getDisplayName(row.requester)}
+                                                    </p>
+                                                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${REIMBURSEMENT_STATUS_STYLES[row.status]}`}>
+                                                        {REIMBURSEMENT_STATUS_LABELS[row.status]}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-sm text-slate-600">
+                                                    {formatDate(row.transaction_date)} - {row.description}
+                                                </p>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3 text-sm lg:min-w-80">
+                                                <div>
+                                                    <p className="text-xs text-slate-500">Klaim</p>
+                                                    <p className="font-semibold text-slate-900">{formatCurrency(row.claim_amount)}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-slate-500">Disetujui</p>
+                                                    <p className="font-semibold text-slate-900">{row.approved_amount ? formatCurrency(row.approved_amount) : "-"}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelected(row)}
+                                                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                                >
+                                                    <Eye size={15} />
+                                                    Detail
+                                                </button>
+                                                {canReview && row.status === "pending" && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openReview(row, "approve")}
+                                                            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                                                        >
+                                                            <Check size={15} />
+                                                            Approve
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openReview(row, "reject")}
+                                                            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                                                        >
+                                                            <X size={15} />
+                                                            Tolak
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </main>
+            </div>
+            <MobileBottomNav />
+
+            {canCreate && (
+                <button
+                    type="button"
+                    onClick={() => setRequestModalOpen(true)}
+                    className="fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-sky-600 text-white shadow-xl shadow-sky-900/20 hover:bg-sky-700 md:bottom-6"
+                    aria-label="Ajukan reimburse"
+                    title="Ajukan reimburse"
+                >
+                    <Plus size={26} />
+                </button>
+            )}
+
+            {requestModalOpen && (
+                <RequestModal
+                    form={form}
+                    saving={saving}
+                    onChange={setForm}
+                    onAddFiles={addReceiptFiles}
+                    onSubmit={handleSubmit}
+                    onClose={() => {
+                        if (!saving) {
+                            resetForm();
+                            setRequestModalOpen(false);
+                        }
+                    }}
+                />
+            )}
+
+            {selected && (
+                <DetailModal
+                    row={selected}
+                    canReview={canReview}
+                    onClose={() => setSelected(null)}
+                    onOpenFile={openFile}
+                    onReview={openReview}
+                />
+            )}
+
+            {reviewTarget && (
+                <ReviewModal
+                    mode={reviewMode}
+                    row={reviewTarget}
+                    form={reviewForm}
+                    saving={saving}
+                    onChange={setReviewForm}
+                    onSubmit={handleReviewSubmit}
+                    onClose={() => setReviewTarget(null)}
+                />
+            )}
+
+            <ImagePreviewModal
+                title={preview.title}
+                src={preview.src}
+                alt={preview.title}
+                onClose={() => setPreview({ src: "", title: "" })}
+            />
+        </div>
+    );
+}
+
+function RequestModal({
+    form,
+    saving,
+    onChange,
+    onAddFiles,
+    onSubmit,
+    onClose,
+}) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+            <form
+                onSubmit={onSubmit}
+                className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            >
+                <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
+                    <div className="flex items-center gap-2">
+                        <span className="rounded-xl bg-sky-50 p-2 text-sky-600">
+                            <Receipt size={18} />
+                        </span>
+                        <h2 className="text-lg font-semibold text-slate-900">
+                            Pengajuan Reimburse
+                        </h2>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={saving}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-60"
+                        aria-label="Tutup form"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+                <div className="space-y-4 p-5">
+                    <input
+                        type="number"
+                        min="1"
+                        value={form.claimAmount}
+                        onChange={(event) =>
+                            onChange((prev) => ({
+                                ...prev,
+                                claimAmount: event.target.value,
+                            }))
+                        }
+                        placeholder="Nominal klaim"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                    />
+                    <input
+                        type="date"
+                        value={form.transactionDate}
+                        onChange={(event) =>
+                            onChange((prev) => ({
+                                ...prev,
+                                transactionDate: event.target.value,
+                            }))
+                        }
+                        className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                    />
+                    <textarea
+                        value={form.description}
+                        onChange={(event) =>
+                            onChange((prev) => ({
+                                ...prev,
+                                description: event.target.value,
+                            }))
+                        }
+                        placeholder="Keterangan / keperluan"
+                        className="min-h-28 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                    />
+                    <FilePicker
+                        files={form.receiptFiles}
+                        onAddFiles={onAddFiles}
+                        onRemoveFile={(index) =>
+                            onChange((prev) => ({
+                                ...prev,
+                                receiptFiles: prev.receiptFiles.filter(
+                                    (_, itemIndex) => itemIndex !== index,
+                                ),
+                            }))
+                        }
+                    />
+                </div>
+                <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={saving}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                        Batal
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={saving}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:bg-slate-300"
+                    >
+                        {saving ? (
+                            <Loader size={16} className="animate-spin" />
+                        ) : (
+                            <Banknote size={16} />
+                        )}
+                        Submit Reimburse
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
+function DetailModal({ row, canReview, onClose, onOpenFile, onReview }) {
+    const detailRows = [
+        ["ID Reimburse", row.id],
+        ["Nama Pengaju", getDisplayName(row.requester)],
+        ["Role Pengaju", row.requester?.role ?? "-"],
+        ["Tanggal Pengajuan", formatDateTime(row.created_at)],
+        ["Tanggal Transaksi", formatDate(row.transaction_date)],
+        ["Nominal Klaim", formatCurrency(row.claim_amount)],
+        ["Nominal Disetujui", row.approved_amount ? formatCurrency(row.approved_amount) : "-"],
+        ["Status", REIMBURSEMENT_STATUS_LABELS[row.status]],
+        ["Approved By", getDisplayName(row.approver)],
+        ["Tanggal Approval", formatDateTime(row.approved_at)],
+        ["Alasan Penolakan", row.rejection_reason || "-"],
+        ["Catatan Approval", row.approval_note || "-"],
+        ["Created At", formatDateTime(row.created_at)],
+        ["Updated At", formatDateTime(row.updated_at)],
+    ];
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+            <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+                <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
+                    <h2 className="text-lg font-semibold text-slate-900">Detail Reimburse</h2>
+                    <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                        <X size={18} />
+                    </button>
+                </div>
+                <div className="space-y-5 p-5">
+                    <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+                        {row.description}
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {detailRows.map(([label, value]) => (
+                            <div key={label} className="rounded-xl border border-slate-200 p-3">
+                                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+                                <p className="mt-1 break-words text-sm font-semibold text-slate-900">{value}</p>
+                            </div>
+                        ))}
+                    </div>
+                    <div>
+                        <p className="mb-2 text-sm font-semibold text-slate-800">Bukti Nota</p>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {(row.attachments ?? []).map((attachment, index) => (
+                                <button
+                                    key={attachment.id}
+                                    type="button"
+                                    onClick={() => onOpenFile(attachment.file_url, `Bukti nota ${index + 1}`)}
+                                    className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                >
+                                    <FileImage size={16} />
+                                    Bukti nota {index + 1}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {row.transfer_proof_url && (
+                        <button
+                            type="button"
+                            onClick={() => onOpenFile(row.transfer_proof_url, "Bukti transfer")}
+                            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                            <FileImage size={16} />
+                            Lihat bukti transfer
+                        </button>
+                    )}
+                    {canReview && row.status === "pending" && (
+                        <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => onReview(row, "reject")}
+                                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                            >
+                                Tolak
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onReview(row, "approve")}
+                                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                            >
+                                Approve
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ReviewModal({ mode, row, form, saving, onChange, onSubmit, onClose }) {
+    const isApprove = mode === "approve";
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+            <form onSubmit={onSubmit} className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                    <h2 className="text-lg font-semibold text-slate-900">
+                        {isApprove ? "Approve Reimburse" : "Tolak Reimburse"}
+                    </h2>
+                    <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                        <X size={18} />
+                    </button>
+                </div>
+                <div className="space-y-4 p-5">
+                    <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+                        <p className="font-semibold text-slate-900">{getDisplayName(row.requester)}</p>
+                        <p className="mt-1">{row.description}</p>
+                        <p className="mt-2 font-semibold">Klaim: {formatCurrency(row.claim_amount)}</p>
+                    </div>
+                    {isApprove ? (
+                        <>
+                            <input
+                                type="number"
+                                min="1"
+                                value={form.approvedAmount}
+                                onChange={(event) => onChange((prev) => ({ ...prev, approvedAmount: event.target.value }))}
+                                placeholder="Nominal disetujui"
+                                className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                            />
+                            <textarea
+                                value={form.approvalNote}
+                                onChange={(event) => onChange((prev) => ({ ...prev, approvalNote: event.target.value }))}
+                                placeholder="Catatan approval"
+                                className="min-h-24 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                            />
+                            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                                <Upload size={16} />
+                                {form.transferFile?.name || "Upload bukti transfer"}
+                                <input
+                                    type="file"
+                                    accept="image/*,.pdf"
+                                    className="hidden"
+                                    onChange={(event) => onChange((prev) => ({ ...prev, transferFile: event.target.files?.[0] ?? null }))}
+                                />
+                            </label>
+                        </>
+                    ) : (
+                        <textarea
+                            value={form.rejectionReason}
+                            onChange={(event) => onChange((prev) => ({ ...prev, rejectionReason: event.target.value }))}
+                            placeholder="Alasan penolakan"
+                            className="min-h-28 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                        />
+                    )}
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                    <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                        Batal
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={saving}
+                        className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300 ${
+                            isApprove ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
+                        }`}
+                    >
+                        {saving && <Loader size={15} className="animate-spin" />}
+                        {isApprove ? "Approve" : "Tolak"}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}

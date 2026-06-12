@@ -15,6 +15,7 @@ import {
     Clock3,
     Wallet,
     BarChart3,
+    Receipt,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
@@ -45,6 +46,7 @@ const menuByRole = {
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
         { label: "Lembur", path: "/overtime", icon: Clock3 },
+        { label: "Reimburse", path: "/reimburse", icon: Receipt },
     ],
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
@@ -59,6 +61,7 @@ const menuByRole = {
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
         { label: "Lembur", path: "/overtime", icon: Clock3 },
+        { label: "Reimburse", path: "/reimburse", icon: Receipt },
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
@@ -70,6 +73,7 @@ const menuByRole = {
             icon: CalendarDays,
         },
         { label: "Lembur", path: "/overtime", icon: Clock3 },
+        { label: "Reimburse", path: "/reimburse", icon: Receipt },
     ],
     customer: [
         { label: "Dashboard", path: "/customer", icon: LayoutDashboard },
@@ -158,11 +162,86 @@ const usePendingAccommodationCount = (role, userId, isOnline) => {
     return isOnline ? pendingCount : 0;
 };
 
+const usePendingReimbursementCount = (role, userId, isOnline) => {
+    const [pendingCount, setPendingCount] = useState(0);
+
+    useEffect(() => {
+        if (!isOnline || !userId || !["admin", "management"].includes(role)) {
+            return undefined;
+        }
+
+        let mounted = true;
+        let channel = null;
+
+        const loadPendingCount = async () => {
+            const { count, error } = await supabase
+                .from("reimbursements")
+                .select("id", { count: "exact", head: true })
+                .eq("status", "pending");
+
+            if (error) {
+                console.warn(
+                    "[Sidebar] Reimbursement pending count skipped:",
+                    error.message,
+                );
+                if (mounted) setPendingCount(0);
+                return;
+            }
+
+            if (mounted) setPendingCount(count ?? 0);
+        };
+
+        loadPendingCount();
+
+        const channelName = createUniqueChannelName(
+            "reimbursement-pending-badge",
+            userId,
+        );
+        channel = supabase.channel(channelName).on(
+            "postgres_changes",
+            {
+                event: "*",
+                schema: "public",
+                table: "reimbursements",
+            },
+            loadPendingCount,
+        );
+
+        channel.subscribe();
+
+        const intervalId = setInterval(loadPendingCount, 5000);
+        const handleFocus = () => {
+            if (document.visibilityState === "visible") {
+                loadPendingCount();
+            }
+        };
+        document.addEventListener("visibilitychange", handleFocus);
+        window.addEventListener("focus", handleFocus);
+
+        return () => {
+            mounted = false;
+            clearInterval(intervalId);
+            document.removeEventListener("visibilitychange", handleFocus);
+            window.removeEventListener("focus", handleFocus);
+            if (channel) {
+                supabase.removeChannel(channel);
+            }
+        };
+    }, [isOnline, role, userId]);
+
+    return isOnline ? pendingCount : 0;
+};
+
 export default function Sidebar({ collapsed = false, onToggle }) {
     const { user, role, profile, loading, isOnline, logout } = useAuth();
     const navigate = useNavigate();
     const stats = useRequestStats();
     const pendingAccommodationCount = usePendingAccommodationCount(
+        role,
+        user?.id,
+        isOnline,
+    );
+    const pendingReimbursementCount = usePendingReimbursementCount(
         role,
         user?.id,
         isOnline,
@@ -184,6 +263,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             "/customer/request": null,
             "/management/accommodation": pendingAccommodationCount,
             "/admin/accommodation": pendingAccommodationCount,
+            "/reimburse": pendingReimbursementCount,
         };
 
         const count = badgeByPath[menu.path] ?? 0;
@@ -615,6 +695,11 @@ export function MobileBottomNav() {
         user?.id,
         isOnline,
     );
+    const pendingReimbursementCount = usePendingReimbursementCount(
+        role,
+        user?.id,
+        isOnline,
+    );
     const navRef = useRef(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const [moreOpen, setMoreOpen] = useState(false);
@@ -630,6 +715,7 @@ export function MobileBottomNav() {
             "/customer/request": null,
             "/management/accommodation": pendingAccommodationCount,
             "/admin/accommodation": pendingAccommodationCount,
+            "/reimburse": pendingReimbursementCount,
         };
 
         const count = badgeByPath[menu.path] ?? 0;
@@ -732,6 +818,7 @@ export function MobileBottomNav() {
         stats.pending,
         stats.active,
         pendingAccommodationCount,
+        pendingReimbursementCount,
         menus,
     ]);
 

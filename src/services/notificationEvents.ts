@@ -13,6 +13,9 @@ export const NOTIFICATION_EVENT_TYPES = {
     OVERTIME_APPROVED: "overtime_approved",
     OVERTIME_REJECTED: "overtime_rejected",
     OVERTIME_STATUS_CHANGED: "overtime_status_changed",
+    REIMBURSEMENT_REQUESTED: "reimbursement_requested",
+    REIMBURSEMENT_APPROVED: "reimbursement_approved",
+    REIMBURSEMENT_REJECTED: "reimbursement_rejected",
     ATTENDANCE_STATUS_CHANGED: "attendance_status_changed",
 } as const;
 
@@ -29,6 +32,10 @@ type NotifyEventPayload = Record<string, unknown> & {
     amount?: number | string | null;
     status?: string | null;
     overtime_id?: string | null;
+    reimbursement_id?: string | null;
+    requester_id?: string | null;
+    requester_name?: string | null;
+    approved_amount?: number | string | null;
     attendance_id?: string | null;
     duration_minutes?: number | string | null;
 };
@@ -293,6 +300,11 @@ export const notifyEvent = async (
         const accommodationId =
             String(payload.accommodation_id ?? "").trim() || null;
         const amount = payload.amount ?? 0;
+        const reimbursementId =
+            String(payload.reimbursement_id ?? "").trim() || null;
+        const requesterId = String(payload.requester_id ?? "").trim() || null;
+        const requesterName =
+            String(payload.requester_name ?? "").trim() || technicianName;
 
         if (type === NOTIFICATION_EVENT_TYPES.JOB_REQUESTED) {
             return invokePushNotification({
@@ -485,6 +497,57 @@ export const notifyEvent = async (
                     overtime_id: payload.overtime_id ?? null,
                     status: payload.status ?? null,
                     duration_minutes: payload.duration_minutes ?? null,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.REIMBURSEMENT_REQUESTED) {
+            return invokePushNotification({
+                recipientRoles: ["admin", "management"],
+                title: "Pengajuan Reimburse Baru",
+                body: `Ada pengajuan reimburse baru dari ${requesterName} sebesar ${formatRupiah(amount)}.`,
+                type,
+                referenceTable: "reimbursements",
+                referenceId: reimbursementId,
+                data: {
+                    requester_id: requesterId,
+                    requester_name: requesterName,
+                    amount,
+                    reimbursement_id: reimbursementId,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.REIMBURSEMENT_APPROVED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Reimburse Disetujui",
+                body: `Reimburse kamu sebesar ${formatRupiah(amount)} telah disetujui sebesar ${formatRupiah(payload.approved_amount ?? 0)}.`,
+                type,
+                referenceTable: "reimbursements",
+                referenceId: reimbursementId,
+                data: {
+                    requester_id: requesterId,
+                    amount,
+                    approved_amount: payload.approved_amount ?? null,
+                    reimbursement_id: reimbursementId,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.REIMBURSEMENT_REJECTED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Reimburse Ditolak",
+                body: `Reimburse kamu ditolak. Alasan: ${payload.rejection_note ?? "Tidak ada catatan."}`,
+                type,
+                referenceTable: "reimbursements",
+                referenceId: reimbursementId,
+                data: {
+                    requester_id: requesterId,
+                    amount,
+                    reimbursement_id: reimbursementId,
+                    rejection_note: payload.rejection_note ?? null,
                 },
             });
         }
