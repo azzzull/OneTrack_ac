@@ -290,14 +290,17 @@ export const markAttendanceOvertimeNotSubmitted = async ({
     attendanceId,
     reason,
 }) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from("attendance")
         .update({
             overtime_submission_status: "not_submitted",
             overtime_not_submitted_reason: reason || null,
         })
-        .eq("id", attendanceId);
+        .eq("id", attendanceId)
+        .select("*")
+        .single();
     if (error) throw error;
+    return data;
 };
 
 export const listOvertimeRequests = async ({ role, userId } = {}) => {

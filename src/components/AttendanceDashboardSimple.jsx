@@ -119,15 +119,11 @@ const AttendanceDashboardSimple = ({ technicianId, onDataChange }) => {
         if (!todayAttendance?.id) return;
         setOvertimeSaving(true);
         try {
-            await markAttendanceOvertimeNotSubmitted({
+            const updatedAttendance = await markAttendanceOvertimeNotSubmitted({
                 attendanceId: todayAttendance.id,
                 reason: "Tidak Lembur",
             });
-            setTodayAttendance((prev) => ({
-                ...prev,
-                overtime_submission_status: "not_submitted",
-                overtime_not_submitted_reason: "Tidak Lembur",
-            }));
+            setTodayAttendance(updatedAttendance);
             setOvertimeConfirmOpen(false);
             onDataChange?.();
         } catch (error) {

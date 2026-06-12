@@ -5,12 +5,12 @@ export const OVERTIME_NORMAL_ATTENDANCE_MINUTES =
 export const OVERTIME_MIN_EXTRA_MINUTES = 2 * 60;
 
 export const OVERTIME_STATUS_LABELS = {
-    not_eligible: "Not Eligible",
-    eligible: "Eligible",
-    not_submitted: "Not Submitted",
-    pending: "Pending Review",
-    approved: "Approved",
-    rejected: "Rejected",
+    not_eligible: "Tidak Lembur",
+    eligible: "Bisa Ajukan Lembur",
+    not_submitted: "Tidak Mengajukan",
+    pending: "Menunggu Approval",
+    approved: "Disetujui",
+    rejected: "Ditolak",
 };
 
 export const getOvertimeStatusLabel = (status) =>
