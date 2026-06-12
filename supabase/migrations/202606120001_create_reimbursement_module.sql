@@ -167,7 +167,6 @@ with check (
     and approved_by is null
     and approved_at is null
     and transfer_proof_url is null
-    and public.is_reimbursement_requester(auth.uid())
 );
 
 drop policy if exists "Admins and management can review reimbursements" on public.reimbursements;

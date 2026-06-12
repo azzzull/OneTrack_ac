@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     Banknote,
+    Camera,
     Check,
     Download,
     Eye,
@@ -75,6 +76,14 @@ const toDateKey = (value) => {
 const isImageUrl = (url) =>
     /\.(png|jpe?g|webp|gif|bmp|avif)(\?.*)?$/i.test(String(url ?? ""));
 
+const onlyDigits = (value) => String(value ?? "").replace(/\D/g, "");
+
+const formatNumberInput = (value) => {
+    const digits = onlyDigits(value);
+    if (!digits) return "";
+    return new Intl.NumberFormat("en-US").format(Number(digits));
+};
+
 const getWeekStart = (date) => {
     const next = new Date(date);
     const day = next.getDay() || 7;
@@ -147,55 +156,229 @@ const SummaryCard = ({ label, value, tone = "sky", className = "" }) => {
     );
 };
 
-const FilePicker = ({ files, onAddFiles, onRemoveFile }) => (
-    <div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm font-semibold text-sky-700 hover:bg-sky-100">
-                <FileImage size={16} />
-                Upload file
-                <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    multiple
-                    className="hidden"
-                    onChange={(event) => onAddFiles(event.target.files)}
-                />
-            </label>
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
-                <Upload size={16} />
-                Kamera
-                <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    multiple
-                    className="hidden"
-                    onChange={(event) => onAddFiles(event.target.files)}
-                />
-            </label>
-        </div>
-        {files.length > 0 && (
-            <div className="mt-3 space-y-2">
-                {files.map((file, index) => (
-                    <div
-                        key={`${file.name}-${file.lastModified}-${index}`}
-                        className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700"
-                    >
-                        <span className="truncate">{file.name}</span>
-                        <button
-                            type="button"
-                            onClick={() => onRemoveFile(index)}
-                            className="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                            aria-label="Hapus file"
-                        >
-                            <X size={15} />
-                        </button>
-                    </div>
-                ))}
+const FilePicker = ({ files, onAddFiles, onRemoveFile }) => {
+    const [cameraOpen, setCameraOpen] = useState(false);
+
+    return (
+        <div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm font-semibold text-sky-700 hover:bg-sky-100">
+                    <FileImage size={16} />
+                    Upload file
+                    <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => onAddFiles(event.target.files)}
+                    />
+                </label>
+                <button
+                    type="button"
+                    onClick={() => setCameraOpen(true)}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                >
+                    <Camera size={16} />
+                    Ambil foto
+                </button>
             </div>
-        )}
-    </div>
-);
+            {files.length > 0 && (
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {files.map((file, index) => (
+                        <FilePreview
+                            key={`${file.name}-${file.lastModified}-${index}`}
+                            file={file}
+                            onRemove={() => onRemoveFile(index)}
+                        />
+                    ))}
+                </div>
+            )}
+            {cameraOpen && (
+                <CameraCaptureModal
+                    onClose={() => setCameraOpen(false)}
+                    onCapture={(file) => {
+                        onAddFiles([file]);
+                        setCameraOpen(false);
+                    }}
+                />
+            )}
+        </div>
+    );
+};
+
+function CameraCaptureModal({ onClose, onCapture }) {
+    const videoRef = useRef(null);
+    const streamRef = useRef(null);
+    const [error, setError] = useState("");
+    const [ready, setReady] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const openCamera = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                    },
+                    audio: false,
+                });
+
+                if (cancelled) {
+                    stream.getTracks().forEach((track) => track.stop());
+                    return;
+                }
+
+                streamRef.current = stream;
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    await videoRef.current.play();
+                }
+                setReady(true);
+            } catch (cameraError) {
+                console.error("Camera open failed:", cameraError);
+                setError(
+                    "Kamera tidak bisa dibuka. Pastikan izin kamera sudah diberikan.",
+                );
+            }
+        };
+
+        openCamera();
+
+        return () => {
+            cancelled = true;
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach((track) => track.stop());
+                streamRef.current = null;
+            }
+        };
+    }, []);
+
+    const capturePhoto = async () => {
+        const video = videoRef.current;
+        if (!video || !video.videoWidth || !video.videoHeight) return;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/jpeg", 0.86),
+        );
+        if (!blob) return;
+
+        const file = new File([blob], `reimburse-${Date.now()}.jpg`, {
+            type: "image/jpeg",
+        });
+        onCapture(file);
+    };
+
+    return (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/80 p-4">
+            <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">
+                        Ambil Foto Bukti
+                    </p>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                        aria-label="Tutup kamera"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+                <div className="bg-black">
+                    {error ? (
+                        <div className="flex min-h-80 items-center justify-center p-5 text-center text-sm text-white">
+                            {error}
+                        </div>
+                    ) : (
+                        <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="max-h-[70vh] w-full bg-black object-contain"
+                        />
+                    )}
+                </div>
+                <div className="flex justify-end gap-2 p-4">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                        Batal
+                    </button>
+                    <button
+                        type="button"
+                        onClick={capturePhoto}
+                        disabled={!ready || Boolean(error)}
+                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
+                    >
+                        <Camera size={16} />
+                        Ambil
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function FilePreview({ file, onRemove }) {
+    const isImage = String(file?.type ?? "").startsWith("image/");
+    const [previewUrl, setPreviewUrl] = useState("");
+
+    useEffect(() => {
+        if (!file || !isImage) return undefined;
+
+        let cancelled = false;
+        const reader = new FileReader();
+        reader.onload = () => {
+            if (!cancelled) setPreviewUrl(String(reader.result ?? ""));
+        };
+        reader.onerror = () => {
+            if (!cancelled) setPreviewUrl("");
+        };
+        reader.readAsDataURL(file);
+
+        return () => {
+            cancelled = true;
+            if (reader.readyState === FileReader.LOADING) reader.abort();
+        };
+    }, [file, isImage]);
+
+    return (
+        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+            {previewUrl ? (
+                <img
+                    src={previewUrl}
+                    alt={file.name}
+                    className="aspect-square w-full object-cover"
+                />
+            ) : (
+                <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 p-3 text-center text-slate-500">
+                    <FileImage size={24} />
+                    <span className="line-clamp-2 text-xs">{file.name}</span>
+                </div>
+            )}
+            <button
+                type="button"
+                onClick={onRemove}
+                className="absolute right-2 top-2 rounded-full bg-white/90 p-1 text-slate-500 shadow-sm hover:bg-red-50 hover:text-red-600"
+                aria-label="Hapus file"
+            >
+                <X size={15} />
+            </button>
+        </div>
+    );
+}
 
 export default function ReimbursementPage() {
     const { collapsed, toggle } = useSidebarCollapsed();
@@ -353,7 +536,8 @@ export default function ReimbursementPage() {
     const handleSubmit = async (event) => {
         event.preventDefault();
         if (!canCreate || !user?.id) return;
-        if (Number(form.claimAmount) <= 0) {
+        const claimAmount = onlyDigits(form.claimAmount);
+        if (Number(claimAmount) <= 0) {
             alert("Nominal klaim wajib lebih dari 0.");
             return;
         }
@@ -375,7 +559,7 @@ export default function ReimbursementPage() {
             const created = await createReimbursement({
                 requesterId: user.id,
                 transactionDate: form.transactionDate,
-                claimAmount: form.claimAmount,
+                claimAmount,
                 description: form.description.trim(),
             });
             const uploadedFiles = await Promise.all(
@@ -396,7 +580,13 @@ export default function ReimbursementPage() {
             setRequestModalOpen(false);
             await loadData();
         } catch (submitError) {
-            alert(submitError.message || "Gagal membuat reimburse.");
+            const message = submitError.message || "Gagal membuat reimburse.";
+            alert(
+                message.includes("row-level security") ||
+                    message.includes("403")
+                    ? "Gagal submit karena policy database Reimburse belum mengizinkan user ini. Jalankan ulang migration/policy Reimburse di Supabase SQL Editor, lalu coba lagi."
+                    : message,
+            );
         } finally {
             setSaving(false);
         }
@@ -565,26 +755,26 @@ export default function ReimbursementPage() {
                         </div>
                     )}
 
-                    <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3">
-                        <SummaryCard label={canReview ? "Total Klaim" : "Total Saya"} value={summary.total} />
-                        <SummaryCard label="Pending" value={summary.pending} tone="amber" />
-                        <SummaryCard label="Approved" value={summary.approved} tone="emerald" />
-                        <SummaryCard label="Rejected" value={summary.rejected} tone="red" />
-                        <SummaryCard
-                            label="Nominal Klaim"
-                            value={formatCurrency(summary.claimAmount)}
-                            className="col-span-2 md:col-span-1"
-                        />
-                        <SummaryCard
-                            label="Disetujui"
-                            value={formatCurrency(summary.approvedAmount)}
-                            tone="emerald"
-                            className="col-span-2 md:col-span-1"
-                        />
-                        {canReview && (
+                    {canReview && (
+                        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3">
+                            <SummaryCard label="Total Klaim" value={summary.total} />
+                            <SummaryCard label="Pending" value={summary.pending} tone="amber" />
+                            <SummaryCard label="Approved" value={summary.approved} tone="emerald" />
+                            <SummaryCard label="Rejected" value={summary.rejected} tone="red" />
+                            <SummaryCard
+                                label="Nominal Klaim"
+                                value={formatCurrency(summary.claimAmount)}
+                                className="col-span-2 md:col-span-1"
+                            />
+                            <SummaryCard
+                                label="Disetujui"
+                                value={formatCurrency(summary.approvedAmount)}
+                                tone="emerald"
+                                className="col-span-2 md:col-span-1"
+                            />
                             <SummaryCard label="Selisih" value={formatCurrency(summary.difference)} tone="slate" />
-                        )}
-                    </div>
+                        </div>
+                    )}
 
                     <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                         <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -655,80 +845,91 @@ export default function ReimbursementPage() {
                         </div>
                     </div>
 
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <section className="space-y-3">
                         {loading ? (
-                            <div className="flex items-center justify-center gap-2 p-8 text-slate-600">
+                            <div className="flex items-center justify-center gap-2 rounded-2xl bg-white p-8 text-slate-600 shadow-sm">
                                 <Loader size={18} className="animate-spin" />
                                 Memuat data...
                             </div>
                         ) : filteredRows.length === 0 ? (
-                            <div className="p-8 text-center text-sm text-slate-500">
+                            <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50 p-8 text-center text-sm text-sky-700">
                                 Tidak ada data reimburse.
                             </div>
                         ) : (
-                            <div className="divide-y divide-slate-100">
-                                {filteredRows.map((row) => (
-                                    <div key={row.id} className="p-4">
-                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            filteredRows.map((row) => (
+                                <article
+                                    key={row.id}
+                                    className="overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md md:hover:scale-[1.01]"
+                                >
+                                    <div className="p-4 md:p-5">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                             <div className="min-w-0">
                                                 <div className="flex flex-wrap items-center gap-2">
-                                                    <p className="font-semibold text-slate-900">
+                                                    <h2 className="text-base font-semibold text-slate-900">
                                                         {getDisplayName(row.requester)}
-                                                    </p>
+                                                    </h2>
                                                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${REIMBURSEMENT_STATUS_STYLES[row.status]}`}>
                                                         {REIMBURSEMENT_STATUS_LABELS[row.status]}
                                                     </span>
                                                 </div>
-                                                <p className="mt-1 text-sm text-slate-600">
-                                                    {formatDate(row.transaction_date)} - {row.description}
+                                                <p className="mt-2 line-clamp-2 text-sm text-slate-600">
+                                                    {row.description}
+                                                </p>
+                                                <p className="mt-2 text-xs font-medium text-slate-500">
+                                                    Transaksi {formatDate(row.transaction_date)}
                                                 </p>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3 text-sm lg:min-w-80">
-                                                <div>
-                                                    <p className="text-xs text-slate-500">Klaim</p>
-                                                    <p className="font-semibold text-slate-900">{formatCurrency(row.claim_amount)}</p>
+                                            <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 md:min-w-80">
+                                                <div className="rounded-xl bg-slate-50 p-3">
+                                                    <p className="text-xs font-medium text-slate-500">Klaim</p>
+                                                    <p className="mt-1 break-words font-semibold text-slate-900">
+                                                        {formatCurrency(row.claim_amount)}
+                                                    </p>
                                                 </div>
-                                                <div>
-                                                    <p className="text-xs text-slate-500">Disetujui</p>
-                                                    <p className="font-semibold text-slate-900">{row.approved_amount ? formatCurrency(row.approved_amount) : "-"}</p>
+                                                <div className="rounded-xl bg-emerald-50 p-3">
+                                                    <p className="text-xs font-medium text-emerald-700">Disetujui</p>
+                                                    <p className="mt-1 break-words font-semibold text-emerald-900">
+                                                        {row.approved_amount ? formatCurrency(row.approved_amount) : "-"}
+                                                    </p>
                                                 </div>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setSelected(row)}
-                                                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                                                >
-                                                    <Eye size={15} />
-                                                    Detail
-                                                </button>
-                                                {canReview && row.status === "pending" && (
-                                                    <>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openReview(row, "approve")}
-                                                            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                                                        >
-                                                            <Check size={15} />
-                                                            Approve
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openReview(row, "reject")}
-                                                            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
-                                                        >
-                                                            <X size={15} />
-                                                            Tolak
-                                                        </button>
-                                                    </>
-                                                )}
                                             </div>
                                         </div>
+
+                                        <div className="mt-4 flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelected(row)}
+                                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                            >
+                                                <Eye size={15} />
+                                                Detail
+                                            </button>
+                                            {canReview && row.status === "pending" && (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openReview(row, "approve")}
+                                                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                                                    >
+                                                        <Check size={15} />
+                                                        Approve
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openReview(row, "reject")}
+                                                        className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                                                    >
+                                                        <X size={15} />
+                                                        Tolak
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
-                                ))}
-                            </div>
+                                </article>
+                            ))
                         )}
-                    </div>
+                    </section>
                 </main>
             </div>
             <MobileBottomNav />
@@ -828,13 +1029,15 @@ function RequestModal({
                 </div>
                 <div className="space-y-4 p-5">
                     <input
-                        type="number"
-                        min="1"
+                        type="text"
+                        inputMode="numeric"
                         value={form.claimAmount}
                         onChange={(event) =>
                             onChange((prev) => ({
                                 ...prev,
-                                claimAmount: event.target.value,
+                                claimAmount: formatNumberInput(
+                                    event.target.value,
+                                ),
                             }))
                         }
                         placeholder="Nominal klaim"

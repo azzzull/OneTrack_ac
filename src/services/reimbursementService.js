@@ -116,29 +116,30 @@ export const createReimbursement = async ({
     claimAmount,
     description,
 }) => {
-    const { data, error } = await supabase
+    const reimbursement = {
+        id: crypto.randomUUID(),
+        requester_id: requesterId,
+        transaction_date: transactionDate,
+        claim_amount: Number(claimAmount),
+        description,
+        status: "pending",
+    };
+
+    const { error } = await supabase
         .from("reimbursements")
-        .insert({
-            requester_id: requesterId,
-            transaction_date: transactionDate,
-            claim_amount: Number(claimAmount),
-            description,
-            status: "pending",
-        })
-        .select()
-        .single();
+        .insert(reimbursement);
 
     if (error) throw error;
 
     const requester = await loadProfileById(requesterId);
     await notifyEvent(NOTIFICATION_EVENT_TYPES.REIMBURSEMENT_REQUESTED, {
-        reimbursement_id: data.id,
+        reimbursement_id: reimbursement.id,
         requester_id: requesterId,
         requester_name: getDisplayName(requester),
-        amount: data.claim_amount,
+        amount: reimbursement.claim_amount,
     });
 
-    return data;
+    return reimbursement;
 };
 
 export const addReimbursementAttachments = async ({
