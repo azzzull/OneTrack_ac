@@ -1,5 +1,8 @@
-export const OVERTIME_NORMAL_CHECKOUT_HOUR = 17;
-export const OVERTIME_ELIGIBLE_HOUR = 19;
+export const OVERTIME_NORMAL_WORK_MINUTES = 8 * 60;
+export const OVERTIME_BREAK_MINUTES = 60;
+export const OVERTIME_NORMAL_ATTENDANCE_MINUTES =
+    OVERTIME_NORMAL_WORK_MINUTES + OVERTIME_BREAK_MINUTES;
+export const OVERTIME_MIN_EXTRA_MINUTES = 2 * 60;
 
 export const OVERTIME_STATUS_LABELS = {
     not_eligible: "Not Eligible",
@@ -38,9 +41,9 @@ export const formatOvertimeDuration = (minutes) => {
 export const getNormalCheckoutAt = (checkInTimestamp) => {
     const checkIn = new Date(checkInTimestamp);
     if (Number.isNaN(checkIn.getTime())) return null;
-    const normalCheckout = new Date(checkIn);
-    normalCheckout.setHours(OVERTIME_NORMAL_CHECKOUT_HOUR, 0, 0, 0);
-    return normalCheckout;
+    return new Date(
+        checkIn.getTime() + OVERTIME_NORMAL_ATTENDANCE_MINUTES * 60000,
+    );
 };
 
 export const calculateAttendanceOvertime = ({
@@ -57,8 +60,9 @@ export const calculateAttendanceOvertime = ({
         };
     }
 
-    const eligibleAt = new Date(normalCheckout);
-    eligibleAt.setHours(OVERTIME_ELIGIBLE_HOUR, 0, 0, 0);
+    const eligibleAt = new Date(
+        normalCheckout.getTime() + OVERTIME_MIN_EXTRA_MINUTES * 60000,
+    );
     const durationMinutes = Math.max(
         0,
         Math.floor((checkOut - normalCheckout) / 60000),

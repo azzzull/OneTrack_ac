@@ -5,6 +5,20 @@ import { useNavigate } from "react-router-dom";
 import useNotifications from "../../hooks/useNotifications";
 import { useAuth } from "../../context/useAuth";
 
+const toastedNotificationIds = new Set();
+
+const shouldShowToastNotification = (notification) => {
+    const id = notification?.id;
+    if (!id) return true;
+    if (toastedNotificationIds.has(id)) return false;
+
+    toastedNotificationIds.add(id);
+    window.setTimeout(() => {
+        toastedNotificationIds.delete(id);
+    }, 15000);
+    return true;
+};
+
 const formatNotificationTime = (value) => {
     if (!value) return "";
     const date = new Date(value);
@@ -85,6 +99,7 @@ export default function NotificationCenter({ compact = false, align = "right" })
     } = useNotifications({
         limit: 20,
         onNewNotification: (notification) => {
+            if (!shouldShowToastNotification(notification)) return;
             setToastNotification(notification);
         },
     });

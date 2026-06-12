@@ -16,26 +16,9 @@ const getLocalDateKey = (date = new Date()) => {
     return `${year}-${month}-${day}`;
 };
 
-const getRecentAttendanceDateKeys = () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    return [getLocalDateKey(today), getLocalDateKey(yesterday)];
-};
-
-const OPEN_SESSION_LOOKBACK_HOURS = 36;
-
-const isRecentOpenAttendance = (record, now = new Date()) => {
+const isTodayOpenAttendance = (record) => {
     if (!record?.check_in_time || record.check_out_time) return false;
-
-    const recentDateKeys = getRecentAttendanceDateKeys();
-    if (recentDateKeys.includes(record.attendance_date)) return true;
-
-    const checkInTime = new Date(record.check_in_time);
-    if (Number.isNaN(checkInTime.getTime())) return false;
-
-    const ageHours = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
-    return ageHours >= 0 && ageHours <= OPEN_SESSION_LOOKBACK_HOURS;
+    return record.attendance_date === getLocalDateKey();
 };
 
 const getActiveOpenAttendance = async (technicianId, attendanceId = null) => {
@@ -49,7 +32,7 @@ const getActiveOpenAttendance = async (technicianId, attendanceId = null) => {
         query = query.eq("id", attendanceId).limit(1);
     } else {
         query = query
-            .in("attendance_date", getRecentAttendanceDateKeys())
+            .eq("attendance_date", getLocalDateKey())
             .order("check_in_time", { ascending: false })
             .limit(10);
     }
@@ -58,11 +41,15 @@ const getActiveOpenAttendance = async (technicianId, attendanceId = null) => {
     if (error) throw error;
 
     const rows = Array.isArray(data) ? data : data ? [data] : [];
-    const active = rows.find((row) => isRecentOpenAttendance(row));
+    const active = attendanceId
+        ? rows.find((row) => !row.check_out_time)
+        : rows.find((row) => isTodayOpenAttendance(row));
 
     return {
         active: active || null,
-        staleOpenRecords: rows.filter((row) => !isRecentOpenAttendance(row)),
+        staleOpenRecords: rows.filter((row) =>
+            attendanceId ? Boolean(row.check_out_time) : !isTodayOpenAttendance(row),
+        ),
     };
 };
 

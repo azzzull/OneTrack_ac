@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import ProtectedRoute from "@/routes/ProtectedRoute";
 import { registerPushNotifications } from "@/services/pushNotifications";
 import { useAuth } from "@/context/useAuth";
@@ -23,6 +23,18 @@ import CustomerRequestFormPage from "@/pages/customer/RequestForm";
 import ProfilePage from "@/pages/Profile";
 import Login from "@/pages/Login";
 
+function ScrollToTop() {
+    const { pathname } = useLocation();
+
+    useEffect(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+    }, [pathname]);
+
+    return null;
+}
+
 function App() {
     const { loading, user, isOffline } = useAuth();
 
@@ -35,6 +47,7 @@ function App() {
 
     return (
         <>
+            <ScrollToTop />
             <OfflineSyncStatus />
             <Routes>
                 <Route path="/" element={<Login />} />
