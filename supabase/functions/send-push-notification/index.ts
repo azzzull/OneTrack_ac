@@ -192,6 +192,10 @@ const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
     loan_requested: ["admin", "management"],
     loan_approved: ["technician"],
     loan_rejected: ["technician"],
+    loan_repayment_created: ["admin", "management"],
+    loan_repayment_approved: ["technician"],
+    loan_repayment_rejected: ["technician"],
+    loan_deducted: ["technician"],
     attendance_status_changed: ["technician", "admin", "management"],
 };
 

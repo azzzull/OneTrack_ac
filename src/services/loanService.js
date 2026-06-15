@@ -54,6 +54,22 @@ const loadProfileMap = async (ids) => {
     const uniqueIds = [...new Set(ids.filter(Boolean))];
     if (!uniqueIds.length) return {};
 
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "get_loan_profiles",
+        {
+            p_profile_ids: uniqueIds,
+        },
+    );
+
+    if (!rpcError) {
+        return (rpcData ?? []).reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+        }, {});
+    }
+
+    console.warn("[Loan] profile RPC lookup fallback:", rpcError.message);
+
     const { data, error } = await supabase
         .from("profiles")
         .select("id, first_name, last_name, name, email, role")
@@ -103,10 +119,25 @@ export const loadLoans = async ({ role, userId } = {}) => {
             .sort((a, b) => new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0))
             .map((repayment) => ({
                 ...repayment,
+                status: repayment.status ?? "pending",
                 creator: profileMap[repayment.created_by] ?? null,
+                loan: {
+                    id: row.id,
+                    requester_id: row.requester_id,
+                },
             }));
         const paidAmount = repayments.reduce(
-            (sum, repayment) => sum + Number(repayment.amount ?? 0),
+            (sum, repayment) =>
+                repayment.status === "approved"
+                    ? sum + Number(repayment.amount ?? 0)
+                    : sum,
+            0,
+        );
+        const pendingRepaymentAmount = repayments.reduce(
+            (sum, repayment) =>
+                repayment.status === "pending"
+                    ? sum + Number(repayment.amount ?? 0)
+                    : sum,
             0,
         );
         const approvedAmount = Number(row.approved_amount ?? 0);
@@ -119,6 +150,7 @@ export const loadLoans = async ({ role, userId } = {}) => {
             ),
             repayments,
             paid_amount: paidAmount,
+            pending_repayment_amount: pendingRepaymentAmount,
             remaining_amount: Math.max(approvedAmount - paidAmount, 0),
             requester: profileMap[row.requester_id] ?? null,
             approver: profileMap[row.approved_by] ?? null,
@@ -290,6 +322,7 @@ export const addLoanRepayment = async ({
     note,
     createdBy,
     requireProof = true,
+    notifyAsDeduction = false,
 }) => {
     if (!loan?.id) throw new Error("Pinjaman tidak valid.");
 
@@ -316,12 +349,30 @@ export const addLoanRepayment = async ({
             method: repaymentMethod,
             proof_url: proofUrl || null,
             note: note || null,
+            status: notifyAsDeduction ? "approved" : "pending",
+            reviewed_by: notifyAsDeduction ? createdBy : null,
+            reviewed_at: notifyAsDeduction ? new Date().toISOString() : null,
             created_by: createdBy,
         })
         .select()
         .single();
 
     if (error) throw error;
+
+    const requester = await loadProfileById(loan.requester_id);
+    await notifyEvent(
+        notifyAsDeduction
+            ? NOTIFICATION_EVENT_TYPES.LOAN_DEDUCTED
+            : NOTIFICATION_EVENT_TYPES.LOAN_REPAYMENT_CREATED,
+        {
+            loan_id: loan.id,
+            loan_repayment_id: data.id,
+            requester_id: loan.requester_id,
+            requester_name: getDisplayName(requester),
+            amount: data.amount,
+        },
+    );
+
     return data;
 };
 
@@ -333,6 +384,7 @@ export const addUniversalLoanRepayment = async ({
     note,
     createdBy,
     requireProof = true,
+    notifyAsDeduction = false,
 }) => {
     const paymentAmount = Number(amount);
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
@@ -379,6 +431,9 @@ export const addUniversalLoanRepayment = async ({
             method: repaymentMethod,
             proof_url: proofUrl || null,
             note: note || null,
+            status: notifyAsDeduction ? "approved" : "pending",
+            reviewed_by: notifyAsDeduction ? createdBy : null,
+            reviewed_at: notifyAsDeduction ? new Date().toISOString() : null,
             created_by: createdBy,
         });
         remainingPayment -= allocationAmount;
@@ -390,5 +445,87 @@ export const addUniversalLoanRepayment = async ({
         .select();
 
     if (error) throw error;
+
+    const requesterId = outstandingLoans[0]?.requester_id ?? null;
+    const requester = await loadProfileById(requesterId);
+    const totalPaid = (data ?? []).reduce(
+        (sum, repayment) => sum + Number(repayment.amount ?? 0),
+        0,
+    );
+    await notifyEvent(
+        notifyAsDeduction
+            ? NOTIFICATION_EVENT_TYPES.LOAN_DEDUCTED
+            : NOTIFICATION_EVENT_TYPES.LOAN_REPAYMENT_CREATED,
+        {
+            loan_id: outstandingLoans[0]?.id ?? null,
+            loan_repayment_id: data?.[0]?.id ?? null,
+            requester_id: requesterId,
+            requester_name: getDisplayName(requester),
+            amount: totalPaid,
+        },
+    );
+
     return data ?? [];
+};
+
+export const approveLoanRepayment = async ({
+    repayment,
+    reviewedBy,
+}) => {
+    const { data, error } = await supabase
+        .from("loan_repayments")
+        .update({
+            status: "approved",
+            reviewed_by: reviewedBy,
+            reviewed_at: new Date().toISOString(),
+            rejection_reason: null,
+        })
+        .eq("id", repayment.id)
+        .select()
+        .single();
+
+    if (error) throw error;
+
+    const loan = repayment.loan ?? null;
+    const requesterId = loan?.requester_id ?? null;
+    await notifyEvent(NOTIFICATION_EVENT_TYPES.LOAN_REPAYMENT_APPROVED, {
+        loan_id: data.loan_id,
+        loan_repayment_id: data.id,
+        requester_id: requesterId,
+        amount: data.amount,
+    });
+
+    return data;
+};
+
+export const rejectLoanRepayment = async ({
+    repayment,
+    rejectionReason,
+    reviewedBy,
+}) => {
+    const { data, error } = await supabase
+        .from("loan_repayments")
+        .update({
+            status: "rejected",
+            rejection_reason: rejectionReason,
+            reviewed_by: reviewedBy,
+            reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", repayment.id)
+        .select()
+        .single();
+
+    if (error) throw error;
+
+    const loan = repayment.loan ?? null;
+    const requesterId = loan?.requester_id ?? null;
+    await notifyEvent(NOTIFICATION_EVENT_TYPES.LOAN_REPAYMENT_REJECTED, {
+        loan_id: data.loan_id,
+        loan_repayment_id: data.id,
+        requester_id: requesterId,
+        amount: data.amount,
+        rejection_note: rejectionReason,
+    });
+
+    return data;
 };

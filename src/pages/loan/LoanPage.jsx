@@ -28,12 +28,14 @@ import {
     LOAN_REPAYMENT_METHOD_LABELS,
     addLoanRepayment,
     addUniversalLoanRepayment,
+    approveLoanRepayment,
     approveLoan,
     createLoan,
     formatCurrency,
     getDisplayName,
     loadLoanRequesters,
     loadLoans,
+    rejectLoanRepayment,
     rejectLoan,
     uploadLoanFile,
 } from "../../services/loanService";
@@ -705,6 +707,7 @@ export default function LoanPage() {
                     note: repaymentForm.note.trim(),
                     createdBy: user.id,
                     requireProof: !canReview,
+                    notifyAsDeduction: canReview,
                 });
             } else {
                 await addLoanRepayment({
@@ -715,6 +718,7 @@ export default function LoanPage() {
                     note: repaymentForm.note.trim(),
                     createdBy: user.id,
                     requireProof: !canReview,
+                    notifyAsDeduction: canReview,
                 });
             }
             setRepaymentTarget(null);
@@ -722,6 +726,41 @@ export default function LoanPage() {
             await loadData();
         } catch (repaymentError) {
             alert(repaymentError.message || "Gagal mencatat pembayaran pinjaman.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleApproveRepayment = async (repayment) => {
+        if (!user?.id) return;
+        setSaving(true);
+        try {
+            await approveLoanRepayment({ repayment, reviewedBy: user.id });
+            setSelected(null);
+            await loadData();
+        } catch (approveError) {
+            alert(approveError.message || "Gagal menyetujui pembayaran.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleRejectRepayment = async (repayment) => {
+        if (!user?.id) return;
+        const rejectionReason = window.prompt("Alasan penolakan pembayaran:");
+        if (!rejectionReason?.trim()) return;
+
+        setSaving(true);
+        try {
+            await rejectLoanRepayment({
+                repayment,
+                rejectionReason: rejectionReason.trim(),
+                reviewedBy: user.id,
+            });
+            setSelected(null);
+            await loadData();
+        } catch (rejectError) {
+            alert(rejectError.message || "Gagal menolak pembayaran.");
         } finally {
             setSaving(false);
         }
@@ -1026,6 +1065,8 @@ export default function LoanPage() {
                     onClose={() => setSelected(null)}
                     onOpenFile={openFile}
                     onReview={openReview}
+                    onApproveRepayment={handleApproveRepayment}
+                    onRejectRepayment={handleRejectRepayment}
                 />
             )}
 
@@ -1170,6 +1211,8 @@ function DetailModal({
     onClose,
     onOpenFile,
     onReview,
+    onApproveRepayment,
+    onRejectRepayment,
 }) {
     const detailRows = [
         ["ID Pinjaman", row.id],
@@ -1179,7 +1222,8 @@ function DetailModal({
         ["Tanggal Kebutuhan", formatDate(row.needed_date)],
         ["Nominal Pinjaman", formatCurrency(row.loan_amount)],
         ["Nominal Disetujui", row.approved_amount ? formatCurrency(row.approved_amount) : "-"],
-        ["Sudah Dibayar", formatCurrency(row.paid_amount)],
+                        ["Sudah Dibayar", formatCurrency(row.paid_amount)],
+        ["Menunggu Review", formatCurrency(row.pending_repayment_amount)],
         ["Sisa Hutang", row.approved_amount ? formatCurrency(row.remaining_amount) : "-"],
         ["Status", LOAN_STATUS_LABELS[row.status]],
         ["Approved By", getDisplayName(row.approver)],
@@ -1239,9 +1283,26 @@ function DetailModal({
                                                 <p className="font-semibold text-slate-900">
                                                     {formatCurrency(repayment.amount)}
                                                 </p>
-                                                <p className="text-xs text-slate-500">
-                                                    {LOAN_REPAYMENT_METHOD_LABELS[repayment.method] ?? repayment.method} oleh {getDisplayName(repayment.creator)}
-                                                </p>
+                                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                    <span className="text-xs text-slate-500">
+                                                        {LOAN_REPAYMENT_METHOD_LABELS[repayment.method] ?? repayment.method} oleh {getDisplayName(repayment.creator)}
+                                                    </span>
+                                                    <span
+                                                        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                                            repayment.status === "approved"
+                                                                ? "bg-emerald-100 text-emerald-700"
+                                                                : repayment.status === "rejected"
+                                                                  ? "bg-red-100 text-red-700"
+                                                                  : "bg-amber-100 text-amber-700"
+                                                        }`}
+                                                    >
+                                                        {repayment.status === "approved"
+                                                            ? "Approved"
+                                                            : repayment.status === "rejected"
+                                                              ? "Rejected"
+                                                              : "Pending Review"}
+                                                    </span>
+                                                </div>
                                                 <p className="text-xs text-slate-500">
                                                     {formatDateTime(repayment.created_at)}
                                                 </p>
@@ -1258,6 +1319,24 @@ function DetailModal({
                                                     <FileImage size={14} />
                                                     Bukti
                                                 </button>
+                                            )}
+                                            {canReview && repayment.status === "pending" && (
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onApproveRepayment(repayment)}
+                                                        className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                                                    >
+                                                        Approve
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onRejectRepayment(repayment)}
+                                                        className="rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
+                                                    >
+                                                        Reject
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     </div>

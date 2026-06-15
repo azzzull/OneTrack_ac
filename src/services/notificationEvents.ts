@@ -19,6 +19,10 @@ export const NOTIFICATION_EVENT_TYPES = {
     LOAN_REQUESTED: "loan_requested",
     LOAN_APPROVED: "loan_approved",
     LOAN_REJECTED: "loan_rejected",
+    LOAN_REPAYMENT_CREATED: "loan_repayment_created",
+    LOAN_REPAYMENT_APPROVED: "loan_repayment_approved",
+    LOAN_REPAYMENT_REJECTED: "loan_repayment_rejected",
+    LOAN_DEDUCTED: "loan_deducted",
     ATTENDANCE_STATUS_CHANGED: "attendance_status_changed",
 } as const;
 
@@ -37,6 +41,7 @@ type NotifyEventPayload = Record<string, unknown> & {
     overtime_id?: string | null;
     reimbursement_id?: string | null;
     loan_id?: string | null;
+    loan_repayment_id?: string | null;
     requester_id?: string | null;
     requester_name?: string | null;
     approved_amount?: number | string | null;
@@ -310,6 +315,8 @@ export const notifyEvent = async (
         const requesterName =
             String(payload.requester_name ?? "").trim() || technicianName;
         const loanId = String(payload.loan_id ?? "").trim() || null;
+        const loanRepaymentId =
+            String(payload.loan_repayment_id ?? "").trim() || null;
 
         if (type === NOTIFICATION_EVENT_TYPES.JOB_REQUESTED) {
             return invokePushNotification({
@@ -603,6 +610,71 @@ export const notifyEvent = async (
                     requester_id: requesterId,
                     amount,
                     loan_id: loanId,
+                    rejection_note: payload.rejection_note ?? null,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.LOAN_REPAYMENT_CREATED) {
+            return invokePushNotification({
+                recipientRoles: ["admin", "management"],
+                title: "Pembayaran Pinjaman Baru",
+                body: `${requesterName} membayar pinjaman sebesar ${formatRupiah(amount)}.`,
+                type,
+                referenceTable: "loan_repayments",
+                referenceId: loanRepaymentId,
+                data: {
+                    requester_id: requesterId,
+                    requester_name: requesterName,
+                    amount,
+                    loan_id: loanId,
+                    loan_repayment_id: loanRepaymentId,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.LOAN_DEDUCTED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Hutang Pinjaman Dikurangi",
+                body: `Hutang pinjaman kamu dikurangi sebesar ${formatRupiah(amount)}. Silakan cek riwayat pinjaman.`,
+                type,
+                referenceTable: "loan_repayments",
+                referenceId: loanRepaymentId,
+                data: {
+                    requester_id: requesterId,
+                    amount,
+                    loan_id: loanId,
+                    loan_repayment_id: loanRepaymentId,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.LOAN_REPAYMENT_APPROVED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Pembayaran Pinjaman Disetujui",
+                body: `Pembayaran pinjaman kamu sebesar ${formatRupiah(amount)} sudah disetujui.`,
+                type,
+                referenceTable: "loan_repayments",
+                referenceId: loanRepaymentId,
+                data: { requester_id: requesterId, amount, loan_id: loanId, loan_repayment_id: loanRepaymentId },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.LOAN_REPAYMENT_REJECTED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Pembayaran Pinjaman Ditolak",
+                body: `Pembayaran pinjaman kamu ditolak. Alasan: ${payload.rejection_note ?? "Tidak ada catatan."}`,
+                type,
+                referenceTable: "loan_repayments",
+                referenceId: loanRepaymentId,
+                data: {
+                    requester_id: requesterId,
+                    amount,
+                    loan_id: loanId,
+                    loan_repayment_id: loanRepaymentId,
                     rejection_note: payload.rejection_note ?? null,
                 },
             });
