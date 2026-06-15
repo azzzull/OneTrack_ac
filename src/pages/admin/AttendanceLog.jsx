@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from "react";
+import React, { createElement, useCallback, useState, useEffect } from "react";
 import {
     CalendarDays,
     MapPin,
@@ -62,6 +62,58 @@ const getCompactPagination = (currentPage, totalPages) => {
         "end-ellipsis",
         totalPages,
     ];
+};
+
+const AttendanceSummaryCard = ({
+    label,
+    value,
+    icon: Icon,
+    compact = false,
+    onClick,
+    hint,
+}) => {
+    const Component = onClick ? "button" : "div";
+
+    return (
+        <Component
+            type={onClick ? "button" : undefined}
+            onClick={onClick}
+            className={`w-full rounded-2xl bg-white text-left shadow-sm transition ${
+                compact ? "h-28 p-3" : "p-4"
+            } ${onClick ? "cursor-pointer hover:bg-slate-50" : ""}`}
+        >
+            <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p
+                        className={`${
+                            compact ? "line-clamp-2 min-h-8 text-xs" : "text-sm"
+                        } text-slate-500`}
+                    >
+                        {label}
+                    </p>
+                    <p
+                        className={`mt-1 wrap-break-word font-semibold text-slate-900 ${
+                            compact ? "text-lg" : "text-2xl"
+                        }`}
+                    >
+                        {value}
+                    </p>
+                </div>
+                <span
+                    className={`shrink-0 rounded-2xl bg-sky-50 text-sky-500 ${
+                        compact ? "p-2" : "p-3"
+                    }`}
+                >
+                    {createElement(Icon, { size: compact ? 18 : 22 })}
+                </span>
+            </div>
+            {hint && (
+                <p className="mt-2 text-xs font-medium text-slate-500">
+                    {hint}
+                </p>
+            )}
+        </Component>
+    );
 };
 
 const AttendanceLog = () => {
@@ -256,10 +308,14 @@ const AttendanceLog = () => {
             isOpen: true,
             record,
             checkInTime: record.check_in_time
-                ? `${record.attendance_date}T${getTimeHHMM(record.check_in_time)}`
+                ? `${record.attendance_date}T${getTimeHHMM(
+                      record.check_in_time,
+                  )}`
                 : "",
             checkOutTime: record.check_out_time
-                ? `${record.attendance_date}T${getTimeHHMM(record.check_out_time)}`
+                ? `${record.attendance_date}T${getTimeHHMM(
+                      record.check_out_time,
+                  )}`
                 : "",
             isSaving: false,
         });
@@ -358,7 +414,9 @@ const AttendanceLog = () => {
             });
         } catch (error) {
             console.error("Daily attendance Excel export failed:", error);
-            alert("Gagal menyiapkan file Excel. Restart dev server jika perlu.");
+            alert(
+                "Gagal menyiapkan file Excel. Restart dev server jika perlu.",
+            );
         }
     };
 
@@ -427,7 +485,9 @@ const AttendanceLog = () => {
     const handleDeleteRecord = async (record) => {
         if (
             !window.confirm(
-                `Yakin ingin menghapus absensi ${getTechnicianName(record.technician_id)} tanggal ${formatDateShort(record.attendance_date)}?`,
+                `Yakin ingin menghapus absensi ${getTechnicianName(
+                    record.technician_id,
+                )} tanggal ${formatDateShort(record.attendance_date)}?`,
             )
         ) {
             return;
@@ -588,15 +648,23 @@ const AttendanceLog = () => {
                             ? getTechnicianName(filterTechnician)
                             : "Semua Teknisi",
                     ],
-                    ["Tanggal Dari", filterDateFrom ? parseExcelDate(filterDateFrom) : "Semua"],
-                    ["Tanggal Sampai", filterDateTo ? parseExcelDate(filterDateTo) : "Semua"],
+                    [
+                        "Tanggal Dari",
+                        filterDateFrom
+                            ? parseExcelDate(filterDateFrom)
+                            : "Semua",
+                    ],
+                    [
+                        "Tanggal Sampai",
+                        filterDateTo ? parseExcelDate(filterDateTo) : "Semua",
+                    ],
                     [
                         "Status",
                         filterStatus === "check_in_only"
                             ? "Masuk"
                             : filterStatus === "checked_in_and_out"
-                              ? "Masuk & Pulang"
-                              : "Semua Status",
+                            ? "Masuk & Pulang"
+                            : "Semua Status",
                     ],
                     ["Tanggal Export", new Date()],
                 ],
@@ -620,7 +688,9 @@ const AttendanceLog = () => {
             });
         } catch (error) {
             console.error("Attendance log Excel export failed:", error);
-            alert("Gagal menyiapkan file Excel. Restart dev server jika perlu.");
+            alert(
+                "Gagal menyiapkan file Excel. Restart dev server jika perlu.",
+            );
         }
     };
 
@@ -709,86 +779,151 @@ const AttendanceLog = () => {
                     </div>
 
                     {viewMode === "daily" && (
-                        <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="rounded-xl bg-blue-50 border border-blue-200 p-4">
-                                <p className="text-sm text-blue-600 font-medium">
-                                    Total Teknisi
-                                </p>
-                                <p className="text-2xl font-bold text-blue-900 mt-2">
-                                    {technicians.length}
-                                </p>
+                        <section className="mb-6">
+                            <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 md:hidden">
+                                <div className="min-w-36">
+                                    <AttendanceSummaryCard
+                                        label="Total Teknisi"
+                                        value={technicians.length}
+                                        icon={CalendarDays}
+                                        compact
+                                    />
+                                </div>
+                                <div className="min-w-36">
+                                    <AttendanceSummaryCard
+                                        label="Sudah Absen"
+                                        value={dailyCheckedInCount}
+                                        icon={Check}
+                                        compact
+                                    />
+                                </div>
+                                <div className="min-w-36">
+                                    <AttendanceSummaryCard
+                                        label="Belum Absen"
+                                        value={dailyAbsentCount}
+                                        icon={X}
+                                        compact
+                                    />
+                                </div>
                             </div>
-                            <div className="rounded-xl bg-green-50 border border-green-200 p-4">
-                                <p className="text-sm text-green-600 font-medium">
-                                    Sudah Absen
-                                </p>
-                                <p className="text-2xl font-bold text-green-900 mt-2">
-                                    {dailyCheckedInCount}
-                                </p>
+                            <div className="hidden gap-4 md:grid md:grid-cols-3">
+                                <AttendanceSummaryCard
+                                    label="Total Teknisi"
+                                    value={technicians.length}
+                                    icon={CalendarDays}
+                                />
+                                <AttendanceSummaryCard
+                                    label="Sudah Absen"
+                                    value={dailyCheckedInCount}
+                                    icon={Check}
+                                />
+                                <AttendanceSummaryCard
+                                    label="Belum Absen"
+                                    value={dailyAbsentCount}
+                                    icon={X}
+                                />
                             </div>
-                            <div className="rounded-xl bg-red-50 border border-red-200 p-4">
-                                <p className="text-sm text-red-600 font-medium">
-                                    Belum Absen
-                                </p>
-                                <p className="text-2xl font-bold text-red-900 mt-2">
-                                    {dailyAbsentCount}
-                                </p>
-                            </div>
-                        </div>
+                        </section>
                     )}
 
                     {viewMode === "log" && (
-                        <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div className="rounded-xl bg-blue-50 border border-blue-200 p-4">
-                                <p className="text-sm text-blue-600 font-medium">
-                                    Total Record
-                                </p>
-                                <p className="text-2xl font-bold text-blue-900 mt-2">
-                                    {filteredData.length}
-                                </p>
+                        <>
+                            <div className="-mx-4 mb-6 flex gap-3 overflow-x-auto px-4 pb-1 md:hidden">
+                                <div className="min-w-40">
+                                    <AttendanceSummaryCard
+                                        label="Total Record"
+                                        value={filteredData.length}
+                                        icon={CalendarDays}
+                                        compact
+                                    />
+                                </div>
+                                <div className="min-w-40">
+                                    <AttendanceSummaryCard
+                                        label="Hari Kerja Lengkap"
+                                        value={
+                                            filteredData.filter(
+                                                (r) => r.working_hours_minutes,
+                                            ).length
+                                        }
+                                        icon={Check}
+                                        compact
+                                    />
+                                </div>
+                                <div className="min-w-40">
+                                    <AttendanceSummaryCard
+                                        label="Belum Check-Out"
+                                        value={
+                                            filteredData.filter(
+                                                (r) => !r.check_out_time,
+                                            ).length
+                                        }
+                                        icon={Filter}
+                                        compact
+                                    />
+                                </div>
+                                <div className="min-w-40">
+                                    <AttendanceSummaryCard
+                                        label="Belum Absen"
+                                        value={uncheckedTechs.length}
+                                        icon={X}
+                                        compact
+                                        onClick={() => setUncheckedModal(true)}
+                                        hint="Klik detail"
+                                    />
+                                </div>
                             </div>
+                            <div className="mb-6 hidden gap-4 md:grid md:grid-cols-4">
+                                <div className="rounded-2xl bg-white p-4 shadow-sm">
+                                    <p className="text-sm text-slate-500">
+                                        Total Record
+                                    </p>
+                                    <p className="mt-1 text-2xl font-semibold text-slate-900">
+                                        {filteredData.length}
+                                    </p>
+                                </div>
 
-                            <div className="rounded-xl bg-green-50 border border-green-200 p-4">
-                                <p className="text-sm text-green-600 font-medium">
-                                    Hari Kerja Lengkap
-                                </p>
-                                <p className="text-2xl font-bold text-green-900 mt-2">
-                                    {
-                                        filteredData.filter(
-                                            (r) => r.working_hours_minutes,
-                                        ).length
-                                    }
-                                </p>
+                                <div className="rounded-2xl bg-white p-4 shadow-sm">
+                                    <p className="text-sm text-slate-500">
+                                        Hari Kerja Lengkap
+                                    </p>
+                                    <p className="mt-1 text-2xl font-semibold text-slate-900">
+                                        {
+                                            filteredData.filter(
+                                                (r) => r.working_hours_minutes,
+                                            ).length
+                                        }
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-4 shadow-sm">
+                                    <p className="text-sm text-slate-500">
+                                        Belum Check-Out
+                                    </p>
+                                    <p className="mt-1 text-2xl font-semibold text-slate-900">
+                                        {
+                                            filteredData.filter(
+                                                (r) => !r.check_out_time,
+                                            ).length
+                                        }
+                                    </p>
+                                </div>
+
+                                <button
+                                    onClick={() => setUncheckedModal(true)}
+                                    className="cursor-pointer rounded-2xl bg-white p-4 text-left shadow-sm transition hover:bg-slate-50"
+                                >
+                                    <p className="text-sm text-slate-500">
+                                        Belum Absen
+                                    </p>
+                                    <p className="mt-1 text-2xl font-semibold text-slate-900">
+                                        {uncheckedTechs.length}
+                                    </p>
+                                    <p className="mt-2 text-xs font-medium text-slate-500">
+                                        Klik untuk detail
+                                    </p>
+                                </button>
                             </div>
-
-                            <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
-                                <p className="text-sm text-amber-600 font-medium">
-                                    Belum Check-Out
-                                </p>
-                                <p className="text-2xl font-bold text-amber-900 mt-2">
-                                    {
-                                        filteredData.filter(
-                                            (r) => !r.check_out_time,
-                                        ).length
-                                    }
-                                </p>
-                            </div>
-
-                            <button
-                                onClick={() => setUncheckedModal(true)}
-                                className="rounded-xl bg-red-50 border border-red-200 p-4 hover:bg-red-100 transition cursor-pointer text-left"
-                            >
-                                <p className="text-sm text-red-600 font-medium">
-                                    Belum Absen
-                                </p>
-                                <p className="text-2xl font-bold text-red-900 mt-2">
-                                    {uncheckedTechs.length}
-                                </p>
-                                <p className="text-xs text-red-600 mt-2">
-                                    Klik untuk detail →
-                                </p>
-                            </button>
-                        </div>
+                        </>
                     )}
 
                     {viewMode === "daily" && (
@@ -906,8 +1041,8 @@ const AttendanceLog = () => {
                                                     status === "Masuk & Pulang"
                                                         ? "bg-green-100 text-green-700"
                                                         : status === "Masuk"
-                                                          ? "bg-amber-100 text-amber-700"
-                                                          : "bg-red-100 text-red-700";
+                                                        ? "bg-amber-100 text-amber-700"
+                                                        : "bg-red-100 text-red-700";
 
                                                 return (
                                                     <tr
@@ -1155,16 +1290,16 @@ const AttendanceLog = () => {
                                                         record.check_out_time
                                                             ? "Masuk & Pulang"
                                                             : record.check_in_time
-                                                              ? "Masuk"
-                                                              : "Belum Absen";
+                                                            ? "Masuk"
+                                                            : "Belum Absen";
                                                     const statusColor =
                                                         statusLabel ===
                                                         "Masuk & Pulang"
                                                             ? "bg-green-100 text-green-700"
                                                             : statusLabel ===
-                                                                "Masuk"
-                                                              ? "bg-amber-100 text-amber-700"
-                                                              : "bg-red-100 text-red-700";
+                                                              "Masuk"
+                                                            ? "bg-amber-100 text-amber-700"
+                                                            : "bg-red-100 text-red-700";
 
                                                     return (
                                                         <tr

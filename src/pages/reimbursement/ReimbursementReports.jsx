@@ -1,10 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    createElement,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
     ArrowLeft,
+    Banknote,
+    CheckCircle2,
+    Clock3,
     Download,
     Filter,
     Loader,
+    Receipt,
     Search,
+    Wallet,
+    XCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
@@ -75,55 +88,39 @@ const matchesPeriod = (row, filters) => {
     return true;
 };
 
-const SummaryCard = ({ label, value, tone = "sky", className = "" }) => {
-    const toneClass =
-        {
-            sky: {
-                card: "bg-blue-50 border-blue-200",
-                label: "text-blue-600",
-                value: "text-blue-900",
-            },
-            amber: {
-                card: "bg-yellow-50 border-yellow-200",
-                label: "text-yellow-600",
-                value: "text-yellow-900",
-            },
-            emerald: {
-                card: "bg-green-50 border-green-200",
-                label: "text-green-600",
-                value: "text-green-900",
-            },
-            red: {
-                card: "bg-red-50 border-red-200",
-                label: "text-red-600",
-                value: "text-red-900",
-            },
-            slate: {
-                card: "bg-purple-50 border-purple-200",
-                label: "text-purple-600",
-                value: "text-purple-900",
-            },
-        }[tone] ?? {
-            card: "bg-blue-50 border-blue-200",
-            label: "text-blue-600",
-            value: "text-blue-900",
-        };
-
-    return (
-        <div
-            className={`rounded-2xl border-2 p-4 ${toneClass.card} ${className}`}
-        >
-            <p className={`text-sm font-medium ${toneClass.label}`}>
-                {label}
-            </p>
-            <p
-                className={`mt-2 break-words text-3xl font-bold ${toneClass.value}`}
+const SummaryCard = ({ label, value, icon: Icon, compact = false }) => (
+    <div
+        className={`rounded-2xl bg-white shadow-sm ${
+            compact ? "h-25 p-3" : "p-4"
+        }`}
+    >
+        <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+                <p
+                    className={`${
+                        compact ? "line-clamp-2 min-h-8 text-xs" : "text-sm"
+                    } text-slate-500`}
+                >
+                    {label}
+                </p>
+                <p
+                    className={`mt-1 wrap-break-word font-semibold text-slate-900 ${
+                        compact ? "text-lg" : "text-2xl"
+                    }`}
+                >
+                    {value}
+                </p>
+            </div>
+            <span
+                className={`shrink-0 rounded-2xl bg-sky-50 text-sky-500 ${
+                    compact ? "p-2" : "p-3"
+                }`}
             >
-                {value}
-            </p>
+                {createElement(Icon, { size: compact ? 18 : 22 })}
+            </span>
         </div>
-    );
-};
+    </div>
+);
 
 export default function ReimbursementReports() {
     const { collapsed, toggle } = useSidebarCollapsed();
@@ -202,7 +199,10 @@ export default function ReimbursementReports() {
             if (filters.status !== "all" && row.status !== filters.status) {
                 return false;
             }
-            if (filters.requesterId && row.requester_id !== filters.requesterId) {
+            if (
+                filters.requesterId &&
+                row.requester_id !== filters.requesterId
+            ) {
                 return false;
             }
             if (!matchesPeriod(row, filters)) return false;
@@ -350,40 +350,96 @@ export default function ReimbursementReports() {
                         </div>
                     )}
 
-                    <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3">
-                        <SummaryCard label="Total Klaim" value={summary.total} />
-                        <SummaryCard
-                            label="Pending"
-                            value={summary.pending}
-                            tone="amber"
-                        />
-                        <SummaryCard
-                            label="Approved"
-                            value={summary.approved}
-                            tone="emerald"
-                        />
-                        <SummaryCard
-                            label="Rejected"
-                            value={summary.rejected}
-                            tone="red"
-                        />
-                        <SummaryCard
-                            label="Nominal Klaim"
-                            value={formatCurrency(summary.claimAmount)}
-                            className="col-span-2 md:col-span-1"
-                        />
-                        <SummaryCard
-                            label="Disetujui"
-                            value={formatCurrency(summary.approvedAmount)}
-                            tone="emerald"
-                            className="col-span-2 md:col-span-1"
-                        />
-                        <SummaryCard
-                            label="Selisih"
-                            value={formatCurrency(summary.difference)}
-                            tone="slate"
-                        />
-                    </div>
+                    <section className="mb-6">
+                        <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 md:hidden">
+                            <div className="min-w-36">
+                                <SummaryCard
+                                    label="Total Klaim"
+                                    value={summary.total}
+                                    icon={Receipt}
+                                    compact
+                                />
+                            </div>
+                            <div className="min-w-36">
+                                <SummaryCard
+                                    label="Pending"
+                                    value={summary.pending}
+                                    icon={Clock3}
+                                    compact
+                                />
+                            </div>
+                            <div className="min-w-36">
+                                <SummaryCard
+                                    label="Approved"
+                                    value={summary.approved}
+                                    icon={CheckCircle2}
+                                    compact
+                                />
+                            </div>
+                            <div className="min-w-36">
+                                <SummaryCard
+                                    label="Rejected"
+                                    value={summary.rejected}
+                                    icon={XCircle}
+                                    compact
+                                />
+                            </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-3 md:hidden">
+                            <SummaryCard
+                                label="Nominal Klaim"
+                                value={formatCurrency(summary.claimAmount)}
+                                icon={Wallet}
+                            />
+                            <SummaryCard
+                                label="Disetujui"
+                                value={formatCurrency(summary.approvedAmount)}
+                                icon={Banknote}
+                            />
+                            <SummaryCard
+                                label="Selisih"
+                                value={formatCurrency(summary.difference)}
+                                icon={Wallet}
+                            />
+                        </div>
+                        <div className="hidden gap-4 md:grid md:grid-cols-3">
+                            <SummaryCard
+                                label="Total Klaim"
+                                value={summary.total}
+                                icon={Receipt}
+                            />
+                            <SummaryCard
+                                label="Pending"
+                                value={summary.pending}
+                                icon={Clock3}
+                            />
+                            <SummaryCard
+                                label="Approved"
+                                value={summary.approved}
+                                icon={CheckCircle2}
+                            />
+                            <SummaryCard
+                                label="Rejected"
+                                value={summary.rejected}
+                                icon={XCircle}
+                            />
+                            <SummaryCard
+                                label="Nominal Klaim"
+                                value={formatCurrency(summary.claimAmount)}
+                                icon={Wallet}
+                            />
+                            <SummaryCard
+                                label="Disetujui"
+                                value={formatCurrency(summary.approvedAmount)}
+                                icon={Banknote}
+                            />
+                            <SummaryCard
+                                label="Selisih"
+                                value={formatCurrency(summary.difference)}
+                                icon={Wallet}
+                            />
+                        </div>
+                    </section>
 
                     <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                         <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -500,7 +556,9 @@ export default function ReimbursementReports() {
                                 <table className="w-full text-sm">
                                     <thead className="border-b border-slate-200 bg-slate-100 text-left text-slate-700">
                                         <tr>
-                                            <th className="px-4 py-3">Pengaju</th>
+                                            <th className="px-4 py-3">
+                                                Pengaju
+                                            </th>
                                             <th className="px-4 py-3">
                                                 Tanggal Transaksi
                                             </th>
@@ -511,7 +569,9 @@ export default function ReimbursementReports() {
                                             <th className="px-4 py-3">
                                                 Disetujui
                                             </th>
-                                            <th className="px-4 py-3">Status</th>
+                                            <th className="px-4 py-3">
+                                                Status
+                                            </th>
                                             <th className="px-4 py-3">
                                                 Approved By
                                             </th>
@@ -524,10 +584,14 @@ export default function ReimbursementReports() {
                                                 className="hover:bg-slate-50"
                                             >
                                                 <td className="px-4 py-3 font-semibold text-slate-900">
-                                                    {getDisplayName(row.requester)}
+                                                    {getDisplayName(
+                                                        row.requester,
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3 text-slate-700">
-                                                    {formatDate(row.transaction_date)}
+                                                    {formatDate(
+                                                        row.transaction_date,
+                                                    )}
                                                 </td>
                                                 <td className="max-w-xs px-4 py-3 text-slate-700">
                                                     <span className="line-clamp-2">
@@ -535,7 +599,9 @@ export default function ReimbursementReports() {
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 font-semibold text-slate-900">
-                                                    {formatCurrency(row.claim_amount)}
+                                                    {formatCurrency(
+                                                        row.claim_amount,
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3 font-semibold text-slate-900">
                                                     {row.approved_amount
@@ -546,7 +612,11 @@ export default function ReimbursementReports() {
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <span
-                                                        className={`rounded-full px-2 py-1 text-xs font-semibold ${REIMBURSEMENT_STATUS_STYLES[row.status]}`}
+                                                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                                            REIMBURSEMENT_STATUS_STYLES[
+                                                                row.status
+                                                            ]
+                                                        }`}
                                                     >
                                                         {
                                                             REIMBURSEMENT_STATUS_LABELS[
@@ -556,7 +626,9 @@ export default function ReimbursementReports() {
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 text-slate-700">
-                                                    {getDisplayName(row.approver)}
+                                                    {getDisplayName(
+                                                        row.approver,
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+    createElement,
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
 import {
     Check,
     Clock3,
@@ -268,36 +274,86 @@ export default function OvertimeManagement() {
                         </div>
                     )}
 
-                    <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-                        <SummaryCard
-                            label="Total Pengajuan"
-                            value={summary.total}
-                        />
-                        <SummaryCard
-                            label="Menunggu Approval"
-                            value={summary.pending}
-                            tone="blue"
-                        />
-                        <SummaryCard
-                            label="Disetujui"
-                            value={summary.approved}
-                            tone="green"
-                        />
-                        <SummaryCard
-                            label="Ditolak"
-                            value={summary.rejected}
-                            tone="red"
-                        />
-                        <SummaryCard
-                            label="Manual"
-                            value={
-                                filteredRequests.filter(
-                                    (row) => row.overtime_type === "manual",
-                                ).length
-                            }
-                            tone="slate"
-                        />
-                    </div>
+                    <section className="mb-5">
+                        <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 lg:hidden">
+                            <div className="min-w-36">
+                                <SummaryCard
+                                    label="Total Pengajuan"
+                                    value={summary.total}
+                                    icon={Plus}
+                                    compact
+                                />
+                            </div>
+                            <div className="min-w-36">
+                                <SummaryCard
+                                    label="Menunggu Approval"
+                                    value={summary.pending}
+                                    icon={Clock3}
+                                    compact
+                                />
+                            </div>
+                            <div className="min-w-36">
+                                <SummaryCard
+                                    label="Disetujui"
+                                    value={summary.approved}
+                                    icon={Check}
+                                    compact
+                                />
+                            </div>
+                            <div className="min-w-36">
+                                <SummaryCard
+                                    label="Ditolak"
+                                    value={summary.rejected}
+                                    icon={X}
+                                    compact
+                                />
+                            </div>
+                            <div className="min-w-36">
+                                <SummaryCard
+                                    label="Manual"
+                                    value={
+                                        filteredRequests.filter(
+                                            (row) =>
+                                                row.overtime_type === "manual",
+                                        ).length
+                                    }
+                                    icon={Filter}
+                                    compact
+                                />
+                            </div>
+                        </div>
+                        <div className="hidden gap-3 lg:grid lg:grid-cols-5">
+                            <SummaryCard
+                                label="Total Pengajuan"
+                                value={summary.total}
+                                icon={Plus}
+                            />
+                            <SummaryCard
+                                label="Menunggu Approval"
+                                value={summary.pending}
+                                icon={Clock3}
+                            />
+                            <SummaryCard
+                                label="Disetujui"
+                                value={summary.approved}
+                                icon={Check}
+                            />
+                            <SummaryCard
+                                label="Ditolak"
+                                value={summary.rejected}
+                                icon={X}
+                            />
+                            <SummaryCard
+                                label="Manual"
+                                value={
+                                    filteredRequests.filter(
+                                        (row) => row.overtime_type === "manual",
+                                    ).length
+                                }
+                                icon={Filter}
+                            />
+                        </div>
+                    </section>
 
                     {filters.technicianId && (
                         <div className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-indigo-800">
@@ -699,18 +755,38 @@ export default function OvertimeManagement() {
     );
 }
 
-function SummaryCard({ label, value, tone = "sky" }) {
-    const tones = {
-        sky: "border-sky-200 bg-sky-50 text-sky-700",
-        blue: "border-blue-200 bg-blue-50 text-blue-700",
-        green: "border-emerald-200 bg-emerald-50 text-emerald-700",
-        red: "border-red-200 bg-red-50 text-red-700",
-        slate: "border-slate-200 bg-slate-50 text-slate-700",
-    };
+function SummaryCard({ label, value, icon: Icon, compact = false }) {
     return (
-        <div className={`rounded-2xl border p-4 ${tones[tone] || tones.sky}`}>
-            <p className="text-xs font-semibold">{label}</p>
-            <p className="mt-2 text-2xl font-bold">{value}</p>
+        <div
+            className={`rounded-2xl bg-white shadow-sm ${
+                compact ? "h-25 p-3" : "p-4"
+            }`}
+        >
+            <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p
+                        className={`${
+                            compact ? "line-clamp-2 min-h-8 text-xs" : "text-sm"
+                        } text-slate-500`}
+                    >
+                        {label}
+                    </p>
+                    <p
+                        className={`mt-1 wrap-break-word font-semibold text-slate-900 ${
+                            compact ? "text-lg" : "text-2xl"
+                        }`}
+                    >
+                        {value}
+                    </p>
+                </div>
+                <span
+                    className={`shrink-0 rounded-2xl bg-sky-50 text-sky-500 ${
+                        compact ? "p-2" : "p-3"
+                    }`}
+                >
+                    {createElement(Icon, { size: compact ? 18 : 22 })}
+                </span>
+            </div>
         </div>
     );
 }

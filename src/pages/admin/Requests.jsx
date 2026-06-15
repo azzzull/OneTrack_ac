@@ -42,7 +42,6 @@ import { createOfflineQueueItem } from "../../utils/offlineQueue";
 import { getScopeSummaryMeta } from "../../utils/jobScopeCatalog";
 import {
     claimPendingRequestJob,
-    getTechnicianJobIds,
     getTechnicianVisibleJobIds,
     syncJobTechnicians,
 } from "../../services/jobTechniciansService";
@@ -486,7 +485,7 @@ const shouldIncludeRequestForRole = (row, role, userId) => {
 };
 
 export default function AdminRequestsPage() {
-    const { user, role, profile, loading: authLoading } = useAuth();
+    const { user, role, loading: authLoading } = useAuth();
     const { isOnline } = useNetworkStatus();
     const { alert: showAlert, confirm: showConfirm } = useDialog();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
@@ -1179,6 +1178,15 @@ export default function AdminRequestsPage() {
         setCustomEndDate("");
         setSelectedTechnicianId("all");
         setSearchParams({});
+    };
+
+    const handleStatusFilterChange = (nextFilter) => {
+        setActiveFilter(nextFilter);
+        if (nextFilter === "all") {
+            setSearchParams({});
+            return;
+        }
+        setSearchParams({ status: nextFilter });
     };
 
     const handleExportExcel = async () => {
@@ -2047,22 +2055,29 @@ export default function AdminRequestsPage() {
                                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     Status
                                 </p>
-                                <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
+                                <div className="md:hidden">
+                                    <CustomSelect
+                                        value={activeFilter}
+                                        onChange={handleStatusFilterChange}
+                                        options={FILTERS.map((filter) => ({
+                                            value: filter.key,
+                                            label: filter.label,
+                                            badge:
+                                                requestCounts[filter.key] ?? 0,
+                                        }))}
+                                    />
+                                </div>
+                                <div className="hidden rounded-full border border-slate-200 bg-white p-1 md:inline-flex">
                                     {FILTERS.map((filter) => (
                                         <button
                                             key={filter.key}
                                             type="button"
-                                            onClick={() => {
-                                                setActiveFilter(filter.key);
-                                                if (filter.key === "all") {
-                                                    setSearchParams({});
-                                                    return;
-                                                }
-                                                setSearchParams({
-                                                    status: filter.key,
-                                                });
-                                            }}
-                                            className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-5 md:text-sm ${
+                                            onClick={() =>
+                                                handleStatusFilterChange(
+                                                    filter.key,
+                                                )
+                                            }
+                                            className={`cursor-pointer rounded-full px-5 py-2 text-sm transition ${
                                                 activeFilter === filter.key
                                                     ? "bg-sky-500 font-semibold text-white"
                                                     : "font-medium text-slate-600 hover:bg-slate-100"

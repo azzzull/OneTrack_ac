@@ -12,6 +12,7 @@ import {
     Camera,
     CheckCircle2,
     Clock3,
+    Eye,
     FileImage,
     FolderOpen,
     Plus,
@@ -102,10 +103,18 @@ const StatusBadge = ({ status }) => (
 );
 
 const SummaryCard = ({ title, value, icon: Icon, compact = false }) => (
-    <div className={`rounded-2xl bg-white shadow-sm ${compact ? "p-3" : "p-4"}`}>
+    <div
+        className={`rounded-2xl bg-white shadow-sm ${
+            compact ? "h-25 p-3" : "p-4"
+        }`}
+    >
         <div className="flex items-center justify-between gap-3">
             <div>
-                <p className={`${compact ? "text-xs" : "text-sm"} text-slate-500`}>
+                <p
+                    className={`${
+                        compact ? "line-clamp-2 min-h-8 text-xs" : "text-sm"
+                    } text-slate-500`}
+                >
                     {title}
                 </p>
                 <p
@@ -235,10 +244,9 @@ export default function AccommodationPage({ mode = "technician" }) {
         const keyword = search.trim().toLowerCase();
         return requests.filter((item) => {
             const matchesFilter = filter === "all" || item.status === filter;
-            const haystack =
-                `${item.request_title ?? ""} ${item.purpose ?? ""} ${getDisplayName(
-                    item.technician,
-                )}`.toLowerCase();
+            const haystack = `${item.request_title ?? ""} ${
+                item.purpose ?? ""
+            } ${getDisplayName(item.technician)}`.toLowerCase();
             return matchesFilter && (!keyword || haystack.includes(keyword));
         });
     }, [filter, requests, search]);
@@ -507,7 +515,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                         </div>
                     </div>
 
-                    {mode === "management" && (
+                    {canViewAccommodationReport && (
                         <section className="mt-6">
                             <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 md:hidden">
                                 <div className="min-w-36">
@@ -597,142 +605,172 @@ export default function AccommodationPage({ mode = "technician" }) {
                         </section>
                     )}
 
-                    <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1 md:mt-6 md:inline-flex md:grid-cols-none md:gap-0 md:rounded-full">
-                        {filters.map((item) => (
-                            <button
-                                key={item.key}
-                                type="button"
-                                onClick={() => setFilter(item.key)}
-                                className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-6 md:text-sm ${
-                                    filter === item.key
-                                        ? "bg-sky-500 font-semibold text-white"
-                                        : "font-medium text-slate-600 hover:bg-slate-100"
-                                }`}
-                            >
-                                <span className="inline-flex items-center gap-2">
-                                    <span>{item.label}</span>
-                                    <span
-                                        className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                            filter === item.key
-                                                ? "bg-white/20 text-white"
-                                                : "bg-slate-200 text-slate-700"
-                                        }`}
-                                    >
-                                        {requestCounts[item.key] ?? 0}
+                    <div className="mt-5 md:mt-6">
+                        <label className="block md:hidden">
+                            <span className="mb-1 block text-xs font-medium text-slate-500">
+                                Status
+                            </span>
+                            <CustomSelect
+                                value={filter}
+                                onChange={setFilter}
+                                options={filters.map((item) => ({
+                                    value: item.key,
+                                    label: item.label,
+                                    badge: requestCounts[item.key] ?? 0,
+                                }))}
+                            />
+                        </label>
+
+                        <div className="hidden rounded-full border border-slate-200 bg-white p-1 md:inline-flex">
+                            {filters.map((item) => (
+                                <button
+                                    key={item.key}
+                                    type="button"
+                                    onClick={() => setFilter(item.key)}
+                                    className={`cursor-pointer rounded-full px-6 py-2 text-sm transition ${
+                                        filter === item.key
+                                            ? "bg-sky-500 font-semibold text-white"
+                                            : "font-medium text-slate-600 hover:bg-slate-100"
+                                    }`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <span>{item.label}</span>
+                                        <span
+                                            className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                                filter === item.key
+                                                    ? "bg-white/20 text-white"
+                                                    : "bg-slate-200 text-slate-700"
+                                            }`}
+                                        >
+                                            {requestCounts[item.key] ?? 0}
+                                        </span>
                                     </span>
-                                </span>
-                            </button>
-                        ))}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
-                    <section className="mt-6 rounded-2xl bg-white p-3 shadow-sm">
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full text-left text-sm">
-                                <thead className="text-xs uppercase text-slate-500">
-                                    <tr className="border-b border-slate-200">
-                                        {showTechnicianColumn && (
-                                            <th className="px-3 py-3">
-                                                Technician
-                                            </th>
-                                        )}
-                                        <th className="px-3 py-3">Title</th>
-                                        <th className="px-3 py-3">Requested</th>
-                                        <th className="px-3 py-3">Approved</th>
-                                        <th className="px-3 py-3">Realized</th>
-                                        <th className="px-3 py-3">Remaining</th>
-                                        <th className="px-3 py-3">Status</th>
-                                        <th className="px-3 py-3">Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {loading ? (
-                                        <tr>
-                                            <td
-                                                colSpan={
-                                                    showTechnicianColumn ? 8 : 7
-                                                }
-                                                className="px-3 py-8 text-center text-slate-500"
-                                            >
-                                                Loading accommodation
-                                                requests...
-                                            </td>
-                                        </tr>
-                                    ) : filteredRequests.length ? (
-                                        filteredRequests.map((item) => (
-                                            <tr
-                                                key={item.id}
-                                                onClick={() =>
-                                                    setSelectedId(item.id)
-                                                }
-                                                className="cursor-pointer border-b border-slate-100 hover:bg-sky-50"
-                                            >
+                    <section className="mt-6 space-y-3">
+                        {loading ? (
+                            <div className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+                                Loading accommodation requests...
+                            </div>
+                        ) : filteredRequests.length ? (
+                            filteredRequests.map((item) => (
+                                <article
+                                    key={item.id}
+                                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
+                                >
+                                    <div className="p-4">
+                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                            <div className="min-w-0">
+                                                <div className="flex min-w-0 items-start gap-2">
+                                                    <h2 className="min-w-0 truncate text-base font-semibold text-slate-900">
+                                                        {item.request_title}
+                                                    </h2>
+                                                    <span className="shrink-0">
+                                                        <StatusBadge
+                                                            status={item.status}
+                                                        />
+                                                    </span>
+                                                </div>
                                                 {showTechnicianColumn && (
-                                                    <td className="px-3 py-3 text-slate-700">
+                                                    <p className="mt-2 text-sm font-medium text-slate-700">
                                                         {getDisplayName(
                                                             item.technician,
                                                         )}
-                                                    </td>
+                                                    </p>
                                                 )}
-                                                <td className="px-3 py-3">
-                                                    <p className="font-semibold text-slate-900">
-                                                        {item.request_title}
+                                                <p className="mt-2 line-clamp-2 text-sm text-slate-600">
+                                                    {item.purpose}
+                                                </p>
+                                                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate-500">
+                                                    <span>
+                                                        {getAccommodationCustomerLabel(
+                                                            item,
+                                                        )}
+                                                    </span>
+                                                    <span>
+                                                        {getAccommodationProjectLabel(
+                                                            item,
+                                                        )}
+                                                    </span>
+                                                    <span>
+                                                        {formatDate(
+                                                            item.requested_at ||
+                                                                item.created_at,
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-sm lg:w-md">
+                                                <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                                    <p className="text-xs font-medium text-slate-500">
+                                                        Requested
                                                     </p>
-                                                    <p className="mt-1 max-w-xs truncate text-xs text-slate-500">
-                                                        {item.purpose}
+                                                    <p className="mt-1 wrap-break-word font-semibold text-slate-900">
+                                                        {formatCurrency(
+                                                            item.requested_amount,
+                                                        )}
                                                     </p>
-                                                </td>
-                                                <td className="px-3 py-3 text-slate-700">
-                                                    {formatCurrency(
-                                                        item.requested_amount,
-                                                    )}
-                                                </td>
-                                                <td className="px-3 py-3 text-slate-700">
-                                                    {item.approved_amount
-                                                        ? formatCurrency(
-                                                              item.approved_amount,
-                                                          )
-                                                        : "-"}
-                                                </td>
-                                                <td className="px-3 py-3 text-slate-700">
-                                                    {formatCurrency(
-                                                        item.totalRealized,
-                                                    )}
-                                                </td>
-                                                <td className="px-3 py-3 text-slate-700">
-                                                    {item.approved_amount
-                                                        ? formatCurrency(
-                                                              item.remainingAmount,
-                                                          )
-                                                        : "-"}
-                                                </td>
-                                                <td className="px-3 py-3">
-                                                    <StatusBadge
-                                                        status={item.status}
-                                                    />
-                                                </td>
-                                                <td className="px-3 py-3 text-slate-500">
-                                                    {formatDate(
-                                                        item.requested_at ||
-                                                            item.created_at,
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td
-                                                colSpan={
-                                                    showTechnicianColumn ? 8 : 7
+                                                </div>
+                                                <div className="rounded-xl bg-emerald-50 px-3 py-2">
+                                                    <p className="text-xs font-medium text-emerald-700">
+                                                        Approved
+                                                    </p>
+                                                    <p className="mt-1 wrap-break-word font-semibold text-emerald-900">
+                                                        {item.approved_amount
+                                                            ? formatCurrency(
+                                                                  item.approved_amount,
+                                                              )
+                                                            : "-"}
+                                                    </p>
+                                                </div>
+                                                <div className="rounded-xl bg-blue-50 px-3 py-2">
+                                                    <p className="text-xs font-medium text-blue-700">
+                                                        Realized
+                                                    </p>
+                                                    <p className="mt-1 wrap-break-word font-semibold text-blue-900">
+                                                        {formatCurrency(
+                                                            item.totalRealized,
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                <div className="rounded-xl bg-amber-50 px-3 py-2">
+                                                    <p className="text-xs font-medium text-amber-700">
+                                                        Remaining
+                                                    </p>
+                                                    <p className="mt-1 wrap-break-word font-semibold text-amber-900">
+                                                        {item.approved_amount
+                                                            ? formatCurrency(
+                                                                  item.remainingAmount,
+                                                              )
+                                                            : "-"}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setSelectedId(item.id)
                                                 }
-                                                className="px-3 py-8 text-center text-slate-500"
+                                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                                             >
-                                                Belum ada pengajuan.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                                                <Eye size={15} />
+                                                Detail
+                                            </button>
+                                        </div>
+                                    </div>
+                                </article>
+                            ))
+                        ) : (
+                            <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50 p-8 text-center text-sm text-sky-700">
+                                Belum ada pengajuan.
+                            </div>
+                        )}
                     </section>
                 </main>
             </div>
@@ -917,11 +955,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                             file={receiptPhotoFile}
                             onChange={setReceiptPhotoFile}
                         />
-                        <CurrencyInput
-                            name="amount"
-                            label="Amount"
-                            required
-                        />
+                        <CurrencyInput name="amount" label="Amount" required />
                         <TextInput
                             name="transaction_date"
                             label="Transaction Date"
@@ -968,9 +1002,7 @@ function DetailDrawer({
     });
 
     const isImagePreviewableUrl = (url) =>
-        /\.(png|jpe?g|webp|gif|bmp|avif|svg)(\?.*)?$/i.test(
-            String(url ?? ""),
-        );
+        /\.(png|jpe?g|webp|gif|bmp|avif|svg)(\?.*)?$/i.test(String(url ?? ""));
 
     const openImagePreview = (url, label) => {
         if (!url) return;
@@ -1200,8 +1232,8 @@ function DetailDrawer({
 
                 {mode === "admin" && (
                     <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                        Admin dapat monitoring dan menghapus pengajuan.
-                        Approval tetap hanya untuk role management.
+                        Admin dapat monitoring dan menghapus pengajuan. Approval
+                        tetap hanya untuk role management.
                     </p>
                 )}
                 {imagePreview.open && (
@@ -1366,7 +1398,9 @@ function ReceiptPhotoInput({ label, file, onChange }) {
         const canvas = canvasRef.current;
         if (!video || !canvas) return;
         if (!video.videoWidth || !video.videoHeight) {
-            setCameraError("Preview kamera belum siap. Tunggu sebentar lalu capture lagi.");
+            setCameraError(
+                "Preview kamera belum siap. Tunggu sebentar lalu capture lagi.",
+            );
             return;
         }
 
@@ -1379,11 +1413,9 @@ function ReceiptPhotoInput({ label, file, onChange }) {
         canvas.toBlob(
             (blob) => {
                 if (!blob) return;
-                const nextFile = new File(
-                    [blob],
-                    `receipt-${Date.now()}.jpg`,
-                    { type: "image/jpeg" },
-                );
+                const nextFile = new File([blob], `receipt-${Date.now()}.jpg`, {
+                    type: "image/jpeg",
+                });
                 onChange(nextFile);
                 stopCamera();
             },
