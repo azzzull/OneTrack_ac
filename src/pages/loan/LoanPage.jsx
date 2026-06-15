@@ -555,7 +555,9 @@ export default function LoanPage() {
         setReviewTarget(row);
         setReviewMode(mode);
         setReviewForm({
-            approvedAmount: row.loan_amount ? String(Number(row.loan_amount)) : "",
+            approvedAmount: row.loan_amount
+                ? formatNumberInput(String(Number(row.loan_amount)))
+                : "",
             approvalNote: "",
             rejectionReason: "",
             transferFile: null,
@@ -567,7 +569,8 @@ export default function LoanPage() {
         if (!reviewTarget || !user?.id) return;
 
         if (reviewMode === "approve") {
-            if (Number(reviewForm.approvedAmount) <= 0) {
+            const approvedAmount = onlyDigits(reviewForm.approvedAmount);
+            if (Number(approvedAmount) <= 0) {
                 alert("Nominal disetujui wajib lebih dari 0.");
                 return;
             }
@@ -590,7 +593,7 @@ export default function LoanPage() {
                 });
                 await approveLoan({
                     loan: reviewTarget,
-                    approvedAmount: reviewForm.approvedAmount,
+                    approvedAmount: onlyDigits(reviewForm.approvedAmount),
                     transferProofUrl: uploaded.url,
                     approvalNote: reviewForm.approvalNote.trim(),
                     approvedBy: user.id,
@@ -1490,10 +1493,17 @@ function ReviewModal({ mode, row, form, saving, onChange, onSubmit, onClose }) {
                     {isApprove ? (
                         <>
                             <input
-                                type="number"
-                                min="1"
+                                type="text"
+                                inputMode="numeric"
                                 value={form.approvedAmount}
-                                onChange={(event) => onChange((prev) => ({ ...prev, approvedAmount: event.target.value }))}
+                                onChange={(event) =>
+                                    onChange((prev) => ({
+                                        ...prev,
+                                        approvedAmount: formatNumberInput(
+                                            event.target.value,
+                                        ),
+                                    }))
+                                }
                                 placeholder="Nominal disetujui"
                                 className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
                             />

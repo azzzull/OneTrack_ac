@@ -62,6 +62,10 @@ const getNotificationTargetPath = (notification, role) => {
         return "/overtime";
     }
 
+    if (table === "loans" || table === "loan_repayments") {
+        return "/loans";
+    }
+
     if (table === "attendance") {
         if (role === "technician") return "/technician/attendance";
         return "/admin/attendance";

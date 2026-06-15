@@ -173,6 +173,8 @@ self.addEventListener("notificationclick", (event) => {
         targetUrl = "/requests";
     } else if (referenceTable === "overtime_requests") {
         targetUrl = "/overtime";
+    } else if (referenceTable === "loans" || referenceTable === "loan_repayments") {
+        targetUrl = "/loans";
     } else if (referenceTable.includes("attendance")) {
         targetUrl = "/admin/attendance";
     } else if (referenceTable.includes("accommodation")) {

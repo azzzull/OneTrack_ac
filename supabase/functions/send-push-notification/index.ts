@@ -186,6 +186,12 @@ const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
     overtime_approved: ["technician"],
     overtime_rejected: ["technician"],
     overtime_status_changed: ["technician", "admin", "management"],
+    reimbursement_requested: ["admin", "management"],
+    reimbursement_approved: ["technician"],
+    reimbursement_rejected: ["technician"],
+    loan_requested: ["admin", "management"],
+    loan_approved: ["technician"],
+    loan_rejected: ["technician"],
     attendance_status_changed: ["technician", "admin", "management"],
 };
 
