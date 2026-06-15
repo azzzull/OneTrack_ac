@@ -358,6 +358,7 @@ export default function LoanPage() {
         transferFile: null,
     });
     const [repaymentForm, setRepaymentForm] = useState({
+        requesterId: "",
         amount: "",
         method: "transfer",
         proofFile: null,
@@ -375,7 +376,7 @@ export default function LoanPage() {
 
     const canReview = ["admin", "management"].includes(role);
     const canCreate = ["technician", "admin", "management"].includes(role);
-    const canUseUniversalRepayment = role === "technician";
+    const canUseUniversalRepayment = role === "technician" || canReview;
 
     const loadData = useCallback(async () => {
         if (!user?.id || !role) return;
@@ -499,6 +500,8 @@ export default function LoanPage() {
             });
     }, [rows]);
 
+    const hasOutstandingLoans = outstandingLoans.length > 0;
+
     const resetForm = () => {
         setForm({
             neededDate: todayKey(),
@@ -609,30 +612,22 @@ export default function LoanPage() {
         }
     };
 
-    const openRepayment = (row) => {
-        setRepaymentTarget(row);
-        setRepaymentForm({
-            amount: row.remaining_amount ? String(Number(row.remaining_amount)) : "",
-            method: canReview ? "salary_deduction" : "transfer",
-            proofFile: null,
-            note: "",
-        });
-    };
-
     const openUniversalRepayment = () => {
         if (outstandingLoans.length === 0) return;
         setFabOpen(false);
         setRepaymentTarget({
             id: "universal",
             isUniversal: true,
-            requester: profile,
-            approved_amount: loanSummary.approvedAmount,
-            remaining_amount: loanSummary.remainingAmount,
-            loans: outstandingLoans,
+            isAdminUniversal: canReview,
+            requester: canReview ? null : profile,
+            approved_amount: canReview ? 0 : loanSummary.approvedAmount,
+            remaining_amount: canReview ? 0 : loanSummary.remainingAmount,
+            loans: canReview ? rows : outstandingLoans,
         });
         setRepaymentForm({
+            requesterId: "",
             amount: "",
-            method: "transfer",
+            method: canReview ? "salary_deduction" : "transfer",
             proofFile: null,
             note: "",
         });
@@ -643,15 +638,42 @@ export default function LoanPage() {
         if (!repaymentTarget || !user?.id) return;
 
         const amount = onlyDigits(repaymentForm.amount);
+        const targetLoans = repaymentTarget.isAdminUniversal
+            ? rows
+                  .filter(
+                      (row) =>
+                          row.requester_id === repaymentForm.requesterId &&
+                          row.status === "approved" &&
+                          Number(row.remaining_amount ?? 0) > 0,
+                  )
+                  .sort((a, b) => {
+                      const aDate = new Date(a.approved_at ?? a.created_at ?? 0);
+                      const bDate = new Date(b.approved_at ?? b.created_at ?? 0);
+                      return aDate - bDate;
+                  })
+            : repaymentTarget.loans ?? [repaymentTarget];
+        const targetRemaining = targetLoans.reduce(
+            (sum, loan) => sum + Number(loan.remaining_amount ?? 0),
+            0,
+        );
+
+        if (repaymentTarget.isAdminUniversal && !repaymentForm.requesterId) {
+            alert("Pilih user yang hutangnya ingin dikurangi.");
+            return;
+        }
+        if (targetLoans.length === 0) {
+            alert("User ini tidak punya sisa hutang approved.");
+            return;
+        }
         if (Number(amount) <= 0) {
             alert("Nominal pembayaran wajib lebih dari 0.");
             return;
         }
-        if (Number(amount) > Number(repaymentTarget.remaining_amount ?? 0)) {
+        if (Number(amount) > targetRemaining) {
             alert("Nominal pembayaran melebihi sisa hutang.");
             return;
         }
-        if (repaymentForm.method === "transfer" && !repaymentForm.proofFile) {
+        if (!canReview && repaymentForm.method === "transfer" && !repaymentForm.proofFile) {
             alert("Bukti transfer wajib diupload.");
             return;
         }
@@ -663,22 +685,23 @@ export default function LoanPage() {
                 const uploaded = await uploadLoanFile({
                     file: repaymentForm.proofFile,
                     loanId:
-                        repaymentTarget.isUniversal
-                            ? repaymentTarget.loans?.[0]?.id
+                        repaymentTarget.isUniversal || repaymentTarget.isAdminUniversal
+                            ? targetLoans[0]?.id
                             : repaymentTarget.id,
                     kind: "repayment",
                 });
                 proofUrl = uploaded.url;
             }
 
-            if (repaymentTarget.isUniversal) {
+            if (repaymentTarget.isUniversal || repaymentTarget.isAdminUniversal) {
                 await addUniversalLoanRepayment({
-                    loans: repaymentTarget.loans,
+                    loans: targetLoans,
                     amount,
                     method: repaymentForm.method,
                     proofUrl,
                     note: repaymentForm.note.trim(),
                     createdBy: user.id,
+                    requireProof: !canReview,
                 });
             } else {
                 await addLoanRepayment({
@@ -688,6 +711,7 @@ export default function LoanPage() {
                     proofUrl,
                     note: repaymentForm.note.trim(),
                     createdBy: user.id,
+                    requireProof: !canReview,
                 });
             }
             setRepaymentTarget(null);
@@ -924,16 +948,6 @@ export default function LoanPage() {
                                                     </button>
                                                 </>
                                             )}
-                                            {canReview && row.status === "approved" && Number(row.remaining_amount ?? 0) > 0 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openRepayment(row)}
-                                                    className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                                                >
-                                                    <Banknote size={15} />
-                                                    Kurangi
-                                                </button>
-                                            )}
                                         </div>
                                     </div>
                                 </article>
@@ -948,14 +962,14 @@ export default function LoanPage() {
                 <div className="fixed bottom-24 right-5 z-40 flex flex-col items-end gap-2 md:bottom-6">
                     {fabOpen && (
                         <div className="flex flex-col items-end gap-2">
-                            {canUseUniversalRepayment && loanSummary.remainingAmount > 0 && (
+                            {canUseUniversalRepayment && hasOutstandingLoans && (
                                 <button
                                     type="button"
                                     onClick={openUniversalRepayment}
                                     className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-xl shadow-blue-900/20 hover:bg-blue-700"
                                 >
                                     <Banknote size={17} />
-                                    Bayar Pinjaman
+                                    {canReview ? "Kurangi Pinjaman" : "Bayar Pinjaman"}
                                 </button>
                             )}
                             <button
@@ -1009,7 +1023,6 @@ export default function LoanPage() {
                     onClose={() => setSelected(null)}
                     onOpenFile={openFile}
                     onReview={openReview}
-                    onRepayment={openRepayment}
                 />
             )}
 
@@ -1030,6 +1043,9 @@ export default function LoanPage() {
                     row={repaymentTarget}
                     form={repaymentForm}
                     saving={saving}
+                    loans={rows}
+                    requesters={requesters}
+                    canSelectRequester={canReview}
                     canUseSalaryDeduction={canReview}
                     onChange={setRepaymentForm}
                     onSubmit={handleRepaymentSubmit}
@@ -1151,7 +1167,6 @@ function DetailModal({
     onClose,
     onOpenFile,
     onReview,
-    onRepayment,
 }) {
     const detailRows = [
         ["ID Pinjaman", row.id],
@@ -1265,17 +1280,6 @@ function DetailModal({
                             </button>
                         </div>
                     )}
-                    {canReview && row.status === "approved" && Number(row.remaining_amount ?? 0) > 0 && (
-                        <div className="flex justify-end">
-                            <button
-                                type="button"
-                                onClick={() => onRepayment(row)}
-                                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                            >
-                                Kurangi Hutang
-                            </button>
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
@@ -1286,6 +1290,9 @@ function RepaymentModal({
     row,
     form,
     saving,
+    loans,
+    requesters,
+    canSelectRequester,
     canUseSalaryDeduction,
     onChange,
     onSubmit,
@@ -1304,6 +1311,30 @@ function RepaymentModal({
         { value: "cash", label: LOAN_REPAYMENT_METHOD_LABELS.cash },
         { value: "other", label: LOAN_REPAYMENT_METHOD_LABELS.other },
     ];
+    const selectedRequester = canSelectRequester
+        ? requesters.find((item) => item.id === form.requesterId) ?? null
+        : row.requester;
+    const repaymentLoans = canSelectRequester
+        ? loans.filter(
+              (loan) =>
+                  loan.requester_id === form.requesterId &&
+                  loan.status === "approved" &&
+                  Number(loan.remaining_amount ?? 0) > 0,
+          )
+        : row.loans ?? [row];
+    const repaymentSummary = repaymentLoans.reduce(
+        (summary, loan) => {
+            summary.approvedAmount += Number(loan.approved_amount ?? 0);
+            summary.paidAmount += Number(loan.paid_amount ?? 0);
+            summary.remainingAmount += Number(loan.remaining_amount ?? 0);
+            return summary;
+        },
+        {
+            approvedAmount: 0,
+            paidAmount: 0,
+            remainingAmount: 0,
+        },
+    );
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
@@ -1317,10 +1348,49 @@ function RepaymentModal({
                     </button>
                 </div>
                 <div className="space-y-4 p-5">
+                    {canSelectRequester && (
+                        <CustomSelect
+                            value={form.requesterId}
+                            onChange={(value) =>
+                                onChange((prev) => ({
+                                    ...prev,
+                                    requesterId: value,
+                                    amount: "",
+                                }))
+                            }
+                            options={[
+                                { value: "", label: "Pilih user" },
+                                ...requesters.map((item) => ({
+                                    value: item.id,
+                                    label: getDisplayName(item),
+                                })),
+                            ]}
+                        />
+                    )}
                     <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-                        <p className="font-semibold text-slate-900">{getDisplayName(row.requester)}</p>
-                        <p className="mt-2">Disetujui: {formatCurrency(row.approved_amount)}</p>
-                        <p>Sisa hutang: {formatCurrency(row.remaining_amount)}</p>
+                        <p className="font-semibold text-slate-900">
+                            {selectedRequester ? getDisplayName(selectedRequester) : "Pilih user terlebih dahulu"}
+                        </p>
+                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <div className="rounded-xl bg-white p-3">
+                                <p className="text-xs text-slate-500">Disetujui</p>
+                                <p className="font-semibold text-slate-900">
+                                    {formatCurrency(repaymentSummary.approvedAmount)}
+                                </p>
+                            </div>
+                            <div className="rounded-xl bg-blue-50 p-3">
+                                <p className="text-xs text-blue-700">Dibayar</p>
+                                <p className="font-semibold text-blue-900">
+                                    {formatCurrency(repaymentSummary.paidAmount)}
+                                </p>
+                            </div>
+                            <div className="rounded-xl bg-amber-50 p-3">
+                                <p className="text-xs text-amber-700">Sisa Hutang</p>
+                                <p className="font-semibold text-amber-900">
+                                    {formatCurrency(repaymentSummary.remainingAmount)}
+                                </p>
+                            </div>
+                        </div>
                     </div>
                     <input
                         type="text"
@@ -1349,7 +1419,10 @@ function RepaymentModal({
                     {form.method === "transfer" && (
                         <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-3 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-100">
                             <Upload size={16} />
-                            {form.proofFile?.name || "Upload bukti transfer ke perusahaan"}
+                            {form.proofFile?.name ||
+                                (canSelectRequester
+                                    ? "Upload bukti transfer (opsional)"
+                                    : "Upload bukti transfer ke perusahaan")}
                             <input
                                 type="file"
                                 accept="image/*,.pdf"

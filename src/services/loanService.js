@@ -289,6 +289,7 @@ export const addLoanRepayment = async ({
     proofUrl,
     note,
     createdBy,
+    requireProof = true,
 }) => {
     if (!loan?.id) throw new Error("Pinjaman tidak valid.");
 
@@ -303,7 +304,7 @@ export const addLoanRepayment = async ({
     }
 
     const repaymentMethod = method || "transfer";
-    if (repaymentMethod === "transfer" && !proofUrl) {
+    if (requireProof && repaymentMethod === "transfer" && !proofUrl) {
         throw new Error("Bukti transfer wajib diupload.");
     }
 
@@ -331,6 +332,7 @@ export const addUniversalLoanRepayment = async ({
     proofUrl,
     note,
     createdBy,
+    requireProof = true,
 }) => {
     const paymentAmount = Number(amount);
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
@@ -338,7 +340,7 @@ export const addUniversalLoanRepayment = async ({
     }
 
     const repaymentMethod = method || "transfer";
-    if (repaymentMethod === "transfer" && !proofUrl) {
+    if (requireProof && repaymentMethod === "transfer" && !proofUrl) {
         throw new Error("Bukti transfer wajib diupload.");
     }
 
