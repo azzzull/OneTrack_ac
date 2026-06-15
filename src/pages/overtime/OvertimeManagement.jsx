@@ -86,13 +86,28 @@ export default function OvertimeManagement() {
                 listOvertimeRequests({ role, userId: user.id }),
                 supabase.rpc("get_attendance_profiles"),
             ]);
-            setRequests(overtimeData);
             if (!profilesResult.error) {
-                setTechnicians(
-                    (profilesResult.data || []).filter(
-                        (item) => item.role === "technician",
-                    ),
+                const profiles = profilesResult.data || [];
+                const profileMap = profiles.reduce((acc, item) => {
+                    acc[item.id] = item;
+                    return acc;
+                }, {});
+                setRequests(
+                    overtimeData.map((item) => ({
+                        ...item,
+                        technician:
+                            item.technician ?? profileMap[item.technician_id],
+                        requester:
+                            item.requester ?? profileMap[item.requested_by],
+                        reviewer:
+                            item.reviewer ?? profileMap[item.reviewed_by],
+                    })),
                 );
+                setTechnicians(
+                    profiles.filter((item) => item.role === "technician"),
+                );
+            } else {
+                setRequests(overtimeData);
             }
         } catch (error) {
             console.error("Error loading overtime:", error);

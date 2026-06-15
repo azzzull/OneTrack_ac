@@ -12,6 +12,33 @@ const getProfileName = (profile) =>
     profile?.email ||
     "Teknisi";
 
+const loadProfileMap = async (ids) => {
+    const uniqueIds = [...new Set((ids ?? []).filter(Boolean))];
+    if (uniqueIds.length === 0) return {};
+
+    const { data: rpcProfiles, error: rpcError } = await supabase.rpc(
+        "get_loan_profiles",
+        { p_profile_ids: uniqueIds },
+    );
+    if (!rpcError) {
+        return (rpcProfiles ?? []).reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+        }, {});
+    }
+
+    const { data, error } = await supabase
+        .from("profiles")
+        .select("id, first_name, last_name, name, email, role")
+        .in("id", uniqueIds);
+    if (error) return {};
+
+    return (data ?? []).reduce((acc, profile) => {
+        acc[profile.id] = profile;
+        return acc;
+    }, {});
+};
+
 export const isOvertimeTableMissingError = (error) =>
     error?.code === "42P01" ||
     error?.status === 404 ||
@@ -322,7 +349,19 @@ export const listOvertimeRequests = async ({ role, userId } = {}) => {
 
     const { data, error } = await query;
     if (error) throwFriendlyOvertimeError(error);
-    return data || [];
+    const rows = data || [];
+    const profileMap = await loadProfileMap([
+        ...rows.map((row) => row.technician_id),
+        ...rows.map((row) => row.requested_by),
+        ...rows.map((row) => row.reviewed_by),
+    ]);
+
+    return rows.map((row) => ({
+        ...row,
+        technician: row.technician ?? profileMap[row.technician_id] ?? null,
+        requester: row.requester ?? profileMap[row.requested_by] ?? null,
+        reviewer: row.reviewer ?? profileMap[row.reviewed_by] ?? null,
+    }));
 };
 
 export const reviewOvertimeRequest = async ({ requestId, status, notes, userId }) => {
