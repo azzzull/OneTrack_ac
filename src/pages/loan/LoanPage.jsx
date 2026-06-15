@@ -28,7 +28,6 @@ import {
     LOAN_REPAYMENT_METHOD_LABELS,
     addLoanRepayment,
     addUniversalLoanRepayment,
-    addLoanAttachments,
     approveLoan,
     createLoan,
     formatCurrency,
@@ -351,7 +350,6 @@ export default function LoanPage() {
         neededDate: todayKey(),
         loanAmount: "",
         description: "",
-        supportingFiles: [],
     });
     const [reviewForm, setReviewForm] = useState({
         approvedAmount: "",
@@ -501,20 +499,11 @@ export default function LoanPage() {
             });
     }, [rows]);
 
-    const addSupportingFiles = (fileList) => {
-        const nextFiles = Array.from(fileList ?? []);
-        setForm((prev) => ({
-            ...prev,
-            supportingFiles: [...prev.supportingFiles, ...nextFiles],
-        }));
-    };
-
     const resetForm = () => {
         setForm({
             neededDate: todayKey(),
             loanAmount: "",
             description: "",
-            supportingFiles: [],
         });
     };
 
@@ -537,25 +526,11 @@ export default function LoanPage() {
 
         setSaving(true);
         try {
-            const created = await createLoan({
+            await createLoan({
                 requesterId: user.id,
                 neededDate: form.neededDate,
                 loanAmount,
                 description: form.description.trim(),
-            });
-            const uploadedFiles = await Promise.all(
-                form.supportingFiles.map((file) =>
-                    uploadLoanFile({
-                        file,
-                        loanId: created.id,
-                        kind: "supporting",
-                    }),
-                ),
-            );
-            await addLoanAttachments({
-                loanId: created.id,
-                files: uploadedFiles,
-                uploadedBy: user.id,
             });
             resetForm();
             setRequestModalOpen(false);
@@ -1017,7 +992,6 @@ export default function LoanPage() {
                     form={form}
                     saving={saving}
                     onChange={setForm}
-                    onAddFiles={addSupportingFiles}
                     onSubmit={handleSubmit}
                     onClose={() => {
                         if (!saving) {
@@ -1077,7 +1051,6 @@ function RequestModal({
     form,
     saving,
     onChange,
-    onAddFiles,
     onSubmit,
     onClose,
 }) {
@@ -1143,18 +1116,6 @@ function RequestModal({
                         }
                         placeholder="Keterangan / keperluan"
                         className="min-h-28 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
-                    />
-                    <FilePicker
-                        files={form.supportingFiles}
-                        onAddFiles={onAddFiles}
-                        onRemoveFile={(index) =>
-                            onChange((prev) => ({
-                                ...prev,
-                                supportingFiles: prev.supportingFiles.filter(
-                                    (_, itemIndex) => itemIndex !== index,
-                                ),
-                            }))
-                        }
                     />
                 </div>
                 <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
@@ -1231,22 +1192,6 @@ function DetailModal({
                                 <p className="mt-1 break-words text-sm font-semibold text-slate-900">{value}</p>
                             </div>
                         ))}
-                    </div>
-                    <div>
-                        <p className="mb-2 text-sm font-semibold text-slate-800">Lampiran Pendukung</p>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            {(row.attachments ?? []).map((attachment, index) => (
-                                <button
-                                    key={attachment.id}
-                                    type="button"
-                                    onClick={() => onOpenFile(attachment.file_url, `Lampiran ${index + 1}`)}
-                                    className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                >
-                                    <FileImage size={16} />
-                                    Lampiran {index + 1}
-                                </button>
-                            ))}
-                        </div>
                     </div>
                     {row.transfer_proof_url && (
                         <button

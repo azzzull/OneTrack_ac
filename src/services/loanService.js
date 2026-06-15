@@ -169,29 +169,6 @@ export const createLoan = async ({
     return loan;
 };
 
-export const addLoanAttachments = async ({
-    loanId,
-    files,
-    uploadedBy,
-}) => {
-    if (!files?.length) return [];
-
-    const rows = files.map((file) => ({
-        loan_id: loanId,
-        file_url: file.url,
-        file_type: file.type || null,
-        uploaded_by: uploadedBy,
-    }));
-
-    const { data, error } = await supabase
-        .from("loan_attachments")
-        .insert(rows)
-        .select();
-
-    if (error) throw error;
-    return data ?? [];
-};
-
 export const uploadLoanFile = async ({
     file,
     loanId,
@@ -216,7 +193,7 @@ export const uploadLoanFile = async ({
             ? "transfer-proof"
             : kind === "repayment"
               ? "repayments"
-              : "supporting-files";
+              : "misc";
     const fileName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
     const path = `loans/${loanId}/${folder}/${fileName}`;
 

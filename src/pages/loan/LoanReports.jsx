@@ -421,6 +421,7 @@ export default function LoanReports() {
                             label="Sisa Dari Disetujui"
                             value={formatCurrency(summary.difference)}
                             tone="slate"
+                            className="col-span-2 md:col-span-1"
                         />
                     </div>
 
