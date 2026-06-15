@@ -498,6 +498,47 @@ export const approveLoanRepayment = async ({
     return data;
 };
 
+export const approveLoanRepaymentGroup = async ({
+    repayments,
+    reviewedBy,
+}) => {
+    const items = Array.isArray(repayments) ? repayments : [repayments].filter(Boolean);
+    if (items.length === 0) throw new Error("Pembayaran tidak valid.");
+
+    const approvedRows = [];
+    for (const repayment of items) {
+        const { data, error } = await supabase
+            .from("loan_repayments")
+            .update({
+                status: "approved",
+                reviewed_by: reviewedBy,
+                reviewed_at: new Date().toISOString(),
+                rejection_reason: null,
+            })
+            .eq("id", repayment.id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        approvedRows.push(data);
+    }
+
+    const firstRepayment = items[0];
+    const firstLoan = firstRepayment.loan ?? null;
+    const totalAmount = approvedRows.reduce(
+        (sum, repayment) => sum + Number(repayment.amount ?? 0),
+        0,
+    );
+    await notifyEvent(NOTIFICATION_EVENT_TYPES.LOAN_REPAYMENT_APPROVED, {
+        loan_id: firstLoan?.id ?? approvedRows[0]?.loan_id ?? null,
+        loan_repayment_id: approvedRows[0]?.id ?? null,
+        requester_id: firstLoan?.requester_id ?? null,
+        amount: totalAmount,
+    });
+
+    return approvedRows;
+};
+
 export const rejectLoanRepayment = async ({
     repayment,
     rejectionReason,
@@ -528,4 +569,47 @@ export const rejectLoanRepayment = async ({
     });
 
     return data;
+};
+
+export const rejectLoanRepaymentGroup = async ({
+    repayments,
+    rejectionReason,
+    reviewedBy,
+}) => {
+    const items = Array.isArray(repayments) ? repayments : [repayments].filter(Boolean);
+    if (items.length === 0) throw new Error("Pembayaran tidak valid.");
+
+    const rejectedRows = [];
+    for (const repayment of items) {
+        const { data, error } = await supabase
+            .from("loan_repayments")
+            .update({
+                status: "rejected",
+                rejection_reason: rejectionReason,
+                reviewed_by: reviewedBy,
+                reviewed_at: new Date().toISOString(),
+            })
+            .eq("id", repayment.id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        rejectedRows.push(data);
+    }
+
+    const firstRepayment = items[0];
+    const firstLoan = firstRepayment.loan ?? null;
+    const totalAmount = rejectedRows.reduce(
+        (sum, repayment) => sum + Number(repayment.amount ?? 0),
+        0,
+    );
+    await notifyEvent(NOTIFICATION_EVENT_TYPES.LOAN_REPAYMENT_REJECTED, {
+        loan_id: firstLoan?.id ?? rejectedRows[0]?.loan_id ?? null,
+        loan_repayment_id: rejectedRows[0]?.id ?? null,
+        requester_id: firstLoan?.requester_id ?? null,
+        amount: totalAmount,
+        rejection_note: rejectionReason,
+    });
+
+    return rejectedRows;
 };

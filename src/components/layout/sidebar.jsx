@@ -14,7 +14,6 @@ import {
     CalendarDays,
     Clock3,
     Wallet,
-    BarChart3,
     Receipt,
     HandCoins,
 } from "lucide-react";
@@ -39,11 +38,6 @@ const menuByRole = {
             path: "/management/accommodation",
             icon: Wallet,
         },
-        {
-            label: "Accommodation Reports",
-            path: "/management/accommodation/reports",
-            icon: BarChart3,
-        },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
         { label: "Lembur", path: "/overtime", icon: Clock3 },
@@ -55,11 +49,6 @@ const menuByRole = {
         { label: "Pekerjaan", path: "/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
         { label: "Accommodation", path: "/admin/accommodation", icon: Wallet },
-        {
-            label: "Accommodation Reports",
-            path: "/admin/accommodation/reports",
-            icon: BarChart3,
-        },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
         { label: "Lembur", path: "/overtime", icon: Clock3 },
@@ -254,7 +243,10 @@ const usePendingLoanCount = (role, userId, isOnline) => {
                 .eq("status", "pending");
 
             if (error) {
-                console.warn("[Sidebar] Loan pending count skipped:", error.message);
+                console.warn(
+                    "[Sidebar] Loan pending count skipped:",
+                    error.message,
+                );
                 if (mounted) setPendingCount(0);
                 return;
             }
@@ -264,12 +256,17 @@ const usePendingLoanCount = (role, userId, isOnline) => {
 
         loadPendingCount();
 
-        const channelName = createUniqueChannelName("loan-pending-badge", userId);
-        channel = supabase.channel(channelName).on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "loans" },
-            loadPendingCount,
+        const channelName = createUniqueChannelName(
+            "loan-pending-badge",
+            userId,
         );
+        channel = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "loans" },
+                loadPendingCount,
+            );
 
         channel.subscribe();
 
@@ -648,7 +645,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                     )}
 
                     {/* Menu */}
-                    <ul className={`space-y-2 ${collapsed ? "px-1" : "px-2"}`}>
+                    <ul
+                        className={`min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1 ${
+                            collapsed ? "px-1" : "px-2"
+                        }`}
+                    >
                         {menus.map(({ label, path, icon, badge }) => (
                             <li key={label}>
                                 <NavLink
@@ -663,8 +664,8 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                     }
                                     ${
                                         collapsed
-                                            ? "flex flex-col items-center justify-center px-2 py-2 text-[11px] font-medium text-center"
-                                            : "flex items-center gap-4 px-5 py-3 text-md"
+                                            ? "flex flex-col items-center justify-center px-2 py-1.5 text-[12px] font-medium text-center"
+                                            : "flex items-center gap-3 px-4 py-2.5 text-sm font-normal"
                                     }
                                 `
                                     }

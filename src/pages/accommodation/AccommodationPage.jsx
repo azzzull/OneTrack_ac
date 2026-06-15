@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
     Banknote,
+    BarChart3,
     Camera,
     CheckCircle2,
     Clock3,
@@ -21,6 +22,7 @@ import {
     X,
     XCircle,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import ImagePreviewModal from "../../components/ImagePreviewModal";
 import CustomSelect from "../../components/ui/CustomSelect";
@@ -118,6 +120,7 @@ const SummaryCard = ({ title, value, icon: Icon }) => (
 export default function AccommodationPage({ mode = "technician" }) {
     const { user, role, profile } = useAuth();
     const { alert: showAlert } = useDialog();
+    const navigate = useNavigate();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const [requests, setRequests] = useState([]);
@@ -147,6 +150,9 @@ export default function AccommodationPage({ mode = "technician" }) {
     const canApprove = isManagement && mode === "management";
     const canCreate = mode === "technician" && isInternalTechnician;
     const canAddRealization = mode === "technician" && isInternalTechnician;
+    const canViewAccommodationReport =
+        ["admin", "management"].includes(role) &&
+        ["admin", "management"].includes(mode);
 
     const loadData = useCallback(async () => {
         try {
@@ -470,6 +476,22 @@ export default function AccommodationPage({ mode = "technician" }) {
                                 >
                                     <Plus size={16} />
                                     New Request
+                                </button>
+                            )}
+                            {canViewAccommodationReport && (
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        navigate(
+                                            role === "admin"
+                                                ? "/admin/accommodation/reports"
+                                                : "/management/accommodation/reports",
+                                        )
+                                    }
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 md:py-3"
+                                >
+                                    <BarChart3 size={16} />
+                                    Report
                                 </button>
                             )}
                         </div>

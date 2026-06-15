@@ -29,6 +29,7 @@ import {
     addLoanRepayment,
     addUniversalLoanRepayment,
     approveLoanRepayment,
+    approveLoanRepaymentGroup,
     approveLoan,
     createLoan,
     formatCurrency,
@@ -36,6 +37,7 @@ import {
     loadLoanRequesters,
     loadLoans,
     rejectLoanRepayment,
+    rejectLoanRepaymentGroup,
     rejectLoan,
     uploadLoanFile,
 } from "../../services/loanService";
@@ -476,6 +478,7 @@ export default function LoanPage() {
                 if (row.status !== "approved") return summary;
                 summary.approvedAmount += Number(row.approved_amount ?? 0);
                 summary.paidAmount += Number(row.paid_amount ?? 0);
+                summary.pendingRepaymentAmount += Number(row.pending_repayment_amount ?? 0);
                 summary.remainingAmount += Number(row.remaining_amount ?? 0);
                 summary.activeLoans += Number(row.remaining_amount ?? 0) > 0 ? 1 : 0;
                 return summary;
@@ -483,6 +486,7 @@ export default function LoanPage() {
             {
                 approvedAmount: 0,
                 paidAmount: 0,
+                pendingRepaymentAmount: 0,
                 remainingAmount: 0,
                 activeLoans: 0,
             },
@@ -504,7 +508,7 @@ export default function LoanPage() {
     }, [rows]);
 
     const pendingRepayments = useMemo(() => {
-        return rows
+        const pendingItems = rows
             .flatMap((row) =>
                 (row.repayments ?? [])
                     .filter((repayment) => repayment.status === "pending")
@@ -519,8 +523,42 @@ export default function LoanPage() {
                             requester: row.requester,
                         },
                     })),
-            )
-            .sort((a, b) => new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0));
+            );
+        const groups = new Map();
+
+        for (const repayment of pendingItems) {
+            const groupKey = [
+                repayment.created_by,
+                repayment.created_at,
+                repayment.method,
+                repayment.proof_url ?? "",
+                repayment.note ?? "",
+            ].join("|");
+
+            if (!groups.has(groupKey)) {
+                groups.set(groupKey, {
+                    id: groupKey,
+                    created_by: repayment.created_by,
+                    created_at: repayment.created_at,
+                    method: repayment.method,
+                    proof_url: repayment.proof_url,
+                    note: repayment.note,
+                    creator: repayment.creator,
+                    requester: repayment.loan?.requester,
+                    repayments: [],
+                    amount: 0,
+                });
+            }
+
+            const group = groups.get(groupKey);
+            group.repayments.push(repayment);
+            group.amount += Number(repayment.amount ?? 0);
+            group.requester = group.requester ?? repayment.loan?.requester;
+        }
+
+        return [...groups.values()].sort(
+            (a, b) => new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0),
+        );
     }, [rows]);
 
     const hasOutstandingLoans = outstandingLoans.length > 0;
@@ -756,7 +794,14 @@ export default function LoanPage() {
         if (!user?.id) return;
         setSaving(true);
         try {
-            await approveLoanRepayment({ repayment, reviewedBy: user.id });
+            if (Array.isArray(repayment.repayments)) {
+                await approveLoanRepaymentGroup({
+                    repayments: repayment.repayments,
+                    reviewedBy: user.id,
+                });
+            } else {
+                await approveLoanRepayment({ repayment, reviewedBy: user.id });
+            }
             setSelected(null);
             await loadData();
         } catch (approveError) {
@@ -773,11 +818,19 @@ export default function LoanPage() {
 
         setSaving(true);
         try {
-            await rejectLoanRepayment({
-                repayment,
-                rejectionReason: rejectionReason.trim(),
-                reviewedBy: user.id,
-            });
+            if (Array.isArray(repayment.repayments)) {
+                await rejectLoanRepaymentGroup({
+                    repayments: repayment.repayments,
+                    rejectionReason: rejectionReason.trim(),
+                    reviewedBy: user.id,
+                });
+            } else {
+                await rejectLoanRepayment({
+                    repayment,
+                    rejectionReason: rejectionReason.trim(),
+                    reviewedBy: user.id,
+                });
+            }
             setSelected(null);
             await loadData();
         } catch (rejectError) {
@@ -844,7 +897,7 @@ export default function LoanPage() {
                     )}
 
                     {role === "technician" && (
-                        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                                 <p className="text-xs font-medium text-slate-500">Total Disetujui</p>
                                 <p className="mt-2 break-words text-xl font-bold text-slate-900">
@@ -855,6 +908,12 @@ export default function LoanPage() {
                                 <p className="text-xs font-medium text-blue-700">Sudah Dibayar</p>
                                 <p className="mt-2 break-words text-xl font-bold text-blue-900">
                                     {formatCurrency(loanSummary.paidAmount)}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
+                                <p className="text-xs font-medium text-cyan-700">Menunggu Review</p>
+                                <p className="mt-2 break-words text-xl font-bold text-cyan-900">
+                                    {formatCurrency(loanSummary.pendingRepaymentAmount)}
                                 </p>
                             </div>
                             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -1428,32 +1487,35 @@ function RepaymentReviewModal({
                             Tidak ada pembayaran yang perlu direview.
                         </div>
                     ) : (
-                        repayments.map((repayment) => (
+                        repayments.map((repaymentGroup) => (
                             <article
-                                key={repayment.id}
+                                key={repaymentGroup.id}
                                 className="rounded-2xl border border-slate-200 p-4"
                             >
                                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <h3 className="text-base font-semibold text-slate-900">
-                                                {getDisplayName(repayment.loan?.requester)}
+                                                {getDisplayName(repaymentGroup.requester)}
                                             </h3>
                                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                                                 Pending Review
                                             </span>
                                         </div>
                                         <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                                            {repayment.loan?.description || "-"}
+                                            Pembayaran universal, otomatis mengurangi pinjaman paling lama terlebih dulu.
                                         </p>
                                         <p className="mt-1 text-xs text-slate-500">
-                                            Pinjaman dibutuhkan {formatDate(repayment.loan?.needed_date)} - Dibayar {formatDateTime(repayment.created_at)}
+                                            Dibayar {formatDateTime(repaymentGroup.created_at)}
+                                            {repaymentGroup.repayments.length > 1
+                                                ? ` - dialokasikan ke ${repaymentGroup.repayments.length} pinjaman`
+                                                : ""}
                                         </p>
                                     </div>
                                     <div className="rounded-xl bg-slate-50 px-3 py-2 md:min-w-48">
                                         <p className="text-xs font-medium text-slate-500">Nominal Bayar</p>
                                         <p className="mt-1 break-words text-lg font-bold text-slate-900">
-                                            {formatCurrency(repayment.amount)}
+                                            {formatCurrency(repaymentGroup.amount)}
                                         </p>
                                     </div>
                                 </div>
@@ -1462,28 +1524,28 @@ function RepaymentReviewModal({
                                     <div className="rounded-xl bg-blue-50 px-3 py-2">
                                         <p className="text-xs font-medium text-blue-700">Metode</p>
                                         <p className="mt-1 font-semibold text-blue-900">
-                                            {LOAN_REPAYMENT_METHOD_LABELS[repayment.method] ?? repayment.method}
+                                            {LOAN_REPAYMENT_METHOD_LABELS[repaymentGroup.method] ?? repaymentGroup.method}
                                         </p>
                                     </div>
                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
                                         <p className="text-xs font-medium text-slate-500">Dibuat Oleh</p>
                                         <p className="mt-1 font-semibold text-slate-900">
-                                            {getDisplayName(repayment.creator)}
+                                            {getDisplayName(repaymentGroup.creator)}
                                         </p>
                                     </div>
                                 </div>
 
-                                {repayment.note && (
+                                {repaymentGroup.note && (
                                     <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                                        {repayment.note}
+                                        {repaymentGroup.note}
                                     </p>
                                 )}
 
                                 <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
-                                    {repayment.proof_url && (
+                                    {repaymentGroup.proof_url && (
                                         <button
                                             type="button"
-                                            onClick={() => onOpenFile(repayment.proof_url, "Bukti pembayaran")}
+                                            onClick={() => onOpenFile(repaymentGroup.proof_url, "Bukti pembayaran")}
                                             className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
                                         >
                                             <FileImage size={15} />
@@ -1492,7 +1554,7 @@ function RepaymentReviewModal({
                                     )}
                                     <button
                                         type="button"
-                                        onClick={() => onReject(repayment)}
+                                        onClick={() => onReject(repaymentGroup)}
                                         disabled={saving}
                                         className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:bg-slate-300"
                                     >
@@ -1500,7 +1562,7 @@ function RepaymentReviewModal({
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => onApprove(repayment)}
+                                        onClick={() => onApprove(repaymentGroup)}
                                         disabled={saving}
                                         className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
                                     >
