@@ -101,17 +101,27 @@ const StatusBadge = ({ status }) => (
     </span>
 );
 
-const SummaryCard = ({ title, value, icon: Icon }) => (
-    <div className="rounded-2xl bg-white p-4 shadow-sm">
+const SummaryCard = ({ title, value, icon: Icon, compact = false }) => (
+    <div className={`rounded-2xl bg-white shadow-sm ${compact ? "p-3" : "p-4"}`}>
         <div className="flex items-center justify-between gap-3">
             <div>
-                <p className="text-sm text-slate-500">{title}</p>
-                <p className="mt-1 text-2xl font-semibold text-slate-900">
+                <p className={`${compact ? "text-xs" : "text-sm"} text-slate-500`}>
+                    {title}
+                </p>
+                <p
+                    className={`mt-1 font-semibold text-slate-900 ${
+                        compact ? "text-lg" : "text-2xl"
+                    }`}
+                >
                     {value}
                 </p>
             </div>
-            <span className="rounded-2xl bg-sky-50 p-3 text-sky-500">
-                {createElement(Icon, { size: 22 })}
+            <span
+                className={`rounded-2xl bg-sky-50 text-sky-500 ${
+                    compact ? "p-2" : "p-3"
+                }`}
+            >
+                {createElement(Icon, { size: compact ? 18 : 22 })}
             </span>
         </div>
     </div>
@@ -498,39 +508,92 @@ export default function AccommodationPage({ mode = "technician" }) {
                     </div>
 
                     {mode === "management" && (
-                        <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-                            <SummaryCard
-                                title="Pending"
-                                value={dashboardStats.pending}
-                                icon={Clock3}
-                            />
-                            <SummaryCard
-                                title="Approved"
-                                value={dashboardStats.approved}
-                                icon={CheckCircle2}
-                            />
-                            <SummaryCard
-                                title="Rejected"
-                                value={dashboardStats.rejected}
-                                icon={XCircle}
-                            />
-                            <SummaryCard
-                                title="Partial"
-                                value={dashboardStats.partial}
-                                icon={Receipt}
-                            />
-                            <SummaryCard
-                                title="Realized"
-                                value={dashboardStats.realized}
-                                icon={FileImage}
-                            />
-                            <SummaryCard
-                                title="Outstanding"
-                                value={formatCurrency(
-                                    dashboardStats.outstanding,
-                                )}
-                                icon={Banknote}
-                            />
+                        <section className="mt-6">
+                            <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 md:hidden">
+                                <div className="min-w-36">
+                                    <SummaryCard
+                                        title="Pending"
+                                        value={dashboardStats.pending}
+                                        icon={Clock3}
+                                        compact
+                                    />
+                                </div>
+                                <div className="min-w-36">
+                                    <SummaryCard
+                                        title="Approved"
+                                        value={dashboardStats.approved}
+                                        icon={CheckCircle2}
+                                        compact
+                                    />
+                                </div>
+                                <div className="min-w-36">
+                                    <SummaryCard
+                                        title="Rejected"
+                                        value={dashboardStats.rejected}
+                                        icon={XCircle}
+                                        compact
+                                    />
+                                </div>
+                                <div className="min-w-36">
+                                    <SummaryCard
+                                        title="Partial"
+                                        value={dashboardStats.partial}
+                                        icon={Receipt}
+                                        compact
+                                    />
+                                </div>
+                                <div className="min-w-36">
+                                    <SummaryCard
+                                        title="Realized"
+                                        value={dashboardStats.realized}
+                                        icon={FileImage}
+                                        compact
+                                    />
+                                </div>
+                            </div>
+                            <div className="mt-3 md:hidden">
+                                <SummaryCard
+                                    title="Outstanding"
+                                    value={formatCurrency(
+                                        dashboardStats.outstanding,
+                                    )}
+                                    icon={Banknote}
+                                />
+                            </div>
+                            <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-6">
+                                <SummaryCard
+                                    title="Pending"
+                                    value={dashboardStats.pending}
+                                    icon={Clock3}
+                                />
+                                <SummaryCard
+                                    title="Approved"
+                                    value={dashboardStats.approved}
+                                    icon={CheckCircle2}
+                                />
+                                <SummaryCard
+                                    title="Rejected"
+                                    value={dashboardStats.rejected}
+                                    icon={XCircle}
+                                />
+                                <SummaryCard
+                                    title="Partial"
+                                    value={dashboardStats.partial}
+                                    icon={Receipt}
+                                />
+                                <SummaryCard
+                                    title="Realized"
+                                    value={dashboardStats.realized}
+                                    icon={FileImage}
+                                />
+                                <SummaryCard
+                                    title="Outstanding"
+                                    value={formatCurrency(
+                                        dashboardStats.outstanding,
+                                    )}
+                                    icon={Banknote}
+                                />
+                            </div>
                         </section>
                     )}
 

@@ -237,21 +237,31 @@ const usePendingLoanCount = (role, userId, isOnline) => {
         let channel = null;
 
         const loadPendingCount = async () => {
-            const { count, error } = await supabase
-                .from("loans")
-                .select("id", { count: "exact", head: true })
-                .eq("status", "pending");
+            const [loanResult, repaymentResult] = await Promise.all([
+                supabase
+                    .from("loans")
+                    .select("id", { count: "exact", head: true })
+                    .eq("status", "pending"),
+                supabase
+                    .from("loan_repayments")
+                    .select("id", { count: "exact", head: true })
+                    .eq("status", "pending"),
+            ]);
 
-            if (error) {
+            if (loanResult.error || repaymentResult.error) {
                 console.warn(
                     "[Sidebar] Loan pending count skipped:",
-                    error.message,
+                    loanResult.error?.message ?? repaymentResult.error?.message,
                 );
                 if (mounted) setPendingCount(0);
                 return;
             }
 
-            if (mounted) setPendingCount(count ?? 0);
+            if (mounted) {
+                setPendingCount(
+                    (loanResult.count ?? 0) + (repaymentResult.count ?? 0),
+                );
+            }
         };
 
         loadPendingCount();
@@ -265,6 +275,11 @@ const usePendingLoanCount = (role, userId, isOnline) => {
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "loans" },
+                loadPendingCount,
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "loan_repayments" },
                 loadPendingCount,
             );
 
