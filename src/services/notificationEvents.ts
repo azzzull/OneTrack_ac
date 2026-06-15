@@ -16,6 +16,9 @@ export const NOTIFICATION_EVENT_TYPES = {
     REIMBURSEMENT_REQUESTED: "reimbursement_requested",
     REIMBURSEMENT_APPROVED: "reimbursement_approved",
     REIMBURSEMENT_REJECTED: "reimbursement_rejected",
+    LOAN_REQUESTED: "loan_requested",
+    LOAN_APPROVED: "loan_approved",
+    LOAN_REJECTED: "loan_rejected",
     ATTENDANCE_STATUS_CHANGED: "attendance_status_changed",
 } as const;
 
@@ -33,6 +36,7 @@ type NotifyEventPayload = Record<string, unknown> & {
     status?: string | null;
     overtime_id?: string | null;
     reimbursement_id?: string | null;
+    loan_id?: string | null;
     requester_id?: string | null;
     requester_name?: string | null;
     approved_amount?: number | string | null;
@@ -305,6 +309,7 @@ export const notifyEvent = async (
         const requesterId = String(payload.requester_id ?? "").trim() || null;
         const requesterName =
             String(payload.requester_name ?? "").trim() || technicianName;
+        const loanId = String(payload.loan_id ?? "").trim() || null;
 
         if (type === NOTIFICATION_EVENT_TYPES.JOB_REQUESTED) {
             return invokePushNotification({
@@ -547,6 +552,57 @@ export const notifyEvent = async (
                     requester_id: requesterId,
                     amount,
                     reimbursement_id: reimbursementId,
+                    rejection_note: payload.rejection_note ?? null,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.LOAN_REQUESTED) {
+            return invokePushNotification({
+                recipientRoles: ["admin", "management"],
+                title: "Pengajuan Pinjaman Baru",
+                body: `Ada pengajuan pinjaman baru dari ${requesterName} sebesar ${formatRupiah(amount)}.`,
+                type,
+                referenceTable: "loans",
+                referenceId: loanId,
+                data: {
+                    requester_id: requesterId,
+                    requester_name: requesterName,
+                    amount,
+                    loan_id: loanId,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.LOAN_APPROVED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Pinjaman Disetujui",
+                body: `Pinjaman kamu sebesar ${formatRupiah(amount)} telah disetujui sebesar ${formatRupiah(payload.approved_amount ?? 0)}.`,
+                type,
+                referenceTable: "loans",
+                referenceId: loanId,
+                data: {
+                    requester_id: requesterId,
+                    amount,
+                    approved_amount: payload.approved_amount ?? null,
+                    loan_id: loanId,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.LOAN_REJECTED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Pinjaman Ditolak",
+                body: `Pinjaman kamu ditolak. Alasan: ${payload.rejection_note ?? "Tidak ada catatan."}`,
+                type,
+                referenceTable: "loans",
+                referenceId: loanId,
+                data: {
+                    requester_id: requesterId,
+                    amount,
+                    loan_id: loanId,
                     rejection_note: payload.rejection_note ?? null,
                 },
             });

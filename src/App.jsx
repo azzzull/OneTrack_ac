@@ -17,6 +17,8 @@ import AccommodationReports from "@/pages/accommodation/AccommodationReports";
 import OvertimeManagement from "@/pages/overtime/OvertimeManagement";
 import ReimbursementPage from "@/pages/reimbursement/ReimbursementPage";
 import ReimbursementReports from "@/pages/reimbursement/ReimbursementReports";
+import LoanPage from "@/pages/loan/LoanPage";
+import LoanReports from "@/pages/loan/LoanReports";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
 import TechnicianAttendanceHistoryPage from "@/pages/technician/AttendanceHistory";
 import CustomerDashboard from "@/pages/customer/Dashboard";
@@ -239,6 +241,24 @@ function App() {
                     element={
                         <ProtectedRoute allowedRoles={["admin", "management"]}>
                             <ReimbursementReports />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/loans"
+                    element={
+                        <ProtectedRoute
+                            allowedRoles={["admin", "management", "technician"]}
+                        >
+                            <LoanPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/loans/reports"
+                    element={
+                        <ProtectedRoute allowedRoles={["admin", "management"]}>
+                            <LoanReports />
                         </ProtectedRoute>
                     }
                 />

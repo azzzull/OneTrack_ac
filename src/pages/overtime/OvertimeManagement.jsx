@@ -619,6 +619,35 @@ export default function OvertimeManagement() {
                                     value={detail.notes}
                                 />
                             )}
+                            {(detail.review_notes ||
+                                detail.reviewed_at ||
+                                detail.reviewer) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Review Admin / Management
+                                    </p>
+                                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <DetailItem
+                                            label="Reviewer"
+                                            value={getProfileName(
+                                                detail.reviewer,
+                                            )}
+                                        />
+                                        <DetailItem
+                                            label="Tanggal Review"
+                                            value={formatDateTime(
+                                                detail.reviewed_at,
+                                            )}
+                                        />
+                                    </div>
+                                    <div className="mt-3">
+                                        <DetailItem
+                                            label="Keterangan Review"
+                                            value={detail.review_notes}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                             {canReview && detail.status === "pending" && (
                                 <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                                     <label className="block">

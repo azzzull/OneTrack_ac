@@ -16,6 +16,7 @@ import {
     Wallet,
     BarChart3,
     Receipt,
+    HandCoins,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
@@ -47,6 +48,7 @@ const menuByRole = {
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
+        { label: "Pinjaman", path: "/loans", icon: HandCoins },
     ],
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
@@ -62,6 +64,7 @@ const menuByRole = {
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
+        { label: "Pinjaman", path: "/loans", icon: HandCoins },
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
@@ -74,6 +77,7 @@ const menuByRole = {
         },
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
+        { label: "Pinjaman", path: "/loans", icon: HandCoins },
     ],
     customer: [
         { label: "Dashboard", path: "/customer", icon: LayoutDashboard },
@@ -232,6 +236,62 @@ const usePendingReimbursementCount = (role, userId, isOnline) => {
     return isOnline ? pendingCount : 0;
 };
 
+const usePendingLoanCount = (role, userId, isOnline) => {
+    const [pendingCount, setPendingCount] = useState(0);
+
+    useEffect(() => {
+        if (!isOnline || !userId || !["admin", "management"].includes(role)) {
+            return undefined;
+        }
+
+        let mounted = true;
+        let channel = null;
+
+        const loadPendingCount = async () => {
+            const { count, error } = await supabase
+                .from("loans")
+                .select("id", { count: "exact", head: true })
+                .eq("status", "pending");
+
+            if (error) {
+                console.warn("[Sidebar] Loan pending count skipped:", error.message);
+                if (mounted) setPendingCount(0);
+                return;
+            }
+
+            if (mounted) setPendingCount(count ?? 0);
+        };
+
+        loadPendingCount();
+
+        const channelName = createUniqueChannelName("loan-pending-badge", userId);
+        channel = supabase.channel(channelName).on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "loans" },
+            loadPendingCount,
+        );
+
+        channel.subscribe();
+
+        const intervalId = setInterval(loadPendingCount, 5000);
+        const handleFocus = () => {
+            if (document.visibilityState === "visible") loadPendingCount();
+        };
+        document.addEventListener("visibilitychange", handleFocus);
+        window.addEventListener("focus", handleFocus);
+
+        return () => {
+            mounted = false;
+            clearInterval(intervalId);
+            document.removeEventListener("visibilitychange", handleFocus);
+            window.removeEventListener("focus", handleFocus);
+            if (channel) supabase.removeChannel(channel);
+        };
+    }, [isOnline, role, userId]);
+
+    return isOnline ? pendingCount : 0;
+};
+
 export default function Sidebar({ collapsed = false, onToggle }) {
     const { user, role, profile, loading, isOnline, logout } = useAuth();
     const navigate = useNavigate();
@@ -246,6 +306,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         user?.id,
         isOnline,
     );
+    const pendingLoanCount = usePendingLoanCount(role, user?.id, isOnline);
     const [newRequestToast, setNewRequestToast] = useState("");
     const [accommodationToast, setAccommodationToast] = useState("");
     const toastTimerRef = useRef(null);
@@ -264,6 +325,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             "/management/accommodation": pendingAccommodationCount,
             "/admin/accommodation": pendingAccommodationCount,
             "/reimburse": pendingReimbursementCount,
+            "/loans": pendingLoanCount,
         };
 
         const count = badgeByPath[menu.path] ?? 0;
@@ -700,6 +762,7 @@ export function MobileBottomNav() {
         user?.id,
         isOnline,
     );
+    const pendingLoanCount = usePendingLoanCount(role, user?.id, isOnline);
     const navRef = useRef(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const [moreOpen, setMoreOpen] = useState(false);
@@ -716,6 +779,7 @@ export function MobileBottomNav() {
             "/management/accommodation": pendingAccommodationCount,
             "/admin/accommodation": pendingAccommodationCount,
             "/reimburse": pendingReimbursementCount,
+            "/loans": pendingLoanCount,
         };
 
         const count = badgeByPath[menu.path] ?? 0;
@@ -819,6 +883,7 @@ export function MobileBottomNav() {
         stats.active,
         pendingAccommodationCount,
         pendingReimbursementCount,
+        pendingLoanCount,
         menus,
     ]);
 
