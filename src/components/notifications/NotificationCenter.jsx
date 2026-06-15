@@ -78,7 +78,7 @@ const getNotificationTargetPath = (notification, role) => {
           : "/admin";
 };
 
-export default function NotificationCenter({ compact = false, align = "right" }) {
+export default function NotificationCenter({ compact = false, align = "left" }) {
     const { role } = useAuth();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
@@ -114,9 +114,9 @@ export default function NotificationCenter({ compact = false, align = "right" })
         const viewportWidth = window.innerWidth;
         const width = Math.min(352, viewportWidth - 24);
 
-        if (viewportWidth < 640 || !containerRef.current) {
+        if (!containerRef.current) {
             setFloatingPosition({
-                left: Math.max(12, (viewportWidth - width) / 2),
+                left: 12,
                 top: 80,
                 width,
             });

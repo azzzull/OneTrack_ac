@@ -346,6 +346,7 @@ export default function LoanPage() {
     const [selected, setSelected] = useState(null);
     const [reviewTarget, setReviewTarget] = useState(null);
     const [repaymentTarget, setRepaymentTarget] = useState(null);
+    const [reviewRepaymentsOpen, setReviewRepaymentsOpen] = useState(false);
     const [reviewMode, setReviewMode] = useState("approve");
     const [preview, setPreview] = useState({ src: "", title: "" });
     const [form, setForm] = useState({
@@ -500,6 +501,26 @@ export default function LoanPage() {
                 const bDate = new Date(b.approved_at ?? b.created_at ?? 0);
                 return aDate - bDate;
             });
+    }, [rows]);
+
+    const pendingRepayments = useMemo(() => {
+        return rows
+            .flatMap((row) =>
+                (row.repayments ?? [])
+                    .filter((repayment) => repayment.status === "pending")
+                    .map((repayment) => ({
+                        ...repayment,
+                        loan: {
+                            ...(repayment.loan ?? {}),
+                            id: row.id,
+                            requester_id: row.requester_id,
+                            description: row.description,
+                            needed_date: row.needed_date,
+                            requester: row.requester,
+                        },
+                    })),
+            )
+            .sort((a, b) => new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0));
     }, [rows]);
 
     const hasOutstandingLoans = outstandingLoans.length > 0;
@@ -790,14 +811,29 @@ export default function LoanPage() {
                             </p>
                         </div>
                         {canReview && (
-                            <button
-                                type="button"
-                                onClick={() => navigate("/loans/reports")}
-                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
-                            >
-                                <BarChart3 size={16} />
-                                Report Pinjaman
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setReviewRepaymentsOpen(true)}
+                                    className="relative inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700"
+                                >
+                                    <Receipt size={16} />
+                                    Review Pembayaran
+                                    {pendingRepayments.length > 0 && (
+                                        <span className="ml-1 rounded-full bg-white px-2 py-0.5 text-xs font-bold text-amber-700">
+                                            {pendingRepayments.length}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => navigate("/loans/reports")}
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
+                                >
+                                    <BarChart3 size={16} />
+                                    Report Pinjaman
+                                </button>
+                            </div>
                         )}
                     </div>
 
@@ -1065,8 +1101,17 @@ export default function LoanPage() {
                     onClose={() => setSelected(null)}
                     onOpenFile={openFile}
                     onReview={openReview}
-                    onApproveRepayment={handleApproveRepayment}
-                    onRejectRepayment={handleRejectRepayment}
+                />
+            )}
+
+            {reviewRepaymentsOpen && (
+                <RepaymentReviewModal
+                    repayments={pendingRepayments}
+                    saving={saving}
+                    onClose={() => setReviewRepaymentsOpen(false)}
+                    onOpenFile={openFile}
+                    onApprove={handleApproveRepayment}
+                    onReject={handleRejectRepayment}
                 />
             )}
 
@@ -1211,8 +1256,6 @@ function DetailModal({
     onClose,
     onOpenFile,
     onReview,
-    onApproveRepayment,
-    onRejectRepayment,
 }) {
     const detailRows = [
         ["ID Pinjaman", row.id],
@@ -1320,24 +1363,6 @@ function DetailModal({
                                                     Bukti
                                                 </button>
                                             )}
-                                            {canReview && repayment.status === "pending" && (
-                                                <div className="flex flex-wrap gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => onApproveRepayment(repayment)}
-                                                        className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
-                                                    >
-                                                        Approve
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => onRejectRepayment(repayment)}
-                                                        className="rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
-                                                    >
-                                                        Reject
-                                                    </button>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -1361,6 +1386,130 @@ function DetailModal({
                                 Approve
                             </button>
                         </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function RepaymentReviewModal({
+    repayments,
+    saving,
+    onClose,
+    onOpenFile,
+    onApprove,
+    onReject,
+}) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+            <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+                <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
+                    <div>
+                        <h2 className="text-lg font-semibold text-slate-900">
+                            Review Pembayaran Pinjaman
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-500">
+                            Pembayaran teknisi yang menunggu pengecekan admin/management.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="space-y-3 p-5">
+                    {repayments.length === 0 ? (
+                        <div className="rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50 p-6 text-center text-sm text-emerald-700">
+                            Tidak ada pembayaran yang perlu direview.
+                        </div>
+                    ) : (
+                        repayments.map((repayment) => (
+                            <article
+                                key={repayment.id}
+                                className="rounded-2xl border border-slate-200 p-4"
+                            >
+                                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <h3 className="text-base font-semibold text-slate-900">
+                                                {getDisplayName(repayment.loan?.requester)}
+                                            </h3>
+                                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                                Pending Review
+                                            </span>
+                                        </div>
+                                        <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+                                            {repayment.loan?.description || "-"}
+                                        </p>
+                                        <p className="mt-1 text-xs text-slate-500">
+                                            Pinjaman dibutuhkan {formatDate(repayment.loan?.needed_date)} - Dibayar {formatDateTime(repayment.created_at)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl bg-slate-50 px-3 py-2 md:min-w-48">
+                                        <p className="text-xs font-medium text-slate-500">Nominal Bayar</p>
+                                        <p className="mt-1 break-words text-lg font-bold text-slate-900">
+                                            {formatCurrency(repayment.amount)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                                    <div className="rounded-xl bg-blue-50 px-3 py-2">
+                                        <p className="text-xs font-medium text-blue-700">Metode</p>
+                                        <p className="mt-1 font-semibold text-blue-900">
+                                            {LOAN_REPAYMENT_METHOD_LABELS[repayment.method] ?? repayment.method}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                        <p className="text-xs font-medium text-slate-500">Dibuat Oleh</p>
+                                        <p className="mt-1 font-semibold text-slate-900">
+                                            {getDisplayName(repayment.creator)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {repayment.note && (
+                                    <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                        {repayment.note}
+                                    </p>
+                                )}
+
+                                <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
+                                    {repayment.proof_url && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenFile(repayment.proof_url, "Bukti pembayaran")}
+                                            className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                                        >
+                                            <FileImage size={15} />
+                                            Bukti
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => onReject(repayment)}
+                                        disabled={saving}
+                                        className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:bg-slate-300"
+                                    >
+                                        Reject
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => onApprove(repayment)}
+                                        disabled={saving}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
+                                    >
+                                        {saving && <Loader size={15} className="animate-spin" />}
+                                        Approve
+                                    </button>
+                                </div>
+                            </article>
+                        ))
                     )}
                 </div>
             </div>
