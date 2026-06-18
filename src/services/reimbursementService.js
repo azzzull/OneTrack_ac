@@ -1,6 +1,10 @@
 import supabase from "../supabaseClient";
 import { compressJobPhotoFile } from "./jobPhotoService";
 import {
+    getStoragePathFromPublicUrl,
+    uniqueStoragePaths,
+} from "../utils/storagePaths";
+import {
     NOTIFICATION_EVENT_TYPES,
     notifyEvent,
 } from "./notificationEvents";
@@ -271,4 +275,40 @@ export const rejectReimbursement = async ({
     });
 
     return data;
+};
+
+export const deleteReimbursement = async (reimbursement) => {
+    if (!reimbursement?.id) throw new Error("Data reimburse tidak valid.");
+
+    const paths = uniqueStoragePaths([
+        getStoragePathFromPublicUrl(
+            reimbursement.transfer_proof_url,
+            REIMBURSEMENT_BUCKET,
+        ),
+        ...(reimbursement.attachments ?? []).map((attachment) =>
+            getStoragePathFromPublicUrl(
+                attachment.file_url,
+                REIMBURSEMENT_BUCKET,
+            ),
+        ),
+    ]);
+
+    if (paths.length > 0) {
+        const { error: storageError } = await supabase.storage
+            .from(REIMBURSEMENT_BUCKET)
+            .remove(paths);
+        if (storageError) throw storageError;
+    }
+
+    const { error: attachmentError } = await supabase
+        .from("reimbursement_attachments")
+        .delete()
+        .eq("reimbursement_id", reimbursement.id);
+    if (attachmentError) throw attachmentError;
+
+    const { error } = await supabase
+        .from("reimbursements")
+        .delete()
+        .eq("id", reimbursement.id);
+    if (error) throw error;
 };

@@ -11,6 +11,7 @@ import {
     Plus,
     Receipt,
     Search,
+    Trash2,
     Upload,
     X,
 } from "lucide-react";
@@ -32,6 +33,7 @@ import {
     approveLoanRepaymentGroup,
     approveLoan,
     createLoan,
+    deleteLoan,
     formatCurrency,
     getDisplayName,
     loadLoanRequesters,
@@ -380,6 +382,7 @@ export default function LoanPage() {
     const channelRef = useRef(null);
 
     const canReview = ["admin", "management"].includes(role);
+    const canDelete = role === "admin";
     const canCreate = ["technician", "admin", "management"].includes(role);
     const canUseUniversalRepayment = role === "technician" || canReview;
 
@@ -840,6 +843,27 @@ export default function LoanPage() {
         }
     };
 
+    const handleDelete = async (row) => {
+        if (!canDelete || !row?.id) return;
+        const confirmed = window.confirm(
+            "Hapus data pinjaman ini beserta semua bukti transfer dan bukti pembayaran?",
+        );
+        if (!confirmed) return;
+
+        setSaving(true);
+        try {
+            await deleteLoan(row);
+            setSelected(null);
+            setReviewTarget(null);
+            setRepaymentTarget(null);
+            await loadData();
+        } catch (deleteError) {
+            alert(deleteError.message || "Gagal menghapus data pinjaman.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const openFile = (url, title) => {
         if (!url) return;
         if (isImageUrl(url)) {
@@ -1085,6 +1109,19 @@ export default function LoanPage() {
                                                     </button>
                                                 </>
                                             )}
+                                            {canDelete && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleDelete(row)
+                                                    }
+                                                    disabled={saving}
+                                                    className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                                                >
+                                                    <Trash2 size={15} />
+                                                    Hapus
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </article>
@@ -1157,9 +1194,11 @@ export default function LoanPage() {
                 <DetailModal
                     row={selected}
                     canReview={canReview}
+                    canDelete={canDelete}
                     onClose={() => setSelected(null)}
                     onOpenFile={openFile}
                     onReview={openReview}
+                    onDelete={handleDelete}
                 />
             )}
 
@@ -1312,9 +1351,11 @@ function RequestModal({
 function DetailModal({
     row,
     canReview,
+    canDelete,
     onClose,
     onOpenFile,
     onReview,
+    onDelete,
 }) {
     const detailRows = [
         ["ID Pinjaman", row.id],
@@ -1443,6 +1484,18 @@ function DetailModal({
                                 className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                             >
                                 Approve
+                            </button>
+                        </div>
+                    )}
+                    {canDelete && (
+                        <div className="flex justify-end border-t border-slate-100 pt-4">
+                            <button
+                                type="button"
+                                onClick={() => onDelete(row)}
+                                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                            >
+                                <Trash2 size={15} />
+                                Hapus Data Pinjaman
                             </button>
                         </div>
                     )}

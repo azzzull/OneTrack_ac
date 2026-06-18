@@ -1,6 +1,10 @@
 import supabase from "../supabaseClient";
 import { compressJobPhotoFile } from "./jobPhotoService";
 import {
+    getStoragePathFromPublicUrl,
+    uniqueStoragePaths,
+} from "../utils/storagePaths";
+import {
     calculateAttendanceOvertime,
     calculateManualDuration,
     formatOvertimeDuration,
@@ -243,6 +247,29 @@ export const createAttendanceOvertimeRequest = async ({
 
     if (error) throwFriendlyOvertimeError(error);
     return data;
+};
+
+export const deleteOvertimeRequest = async (request) => {
+    if (!request?.id) throw new Error("Data lembur tidak valid.");
+
+    const paths = uniqueStoragePaths([
+        request.photo_path,
+        getStoragePathFromPublicUrl(request.photo_url, "overtime-proofs"),
+    ]);
+
+    if (paths.length > 0) {
+        const { error: storageError } = await supabase.storage
+            .from("overtime-proofs")
+            .remove(paths);
+        if (storageError) throw storageError;
+    }
+
+    const { error } = await supabase
+        .from("overtime_requests")
+        .delete()
+        .eq("id", request.id);
+
+    if (error) throwFriendlyOvertimeError(error);
 };
 
 export const createManualOvertimeRequest = async ({

@@ -246,26 +246,6 @@ const AttendanceCheckInModal = ({
                                 </div>
                             </div>
 
-                            {/* GPS Coordinates */}
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                                <div className="rounded bg-slate-100 p-2">
-                                    <p className="text-slate-600 text-xs font-medium">
-                                        Lintang
-                                    </p>
-                                    <p className="font-mono text-slate-700 text-xs mt-1">
-                                        {locationData.latitude.toFixed(6)}
-                                    </p>
-                                </div>
-                                <div className="rounded bg-slate-100 p-2">
-                                    <p className="text-slate-600 text-xs font-medium">
-                                        Bujur
-                                    </p>
-                                    <p className="font-mono text-slate-700 text-xs mt-1">
-                                        {locationData.longitude.toFixed(6)}
-                                    </p>
-                                </div>
-                            </div>
-
                             {/* Action Buttons */}
                             <div className="flex gap-2 pt-2">
                                 <button

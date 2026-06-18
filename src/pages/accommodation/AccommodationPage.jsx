@@ -10,6 +10,7 @@ import {
     Banknote,
     BarChart3,
     Camera,
+    CalendarDays,
     CheckCircle2,
     Clock3,
     Eye,
@@ -47,13 +48,19 @@ import {
 } from "../../services/accommodationService";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 
-const filters = [
-    { key: "all", label: "All" },
-    { key: "pending", label: "Pending" },
-    { key: "approved", label: "Approved" },
-    { key: "rejected", label: "Rejected" },
-    { key: "partial_realized", label: "Partial Realized" },
-    { key: "realized", label: "Realized" },
+const statusFilters = [
+    { key: "pending", title: "Pending", icon: Clock3 },
+    { key: "approved", title: "Approved", icon: CheckCircle2 },
+    { key: "rejected", title: "Rejected", icon: XCircle },
+    { key: "partial_realized", title: "Partial", icon: Receipt },
+    { key: "realized", title: "Realized", icon: FileImage },
+];
+
+const periodOptions = [
+    { key: "weekly", label: "Weekly" },
+    { key: "monthly", label: "Monthly" },
+    { key: "yearly", label: "Yearly" },
+    { key: "custom", label: "Custom" },
 ];
 
 const inputClass =
@@ -68,6 +75,63 @@ const formatNumberInput = (value) => {
 };
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
+
+const toDateKey = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+const getWeekStartKey = (date = new Date()) => {
+    const start = new Date(date);
+    const day = start.getDay();
+    const distanceFromMonday = day === 0 ? -6 : 1 - day;
+    start.setDate(start.getDate() + distanceFromMonday);
+    return toDateKey(start);
+};
+
+const getWeekEndKey = (date = new Date()) => {
+    const start = new Date(getWeekStartKey(date));
+    start.setDate(start.getDate() + 6);
+    return toDateKey(start);
+};
+
+const getMonthKey = (date = new Date()) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+const getYearKey = (date = new Date()) => `${date.getFullYear()}`;
+
+const getRequestDateKey = (request) =>
+    toDateKey(request.requested_at || request.created_at || request.reviewed_at);
+
+const matchesPeriod = (request, period) => {
+    const dateKey = getRequestDateKey(request);
+    if (!dateKey) return false;
+
+    if (period.mode === "weekly") {
+        return dateKey >= period.weekStart && dateKey <= period.weekEnd;
+    }
+
+    if (period.mode === "monthly") {
+        return dateKey.startsWith(period.month);
+    }
+
+    if (period.mode === "yearly") {
+        return dateKey.startsWith(period.year);
+    }
+
+    if (period.mode === "custom") {
+        const afterStart = !period.startDate || dateKey >= period.startDate;
+        const beforeEnd = !period.endDate || dateKey <= period.endDate;
+        return afterStart && beforeEnd;
+    }
+
+    return true;
+};
 
 const formatDate = (value) => {
     if (!value) return "-";
@@ -102,39 +166,60 @@ const StatusBadge = ({ status }) => (
     </span>
 );
 
-const SummaryCard = ({ title, value, icon: Icon, compact = false }) => (
-    <div
-        className={`rounded-2xl bg-white shadow-sm ${
-            compact ? "h-25 p-3" : "p-4"
-        }`}
-    >
-        <div className="flex items-center justify-between gap-3">
-            <div>
-                <p
-                    className={`${
-                        compact ? "line-clamp-2 min-h-8 text-xs" : "text-sm"
-                    } text-slate-500`}
+const SummaryCard = ({
+    title,
+    value,
+    icon: Icon,
+    compact = false,
+    active = false,
+    onClick,
+}) => {
+    const Component = onClick ? "button" : "div";
+
+    return (
+        <Component
+            type={onClick ? "button" : undefined}
+            onClick={onClick}
+            className={`w-full rounded-2xl bg-white text-left shadow-sm transition ${
+                compact ? "h-25 p-3" : "p-4"
+            } ${
+                active
+                    ? "ring-2 ring-sky-400"
+                    : onClick
+                      ? "hover:-translate-y-0.5 hover:shadow-md"
+                      : ""
+            }`}
+        >
+            <div className="flex items-center justify-between gap-3">
+                <div>
+                    <p
+                        className={`${
+                            compact
+                                ? "line-clamp-2 min-h-8 text-xs"
+                                : "text-sm"
+                        } text-slate-500`}
+                    >
+                        {title}
+                    </p>
+                    <p
+                        className={`mt-1 font-semibold text-slate-900 ${
+                            compact ? "text-lg" : "text-2xl"
+                        }`}
+                    >
+                        {value}
+                    </p>
+                </div>
+                <span
+                    className={`rounded-2xl ${
+                        active ? "bg-sky-500 text-white" : "bg-sky-50 text-sky-500"
+                    } ${compact ? "p-2" : "p-3"}`}
                 >
-                    {title}
-                </p>
-                <p
-                    className={`mt-1 font-semibold text-slate-900 ${
-                        compact ? "text-lg" : "text-2xl"
-                    }`}
-                >
-                    {value}
-                </p>
+                    {createElement(Icon, { size: compact ? 18 : 22 })}
+                </span>
             </div>
-            <span
-                className={`rounded-2xl bg-sky-50 text-sky-500 ${
-                    compact ? "p-2" : "p-3"
-                }`}
-            >
-                {createElement(Icon, { size: compact ? 18 : 22 })}
-            </span>
-        </div>
-    </div>
-);
+        </Component>
+    );
+};
 
 export default function AccommodationPage({ mode = "technician" }) {
     const { user, role, profile } = useAuth();
@@ -147,7 +232,14 @@ export default function AccommodationPage({ mode = "technician" }) {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [filter, setFilter] = useState("all");
+    const [filter, setFilter] = useState(null);
+    const [periodMode, setPeriodMode] = useState("weekly");
+    const [weekStart, setWeekStart] = useState(getWeekStartKey());
+    const [weekEnd, setWeekEnd] = useState(getWeekEndKey());
+    const [monthFilter, setMonthFilter] = useState(getMonthKey());
+    const [yearFilter, setYearFilter] = useState(getYearKey());
+    const [customStartDate, setCustomStartDate] = useState(todayKey());
+    const [customEndDate, setCustomEndDate] = useState(todayKey());
     const [search, setSearch] = useState("");
     const [selectedId, setSelectedId] = useState(null);
     const [createOpen, setCreateOpen] = useState(false);
@@ -240,32 +332,79 @@ export default function AccommodationPage({ mode = "technician" }) {
         };
     }, [loadData, user?.id]);
 
+    const periodFilter = useMemo(
+        () => ({
+            mode: periodMode,
+            weekStart,
+            weekEnd,
+            month: monthFilter,
+            year: yearFilter,
+            startDate: customStartDate,
+            endDate: customEndDate,
+        }),
+        [
+            customEndDate,
+            customStartDate,
+            monthFilter,
+            periodMode,
+            weekEnd,
+            weekStart,
+            yearFilter,
+        ],
+    );
+
+    const periodRequests = useMemo(
+        () => requests.filter((item) => matchesPeriod(item, periodFilter)),
+        [periodFilter, requests],
+    );
+
+    const periodLabel = useMemo(() => {
+        if (periodMode === "weekly") {
+            return `${formatDate(weekStart)} - ${formatDate(weekEnd)}`;
+        }
+
+        if (periodMode === "monthly") {
+            const [year, month] = monthFilter.split("-");
+            const date = new Date(Number(year), Number(month) - 1, 1);
+            return date.toLocaleDateString("id-ID", {
+                month: "long",
+                year: "numeric",
+            });
+        }
+
+        if (periodMode === "yearly") {
+            return `Tahun ${yearFilter}`;
+        }
+
+        return `${formatDate(customStartDate)} - ${formatDate(customEndDate)}`;
+    }, [
+        customEndDate,
+        customStartDate,
+        monthFilter,
+        periodMode,
+        weekEnd,
+        weekStart,
+        yearFilter,
+    ]);
+
+    const handleCardFilter = (key) => {
+        setFilter((current) => (current === key ? null : key));
+    };
+
     const filteredRequests = useMemo(() => {
         const keyword = search.trim().toLowerCase();
-        return requests.filter((item) => {
-            const matchesFilter = filter === "all" || item.status === filter;
+        return periodRequests.filter((item) => {
+            const matchesFilter =
+                !filter ||
+                (filter === "outstanding"
+                    ? Number(item.remainingAmount ?? 0) > 0
+                    : item.status === filter);
             const haystack = `${item.request_title ?? ""} ${
                 item.purpose ?? ""
             } ${getDisplayName(item.technician)}`.toLowerCase();
             return matchesFilter && (!keyword || haystack.includes(keyword));
         });
-    }, [filter, requests, search]);
-
-    const requestCounts = useMemo(() => {
-        const counts = filters.reduce(
-            (acc, item) => ({ ...acc, [item.key]: 0 }),
-            {},
-        );
-        counts.all = requests.length;
-
-        for (const item of requests) {
-            if (counts[item.status] !== undefined) {
-                counts[item.status] += 1;
-            }
-        }
-
-        return counts;
-    }, [requests]);
+    }, [filter, periodRequests, search]);
 
     const selectedRequest = useMemo(
         () => requests.find((item) => item.id === selectedId) ?? null,
@@ -274,19 +413,25 @@ export default function AccommodationPage({ mode = "technician" }) {
 
     const dashboardStats = useMemo(() => {
         const count = (status) =>
-            requests.filter((item) => item.status === status).length;
+            periodRequests.filter((item) => item.status === status).length;
         return {
             pending: count("pending"),
             approved: count("approved"),
             rejected: count("rejected"),
-            partial: count("partial_realized"),
+            partial_realized: count("partial_realized"),
             realized: count("realized"),
-            outstanding: requests.reduce(
+            outstanding: periodRequests.reduce(
                 (sum, item) => sum + Number(item.remainingAmount ?? 0),
                 0,
             ),
+            pendingAmount: periodRequests
+                .filter((item) => item.status === "pending")
+                .reduce(
+                    (sum, item) => sum + Number(item.requested_amount ?? 0),
+                    0,
+                ),
         };
-    }, [requests]);
+    }, [periodRequests]);
 
     const customerOptions = useMemo(
         () =>
@@ -515,140 +660,204 @@ export default function AccommodationPage({ mode = "technician" }) {
                         </div>
                     </div>
 
+                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                            <div>
+                                <p className="text-sm font-semibold text-slate-900">
+                                    Filter Periode
+                                </p>
+                                <p className="mt-1 text-sm text-slate-500">
+                                    Periode: {periodLabel}
+                                </p>
+                            </div>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                                <div className="inline-flex rounded-full bg-slate-100 p-1">
+                                    {periodOptions.map((item) => (
+                                        <button
+                                            key={item.key}
+                                            type="button"
+                                            onClick={() =>
+                                                setPeriodMode(item.key)
+                                            }
+                                            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                                periodMode === item.key
+                                                    ? "bg-sky-500 text-white"
+                                                    : "text-slate-600 hover:bg-white"
+                                            }`}
+                                        >
+                                            {item.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {periodMode === "weekly" && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input
+                                            type="date"
+                                            value={weekStart}
+                                            onChange={(event) =>
+                                                setWeekStart(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={weekEnd}
+                                            onChange={(event) =>
+                                                setWeekEnd(event.target.value)
+                                            }
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                        />
+                                    </div>
+                                )}
+
+                                {periodMode === "monthly" && (
+                                    <input
+                                        type="month"
+                                        value={monthFilter}
+                                        onChange={(event) =>
+                                            setMonthFilter(event.target.value)
+                                        }
+                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                    />
+                                )}
+
+                                {periodMode === "yearly" && (
+                                    <input
+                                        type="number"
+                                        min="2020"
+                                        max="2100"
+                                        value={yearFilter}
+                                        onChange={(event) =>
+                                            setYearFilter(event.target.value)
+                                        }
+                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                    />
+                                )}
+
+                                {periodMode === "custom" && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input
+                                            type="date"
+                                            value={customStartDate}
+                                            onChange={(event) =>
+                                                setCustomStartDate(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={customEndDate}
+                                            onChange={(event) =>
+                                                setCustomEndDate(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </section>
+
                     {canViewAccommodationReport && (
                         <section className="mt-6">
                             <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 md:hidden">
-                                <div className="min-w-36">
+                                {statusFilters.map((item) => (
+                                    <div key={item.key} className="min-w-36">
+                                        <SummaryCard
+                                            title={item.title}
+                                            value={dashboardStats[item.key]}
+                                            icon={item.icon}
+                                            compact
+                                            active={filter === item.key}
+                                            onClick={() =>
+                                                handleCardFilter(item.key)
+                                            }
+                                        />
+                                    </div>
+                                ))}
+                                <div className="min-w-44">
                                     <SummaryCard
-                                        title="Pending"
-                                        value={dashboardStats.pending}
-                                        icon={Clock3}
+                                        title="Outstanding"
+                                        value={formatCurrency(
+                                            dashboardStats.outstanding,
+                                        )}
+                                        icon={Banknote}
                                         compact
+                                        active={filter === "outstanding"}
+                                        onClick={() =>
+                                            handleCardFilter("outstanding")
+                                        }
                                     />
                                 </div>
-                                <div className="min-w-36">
+                                <div className="min-w-44">
                                     <SummaryCard
-                                        title="Approved"
-                                        value={dashboardStats.approved}
-                                        icon={CheckCircle2}
+                                        title="Pending Amount"
+                                        value={formatCurrency(
+                                            dashboardStats.pendingAmount,
+                                        )}
+                                        icon={CalendarDays}
                                         compact
-                                    />
-                                </div>
-                                <div className="min-w-36">
-                                    <SummaryCard
-                                        title="Rejected"
-                                        value={dashboardStats.rejected}
-                                        icon={XCircle}
-                                        compact
-                                    />
-                                </div>
-                                <div className="min-w-36">
-                                    <SummaryCard
-                                        title="Partial"
-                                        value={dashboardStats.partial}
-                                        icon={Receipt}
-                                        compact
-                                    />
-                                </div>
-                                <div className="min-w-36">
-                                    <SummaryCard
-                                        title="Realized"
-                                        value={dashboardStats.realized}
-                                        icon={FileImage}
-                                        compact
+                                        active={filter === "pending"}
+                                        onClick={() =>
+                                            handleCardFilter("pending")
+                                        }
                                     />
                                 </div>
                             </div>
-                            <div className="mt-3 md:hidden">
+                            <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+                                {statusFilters.map((item) => (
+                                    <SummaryCard
+                                        key={item.key}
+                                        title={item.title}
+                                        value={dashboardStats[item.key]}
+                                        icon={item.icon}
+                                        active={filter === item.key}
+                                        onClick={() =>
+                                            handleCardFilter(item.key)
+                                        }
+                                    />
+                                ))}
                                 <SummaryCard
                                     title="Outstanding"
                                     value={formatCurrency(
                                         dashboardStats.outstanding,
                                     )}
                                     icon={Banknote}
-                                />
-                            </div>
-                            <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-6">
-                                <SummaryCard
-                                    title="Pending"
-                                    value={dashboardStats.pending}
-                                    icon={Clock3}
+                                    active={filter === "outstanding"}
+                                    onClick={() =>
+                                        handleCardFilter("outstanding")
+                                    }
                                 />
                                 <SummaryCard
-                                    title="Approved"
-                                    value={dashboardStats.approved}
-                                    icon={CheckCircle2}
-                                />
-                                <SummaryCard
-                                    title="Rejected"
-                                    value={dashboardStats.rejected}
-                                    icon={XCircle}
-                                />
-                                <SummaryCard
-                                    title="Partial"
-                                    value={dashboardStats.partial}
-                                    icon={Receipt}
-                                />
-                                <SummaryCard
-                                    title="Realized"
-                                    value={dashboardStats.realized}
-                                    icon={FileImage}
-                                />
-                                <SummaryCard
-                                    title="Outstanding"
+                                    title="Pending Amount"
                                     value={formatCurrency(
-                                        dashboardStats.outstanding,
+                                        dashboardStats.pendingAmount,
                                     )}
-                                    icon={Banknote}
+                                    icon={CalendarDays}
+                                    active={filter === "pending"}
+                                    onClick={() => handleCardFilter("pending")}
                                 />
                             </div>
+                            {filter && (
+                                <div className="mt-3 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFilter(null)}
+                                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                                    >
+                                        Clear filter
+                                    </button>
+                                </div>
+                            )}
                         </section>
                     )}
-
-                    <div className="mt-5 md:mt-6">
-                        <label className="block md:hidden">
-                            <span className="mb-1 block text-xs font-medium text-slate-500">
-                                Status
-                            </span>
-                            <CustomSelect
-                                value={filter}
-                                onChange={setFilter}
-                                options={filters.map((item) => ({
-                                    value: item.key,
-                                    label: item.label,
-                                    badge: requestCounts[item.key] ?? 0,
-                                }))}
-                            />
-                        </label>
-
-                        <div className="hidden rounded-full border border-slate-200 bg-white p-1 md:inline-flex">
-                            {filters.map((item) => (
-                                <button
-                                    key={item.key}
-                                    type="button"
-                                    onClick={() => setFilter(item.key)}
-                                    className={`cursor-pointer rounded-full px-6 py-2 text-sm transition ${
-                                        filter === item.key
-                                            ? "bg-sky-500 font-semibold text-white"
-                                            : "font-medium text-slate-600 hover:bg-slate-100"
-                                    }`}
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <span>{item.label}</span>
-                                        <span
-                                            className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                                filter === item.key
-                                                    ? "bg-white/20 text-white"
-                                                    : "bg-slate-200 text-slate-700"
-                                            }`}
-                                        >
-                                            {requestCounts[item.key] ?? 0}
-                                        </span>
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
 
                     <section className="mt-6 space-y-3">
                         {loading ? (

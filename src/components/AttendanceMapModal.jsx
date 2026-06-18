@@ -80,9 +80,6 @@ const AttendanceMapModal = ({
         label: type === "check-in" ? "Lokasi Masuk" : "Lokasi Pulang",
     };
 
-    const latFixed = lat.toFixed(6);
-    const lngFixed = lng.toFixed(6);
-
     const timeStr = new Date(time).toLocaleString("id-ID", {
         year: "numeric",
         month: "long",
@@ -220,15 +217,6 @@ const AttendanceMapModal = ({
                                     </p>
                                     <p className="text-sm text-slate-900 font-medium mt-1">
                                         {postal_code || "-"}
-                                    </p>
-                                </div>
-
-                                <div className="col-span-2 bg-slate-100 rounded-xl p-3 border border-slate-300">
-                                    <p className="text-xs font-medium text-slate-700 uppercase tracking-wider">
-                                        Koordinat GPS
-                                    </p>
-                                    <p className="text-sm text-slate-900 font-mono mt-1">
-                                        {latFixed}, {lngFixed}
                                     </p>
                                 </div>
                             </div>

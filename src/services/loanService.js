@@ -1,6 +1,10 @@
 import supabase from "../supabaseClient";
 import { compressJobPhotoFile } from "./jobPhotoService";
 import {
+    getStoragePathFromPublicUrl,
+    uniqueStoragePaths,
+} from "../utils/storagePaths";
+import {
     NOTIFICATION_EVENT_TYPES,
     notifyEvent,
 } from "./notificationEvents";
@@ -612,4 +616,43 @@ export const rejectLoanRepaymentGroup = async ({
     });
 
     return rejectedRows;
+};
+
+export const deleteLoan = async (loan) => {
+    if (!loan?.id) throw new Error("Data pinjaman tidak valid.");
+
+    const paths = uniqueStoragePaths([
+        getStoragePathFromPublicUrl(loan.transfer_proof_url, LOAN_BUCKET),
+        ...(loan.attachments ?? []).map((attachment) =>
+            getStoragePathFromPublicUrl(attachment.file_url, LOAN_BUCKET),
+        ),
+        ...(loan.repayments ?? []).map((repayment) =>
+            getStoragePathFromPublicUrl(repayment.proof_url, LOAN_BUCKET),
+        ),
+    ]);
+
+    if (paths.length > 0) {
+        const { error: storageError } = await supabase.storage
+            .from(LOAN_BUCKET)
+            .remove(paths);
+        if (storageError) throw storageError;
+    }
+
+    const { error: repaymentError } = await supabase
+        .from("loan_repayments")
+        .delete()
+        .eq("loan_id", loan.id);
+    if (repaymentError) throw repaymentError;
+
+    const { error: attachmentError } = await supabase
+        .from("loan_attachments")
+        .delete()
+        .eq("loan_id", loan.id);
+    if (attachmentError) throw attachmentError;
+
+    const { error } = await supabase
+        .from("loans")
+        .delete()
+        .eq("id", loan.id);
+    if (error) throw error;
 };

@@ -13,6 +13,7 @@ import {
     Loader,
     Plus,
     Search,
+    Trash2,
     X,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
@@ -23,6 +24,7 @@ import CustomSelect from "../../components/ui/CustomSelect";
 import OvertimeRequestModal from "../../components/overtime/OvertimeRequestModal";
 import {
     createManualOvertimeRequest,
+    deleteOvertimeRequest,
     listOvertimeRequests,
     reviewOvertimeRequest,
 } from "../../services/overtimeService";
@@ -76,6 +78,7 @@ export default function OvertimeManagement() {
     });
 
     const canReview = ["admin", "management"].includes(role);
+    const canDelete = role === "admin";
 
     const loadData = useCallback(async () => {
         if (!user?.id || !role) return;
@@ -251,6 +254,25 @@ export default function OvertimeManagement() {
             await loadData();
         } catch (error) {
             alert(error.message || "Gagal memproses review.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async (request) => {
+        if (!canDelete || !request?.id) return;
+        const confirmed = window.confirm(
+            "Hapus data lembur ini beserta foto buktinya?",
+        );
+        if (!confirmed) return;
+
+        setSaving(true);
+        try {
+            await deleteOvertimeRequest(request);
+            setDetail(null);
+            await loadData();
+        } catch (error) {
+            alert(error.message || "Gagal menghapus data lembur.");
         } finally {
             setSaving(false);
         }
@@ -597,20 +619,41 @@ export default function OvertimeManagement() {
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setDetail(row);
-                                                            setReviewNotes(
-                                                                row.review_notes ||
-                                                                    "",
-                                                            );
-                                                        }}
-                                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                                    >
-                                                        <Eye size={14} />
-                                                        Detail
-                                                    </button>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setDetail(row);
+                                                                setReviewNotes(
+                                                                    row.review_notes ||
+                                                                        "",
+                                                                );
+                                                            }}
+                                                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                        >
+                                                            <Eye size={14} />
+                                                            Detail
+                                                        </button>
+                                                        {canDelete && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    handleDelete(
+                                                                        row,
+                                                                    )
+                                                                }
+                                                                disabled={
+                                                                    saving
+                                                                }
+                                                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                                                            >
+                                                                <Trash2
+                                                                    size={14}
+                                                                />
+                                                                Hapus
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -758,6 +801,19 @@ export default function OvertimeManagement() {
                                             Approve
                                         </button>
                                     </div>
+                                </div>
+                            )}
+                            {canDelete && (
+                                <div className="flex justify-end border-t border-slate-100 pt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDelete(detail)}
+                                        disabled={saving}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                                    >
+                                        <Trash2 size={15} />
+                                        Hapus Data Lembur
+                                    </button>
                                 </div>
                             )}
                         </div>
