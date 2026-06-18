@@ -804,21 +804,17 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         }
                                     />
                                 </div>
-                                <div className="min-w-64">
-                                    <SummaryCard
-                                        title="Pending Amount"
-                                        value={formatCurrency(
-                                            dashboardStats.pendingAmount,
-                                        )}
-                                        icon={CalendarDays}
-                                        compact
-                                        wide
-                                        active={filter === "pending"}
-                                        onClick={() =>
-                                            handleCardFilter("pending")
-                                        }
-                                    />
-                                </div>
+                            </div>
+                            <div className="mt-3 md:hidden">
+                                <SummaryCard
+                                    title="Pending Amount"
+                                    value={formatCurrency(
+                                        dashboardStats.pendingAmount,
+                                    )}
+                                    icon={CalendarDays}
+                                    active={filter === "pending"}
+                                    onClick={() => handleCardFilter("pending")}
+                                />
                             </div>
                             <div className="hidden gap-4 md:flex md:flex-wrap">
                                 {statusFilters.map((item) => (
