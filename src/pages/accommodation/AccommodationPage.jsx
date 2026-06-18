@@ -66,6 +66,9 @@ const periodOptions = [
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300";
 
+const periodInputClass =
+    "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300";
+
 const onlyDigits = (value) => String(value ?? "").replace(/\D/g, "");
 
 const formatNumberInput = (value) => {
@@ -173,6 +176,7 @@ const SummaryCard = ({
     compact = false,
     active = false,
     onClick,
+    wide = false,
 }) => {
     const Component = onClick ? "button" : "div";
 
@@ -182,7 +186,7 @@ const SummaryCard = ({
             onClick={onClick}
             className={`w-full rounded-2xl bg-white text-left shadow-sm transition ${
                 compact ? "h-25 p-3" : "p-4"
-            } ${
+            } ${wide ? "min-w-max" : ""} ${
                 active
                     ? "ring-2 ring-sky-400"
                     : onClick
@@ -191,7 +195,7 @@ const SummaryCard = ({
             }`}
         >
             <div className="flex items-center justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1">
                     <p
                         className={`${
                             compact
@@ -202,7 +206,7 @@ const SummaryCard = ({
                         {title}
                     </p>
                     <p
-                        className={`mt-1 font-semibold text-slate-900 ${
+                        className={`mt-1 whitespace-nowrap font-semibold leading-tight text-slate-900 ${
                             compact ? "text-lg" : "text-2xl"
                         }`}
                     >
@@ -257,9 +261,12 @@ export default function AccommodationPage({ mode = "technician" }) {
     const isTechnician = role === "technician";
     const isInternalTechnician =
         isTechnician && profile?.technician_type === "internal";
+    const isAdmin = role === "admin";
     const showTechnicianColumn = mode !== "technician";
     const canApprove = isManagement && mode === "management";
-    const canCreate = mode === "technician" && isInternalTechnician;
+    const canCreate =
+        (mode === "technician" && isInternalTechnician) ||
+        (mode === "admin" && isAdmin);
     const canAddRealization = mode === "technician" && isInternalTechnician;
     const canViewAccommodationReport =
         ["admin", "management"].includes(role) &&
@@ -631,16 +638,6 @@ export default function AccommodationPage({ mode = "technician" }) {
                                     placeholder="Cari title atau purpose..."
                                 />
                             </label>
-                            {canCreate && (
-                                <button
-                                    type="button"
-                                    onClick={openCreateModal}
-                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 md:py-3"
-                                >
-                                    <Plus size={16} />
-                                    New Request
-                                </button>
-                            )}
                             {canViewAccommodationReport && (
                                 <button
                                     type="button"
@@ -670,8 +667,18 @@ export default function AccommodationPage({ mode = "technician" }) {
                                     Periode: {periodLabel}
                                 </p>
                             </div>
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                                <div className="inline-flex rounded-full bg-slate-100 p-1">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                                <div className="block md:hidden">
+                                    <CustomSelect
+                                        value={periodMode}
+                                        onChange={setPeriodMode}
+                                        options={periodOptions.map((item) => ({
+                                            value: item.key,
+                                            label: item.label,
+                                        }))}
+                                    />
+                                </div>
+                                <div className="hidden rounded-full bg-slate-100 p-1 md:inline-flex">
                                     {periodOptions.map((item) => (
                                         <button
                                             key={item.key}
@@ -691,7 +698,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                 </div>
 
                                 {periodMode === "weekly" && (
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="flex flex-wrap gap-2">
                                         <input
                                             type="date"
                                             value={weekStart}
@@ -700,7 +707,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                                     event.target.value,
                                                 )
                                             }
-                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                            className={`${periodInputClass} w-40`}
                                         />
                                         <input
                                             type="date"
@@ -708,7 +715,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                             onChange={(event) =>
                                                 setWeekEnd(event.target.value)
                                             }
-                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                            className={`${periodInputClass} w-40`}
                                         />
                                     </div>
                                 )}
@@ -720,7 +727,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         onChange={(event) =>
                                             setMonthFilter(event.target.value)
                                         }
-                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                        className={`${periodInputClass} w-36`}
                                     />
                                 )}
 
@@ -733,12 +740,12 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         onChange={(event) =>
                                             setYearFilter(event.target.value)
                                         }
-                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                        className={`${periodInputClass} w-24`}
                                     />
                                 )}
 
                                 {periodMode === "custom" && (
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="flex flex-wrap gap-2">
                                         <input
                                             type="date"
                                             value={customStartDate}
@@ -747,7 +754,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                                     event.target.value,
                                                 )
                                             }
-                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                            className={`${periodInputClass} w-40`}
                                         />
                                         <input
                                             type="date"
@@ -757,7 +764,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                                     event.target.value,
                                                 )
                                             }
-                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
+                                            className={`${periodInputClass} w-40`}
                                         />
                                     </div>
                                 )}
@@ -782,7 +789,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         />
                                     </div>
                                 ))}
-                                <div className="min-w-44">
+                                <div className="min-w-64">
                                     <SummaryCard
                                         title="Outstanding"
                                         value={formatCurrency(
@@ -790,13 +797,14 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         )}
                                         icon={Banknote}
                                         compact
+                                        wide
                                         active={filter === "outstanding"}
                                         onClick={() =>
                                             handleCardFilter("outstanding")
                                         }
                                     />
                                 </div>
-                                <div className="min-w-44">
+                                <div className="min-w-64">
                                     <SummaryCard
                                         title="Pending Amount"
                                         value={formatCurrency(
@@ -804,6 +812,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         )}
                                         icon={CalendarDays}
                                         compact
+                                        wide
                                         active={filter === "pending"}
                                         onClick={() =>
                                             handleCardFilter("pending")
@@ -811,39 +820,51 @@ export default function AccommodationPage({ mode = "technician" }) {
                                     />
                                 </div>
                             </div>
-                            <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+                            <div className="hidden gap-4 md:flex md:flex-wrap">
                                 {statusFilters.map((item) => (
-                                    <SummaryCard
+                                    <div
                                         key={item.key}
-                                        title={item.title}
-                                        value={dashboardStats[item.key]}
-                                        icon={item.icon}
-                                        active={filter === item.key}
+                                        className="min-w-40 flex-1"
+                                    >
+                                        <SummaryCard
+                                            title={item.title}
+                                            value={dashboardStats[item.key]}
+                                            icon={item.icon}
+                                            active={filter === item.key}
+                                            onClick={() =>
+                                                handleCardFilter(item.key)
+                                            }
+                                        />
+                                    </div>
+                                ))}
+                                <div className="min-w-72 flex-1">
+                                    <SummaryCard
+                                        title="Outstanding"
+                                        value={formatCurrency(
+                                            dashboardStats.outstanding,
+                                        )}
+                                        icon={Banknote}
+                                        wide
+                                        active={filter === "outstanding"}
                                         onClick={() =>
-                                            handleCardFilter(item.key)
+                                            handleCardFilter("outstanding")
                                         }
                                     />
-                                ))}
-                                <SummaryCard
-                                    title="Outstanding"
-                                    value={formatCurrency(
-                                        dashboardStats.outstanding,
-                                    )}
-                                    icon={Banknote}
-                                    active={filter === "outstanding"}
-                                    onClick={() =>
-                                        handleCardFilter("outstanding")
-                                    }
-                                />
-                                <SummaryCard
-                                    title="Pending Amount"
-                                    value={formatCurrency(
-                                        dashboardStats.pendingAmount,
-                                    )}
-                                    icon={CalendarDays}
-                                    active={filter === "pending"}
-                                    onClick={() => handleCardFilter("pending")}
-                                />
+                                </div>
+                                <div className="min-w-72 flex-1">
+                                    <SummaryCard
+                                        title="Pending Amount"
+                                        value={formatCurrency(
+                                            dashboardStats.pendingAmount,
+                                        )}
+                                        icon={CalendarDays}
+                                        wide
+                                        active={filter === "pending"}
+                                        onClick={() =>
+                                            handleCardFilter("pending")
+                                        }
+                                    />
+                                </div>
                             </div>
                             {filter && (
                                 <div className="mt-3 flex justify-end">
@@ -985,6 +1006,18 @@ export default function AccommodationPage({ mode = "technician" }) {
             </div>
 
             <MobileBottomNav />
+
+            {canCreate && (
+                <button
+                    type="button"
+                    onClick={openCreateModal}
+                    className="fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-sky-600 text-white shadow-xl shadow-sky-900/20 hover:bg-sky-700 md:bottom-6"
+                    aria-label="Create accommodation request"
+                    title="Create accommodation request"
+                >
+                    <Plus size={26} />
+                </button>
+            )}
 
             {createOpen && (
                 <Modal

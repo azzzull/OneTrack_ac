@@ -874,7 +874,7 @@ export default function LoanPage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-sky-50">
             <div className="flex min-h-screen">
                 <Sidebar collapsed={collapsed} onToggle={toggle} />
                 <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
