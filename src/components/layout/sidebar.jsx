@@ -707,6 +707,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                     </ul>
 
                     {/* Footer */}
+                    {/* trigger deploy */}
                     <div
                         className={`mt-auto ${
                             collapsed ? "space-y-3" : "space-y-5"
