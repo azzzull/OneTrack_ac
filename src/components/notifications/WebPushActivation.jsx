@@ -36,7 +36,6 @@ export default function WebPushActivation({ compact = false }) {
     if (!user?.id || !isOnline) return null;
     if (enabled) return null;
 
-    const standalone = isStandalonePwa();
     const ios = isIosBrowser();
 
     const handleEnable = async () => {
@@ -53,7 +52,7 @@ export default function WebPushActivation({ compact = false }) {
         }
     };
 
-    if (!standalone) {
+    if (ios && !isStandalonePwa()) {
         if (compact) return null;
 
         return (

@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import webpush from "https://esm.sh/web-push@3.6.7";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -50,11 +49,80 @@ type SendError = {
     details?: unknown;
 };
 
-const jsonResponse = (payload: unknown, status = 200) =>
-    new Response(JSON.stringify(payload), {
+type PushDiagnostics = {
+    tokenPlatformCounts: Record<string, number>;
+    fcmTokenCount: number;
+    webPushTokenCount: number;
+    firebaseProjectId?: string;
+};
+
+type WebPushClient = {
+    setVapidDetails: (
+        subject: string,
+        publicKey: string,
+        privateKey: string,
+    ) => void;
+    sendNotification: (subscription: unknown, payload: string) => Promise<unknown>;
+};
+
+const getErrorMessage = (error: unknown, fallback = "Unexpected error") =>
+    error instanceof Error ? error.message : fallback;
+
+const getErrorDetails = (error: unknown) => {
+    if (error instanceof Error) {
+        return {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+        };
+    }
+    return error;
+};
+
+const logFunctionResult = (payload: unknown, status: number) => {
+    if (!payload || typeof payload !== "object") return;
+
+    const result = payload as {
+        success?: unknown;
+        error?: unknown;
+        details?: unknown;
+        message?: unknown;
+        recipientCount?: unknown;
+        tokenCount?: unknown;
+        sentCount?: unknown;
+        failedCount?: unknown;
+        errors?: unknown;
+        diagnostics?: unknown;
+    };
+
+    const summary = {
+        status,
+        success: result.success,
+        error: result.error,
+        details: result.details,
+        message: result.message,
+        recipientCount: result.recipientCount,
+        tokenCount: result.tokenCount,
+        sentCount: result.sentCount,
+        failedCount: result.failedCount,
+        errors: result.errors,
+        diagnostics: result.diagnostics,
+    };
+
+    if (result.success === false) {
+        console.warn("[send-push-notification] result:", summary);
+    } else {
+        console.info("[send-push-notification] result:", summary);
+    }
+};
+
+const jsonResponse = (payload: unknown, status = 200) => {
+    logFunctionResult(payload, status);
+    return new Response(JSON.stringify(payload), {
         status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+};
 
 const isUuid = (value: unknown) =>
     typeof value === "string" &&
@@ -169,6 +237,18 @@ const isInvalidFcmToken = (payload: unknown) => {
     );
 };
 
+const loadWebPush = async (): Promise<WebPushClient> => {
+    const module = await import("https://esm.sh/web-push@3.6.7");
+    return (module.default ?? module) as WebPushClient;
+};
+
+const getTokenPlatformCounts = (tokens: PushToken[]) =>
+    tokens.reduce<Record<string, number>>((counts, token) => {
+        const platform = String(token.platform ?? "unknown").trim() || "unknown";
+        counts[platform] = (counts[platform] ?? 0) + 1;
+        return counts;
+    }, {});
+
 const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
     job_requested: ["admin", "management", "technician"],
     job_created_by_technician: ["admin", "management"],
@@ -218,7 +298,7 @@ const RELATED_CUSTOMER_EVENT_TYPES = [
     "job_status_changed",
 ];
 
-Deno.serve(async (req) => {
+const handleRequest = async (req: Request) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
     if (req.method !== "POST") {
@@ -231,7 +311,6 @@ Deno.serve(async (req) => {
                 success: false,
                 error: "Missing Supabase Edge Function secrets",
             },
-            500,
         );
     }
 
@@ -278,7 +357,6 @@ Deno.serve(async (req) => {
                     error: "Failed to load requester profile",
                     details: requesterProfileError.message,
                 },
-                500,
             );
         }
 
@@ -496,7 +574,6 @@ Deno.serve(async (req) => {
                     error: "Failed to resolve recipient roles",
                     details: roleUsersError.message,
                 },
-                500,
             );
         }
 
@@ -516,6 +593,12 @@ Deno.serve(async (req) => {
             sentCount: 0,
             failedCount: 0,
             errors: [],
+            diagnostics: {
+                tokenPlatformCounts: {},
+                fcmTokenCount: 0,
+                webPushTokenCount: 0,
+                firebaseProjectId: firebaseProjectId || undefined,
+            },
         });
     }
 
@@ -531,7 +614,6 @@ Deno.serve(async (req) => {
                 error: "Failed to load push tokens",
                 details: tokenError.message,
             },
-            500,
         );
     }
 
@@ -552,28 +634,52 @@ Deno.serve(async (req) => {
         data,
     }));
 
-    const { data: insertedNotifications, error: notificationError } =
+    const notificationInsertErrors: SendError[] = [];
+    let insertedNotifications: Array<{ id: string }> = [];
+    const { data: bulkInsertedNotifications, error: notificationError } =
         await adminClient
             .from("notifications")
             .insert(notificationRows)
             .select("id");
 
     if (notificationError) {
-        return jsonResponse(
-            {
-                success: false,
-                error: "Failed to insert notifications",
-                details: notificationError.message,
-                recipientCount: recipientIds.length,
-                tokenCount: uniqueTokens.length,
-                notificationInsertedCount: 0,
-                sentCount: 0,
-                failedCount: 0,
-                errors: [],
+        notificationInsertErrors.push({
+            message: "Failed to insert in-app notifications; push delivery will still be attempted",
+            details: {
+                message: notificationError.message,
+                code: notificationError.code,
+                details: notificationError.details,
+                hint: notificationError.hint,
             },
-            500,
-        );
+        });
+
+        for (const row of notificationRows) {
+            const { data: insertedNotification, error: singleInsertError } =
+                await adminClient
+                    .from("notifications")
+                    .insert(row)
+                    .select("id")
+                    .maybeSingle();
+
+            if (singleInsertError) {
+                notificationInsertErrors.push({
+                    userId: row.user_id,
+                    message: "Failed to insert in-app notification for recipient",
+                    details: {
+                        message: singleInsertError.message,
+                        code: singleInsertError.code,
+                        details: singleInsertError.details,
+                        hint: singleInsertError.hint,
+                    },
+                });
+            } else if (insertedNotification?.id) {
+                insertedNotifications.push(insertedNotification);
+            }
+        }
+    } else {
+        insertedNotifications = bulkInsertedNotifications ?? [];
     }
+    const notificationInsertedCount = insertedNotifications?.length ?? 0;
 
     if (uniqueTokens.length === 0) {
         return jsonResponse({
@@ -581,10 +687,16 @@ Deno.serve(async (req) => {
             message: "No push tokens found for resolved recipients",
             recipientCount: recipientIds.length,
             tokenCount: 0,
-            notificationInsertedCount: insertedNotifications?.length ?? 0,
+            notificationInsertedCount,
             sentCount: 0,
             failedCount: 0,
-            errors: [],
+            errors: notificationInsertErrors,
+            diagnostics: {
+                tokenPlatformCounts: {},
+                fcmTokenCount: 0,
+                webPushTokenCount: 0,
+                firebaseProjectId: firebaseProjectId || undefined,
+            },
         });
     }
 
@@ -592,124 +704,157 @@ Deno.serve(async (req) => {
         (row) => row.platform === "web" && row.web_push_subscription,
     );
     const fcmTokens = uniqueTokens.filter((row) => row.platform !== "web");
+    const diagnostics: PushDiagnostics = {
+        tokenPlatformCounts: getTokenPlatformCounts(uniqueTokens),
+        fcmTokenCount: fcmTokens.length,
+        webPushTokenCount: webPushTokens.length,
+        firebaseProjectId: firebaseProjectId || undefined,
+    };
 
     let accessToken: string | null = null;
     if (fcmTokens.length > 0) {
         if (!firebaseProjectId || !firebaseClientEmail || !firebasePrivateKey) {
-            return jsonResponse(
-                {
-                    success: false,
-                    error: "Missing Firebase Edge Function secrets",
-                    recipientCount: recipientIds.length,
-                    tokenCount: uniqueTokens.length,
-                    notificationInsertedCount: insertedNotifications?.length ?? 0,
-                    sentCount: 0,
-                    failedCount: fcmTokens.length,
-                    errors: [
-                        {
-                            message: "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY are required for FCM tokens",
-                        },
-                    ],
-                },
-                502,
-            );
+            return jsonResponse({
+                success: false,
+                error: "Missing Firebase Edge Function secrets",
+                recipientCount: recipientIds.length,
+                tokenCount: uniqueTokens.length,
+                notificationInsertedCount,
+                sentCount: 0,
+                failedCount: fcmTokens.length,
+                errors: [
+                    {
+                        message: "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY are required for FCM tokens",
+                    },
+                ],
+                diagnostics,
+            });
         }
 
         try {
             accessToken = await getFirebaseAccessToken();
         } catch (error) {
-            return jsonResponse(
-                {
-                    success: false,
-                    error: error instanceof Error ? error.message : "Firebase OAuth failed",
-                    recipientCount: recipientIds.length,
-                    tokenCount: uniqueTokens.length,
-                    notificationInsertedCount: insertedNotifications?.length ?? 0,
-                    sentCount: 0,
-                    failedCount: uniqueTokens.length,
-                    errors: [
-                        {
-                            message:
-                                error instanceof Error
-                                    ? error.message
-                                    : "Firebase OAuth failed",
-                        },
-                    ],
-                },
-                502,
-            );
+            return jsonResponse({
+                success: false,
+                error: error instanceof Error ? error.message : "Firebase OAuth failed",
+                recipientCount: recipientIds.length,
+                tokenCount: uniqueTokens.length,
+                notificationInsertedCount,
+                sentCount: 0,
+                failedCount: uniqueTokens.length,
+                errors: [
+                    {
+                        message:
+                            error instanceof Error
+                                ? error.message
+                                : "Firebase OAuth failed",
+                    },
+                ],
+                diagnostics,
+            });
         }
     }
 
+    let webpush: WebPushClient | null = null;
     if (webPushTokens.length > 0 && vapidPublicKey && vapidPrivateKey) {
-        webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
-    } else if (webPushTokens.length > 0) {
-        return jsonResponse(
-            {
+        try {
+            webpush = await loadWebPush();
+            webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+        } catch (error) {
+            return jsonResponse({
                 success: false,
-                error: "Missing Web Push VAPID keys",
+                error: getErrorMessage(error, "Invalid Web Push VAPID configuration"),
                 recipientCount: recipientIds.length,
                 tokenCount: uniqueTokens.length,
-                notificationInsertedCount: insertedNotifications?.length ?? 0,
+                notificationInsertedCount,
                 sentCount: 0,
                 failedCount: webPushTokens.length,
                 errors: [
                     {
-                        message: "WEB_PUSH_VAPID_PUBLIC_KEY and WEB_PUSH_VAPID_PRIVATE_KEY are required",
+                        message: getErrorMessage(
+                            error,
+                            "Invalid Web Push VAPID configuration",
+                        ),
+                        details: getErrorDetails(error),
                     },
                 ],
-            },
-            502,
-        );
+                diagnostics,
+            });
+        }
+    } else if (webPushTokens.length > 0) {
+        return jsonResponse({
+            success: false,
+            error: "Missing Web Push VAPID keys",
+            recipientCount: recipientIds.length,
+            tokenCount: uniqueTokens.length,
+            notificationInsertedCount,
+            sentCount: 0,
+            failedCount: webPushTokens.length,
+            errors: [
+                {
+                    message: "WEB_PUSH_VAPID_PUBLIC_KEY and WEB_PUSH_VAPID_PRIVATE_KEY are required",
+                },
+            ],
+            diagnostics,
+        });
     }
 
     const fcmData = toStringData(type, referenceTable, referenceId, data);
     const endpoint = `https://fcm.googleapis.com/v1/projects/${firebaseProjectId}/messages:send`;
-    const errors: SendError[] = [];
+    const errors: SendError[] = [...notificationInsertErrors];
     const invalidTokens: string[] = [];
     let sentCount = 0;
 
     for (const row of fcmTokens) {
-        const response = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${accessToken ?? ""}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                message: {
-                    token: row.token,
-                    notification: { title, body },
-                    data: fcmData,
-                    android: {
-                        priority: "high",
-                        notification: {
-                            icon: "ic_stat_onetrack",
-                            color: "#008AEF",
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${accessToken ?? ""}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    message: {
+                        token: row.token,
+                        notification: { title, body },
+                        data: fcmData,
+                        android: {
+                            priority: "high",
+                            notification: {
+                                icon: "ic_stat_onetrack",
+                                color: "#008AEF",
+                            },
                         },
                     },
-                },
-            }),
-        });
+                }),
+            });
 
-        const responsePayload = await response.json().catch(() => null);
-        if (response.ok) {
-            sentCount += 1;
-            continue;
-        }
+            const responsePayload = await response.json().catch(() => null);
+            if (response.ok) {
+                sentCount += 1;
+                continue;
+            }
 
-        errors.push({
-            token: row.token,
-            userId: row.user_id,
-            message:
-                responsePayload?.error?.message ??
-                response.statusText ??
-                "FCM send failed",
-            details: responsePayload,
-        });
+            errors.push({
+                token: row.token,
+                userId: row.user_id,
+                message:
+                    responsePayload?.error?.message ??
+                    response.statusText ??
+                    "FCM send failed",
+                details: responsePayload,
+            });
 
-        if (isInvalidFcmToken(responsePayload)) {
-            invalidTokens.push(row.token);
+            if (isInvalidFcmToken(responsePayload)) {
+                invalidTokens.push(row.token);
+            }
+        } catch (error) {
+            errors.push({
+                token: row.token,
+                userId: row.user_id,
+                message: getErrorMessage(error, "FCM send failed"),
+                details: getErrorDetails(error),
+            });
         }
     }
 
@@ -725,9 +870,11 @@ Deno.serve(async (req) => {
     });
 
     for (const row of webPushTokens) {
+        if (!webpush) break;
+
         try {
             await webpush.sendNotification(
-                row.web_push_subscription as never,
+                row.web_push_subscription,
                 webPayload,
             );
             sentCount += 1;
@@ -735,11 +882,8 @@ Deno.serve(async (req) => {
             errors.push({
                 token: row.token,
                 userId: row.user_id,
-                message:
-                    error instanceof Error
-                        ? error.message
-                        : "Web Push send failed",
-                details: error,
+                message: getErrorMessage(error, "Web Push send failed"),
+                details: getErrorDetails(error),
             });
             if (
                 typeof error === "object" &&
@@ -771,9 +915,25 @@ Deno.serve(async (req) => {
         success: sentCount > 0,
         recipientCount: recipientIds.length,
         tokenCount: uniqueTokens.length,
-        notificationInsertedCount: insertedNotifications?.length ?? 0,
+        notificationInsertedCount,
         sentCount,
         failedCount,
         errors,
+        diagnostics,
     });
+};
+
+Deno.serve(async (req) => {
+    try {
+        return await handleRequest(req);
+    } catch (error) {
+        console.error("[send-push-notification] unhandled error:", error);
+        return jsonResponse(
+            {
+                success: false,
+                error: getErrorMessage(error),
+                details: getErrorDetails(error),
+            },
+        );
+    }
 });

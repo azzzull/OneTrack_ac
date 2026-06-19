@@ -38,12 +38,10 @@ export const getWebPushReadiness = () => {
         };
     }
 
-    if (!isStandalonePwa()) {
+    if (isIosBrowser() && !isStandalonePwa()) {
         return {
             canEnable: false,
-            reason: isIosBrowser()
-                ? "Tambahkan OneTrack ke Home Screen, lalu buka dari icon Home Screen untuk mengaktifkan notifikasi."
-                : "Buka OneTrack sebagai installed app/standalone untuk mengaktifkan notifikasi.",
+            reason: "Tambahkan OneTrack ke Home Screen, lalu buka dari icon Home Screen untuk mengaktifkan notifikasi.",
         };
     }
 

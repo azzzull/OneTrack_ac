@@ -181,7 +181,9 @@ export default function AdminMasterDataModulePage() {
         let query = supabase.from(cfg.table).select("*");
 
         if (moduleKey === "users") {
-            query = query.order("created_at", { ascending: false });
+            query = query
+                .neq("is_active", false)
+                .order("created_at", { ascending: false });
         } else if (moduleKey === "customers") {
             query = query.order("created_at", { ascending: false });
         } else if (moduleKey === "projects") {
