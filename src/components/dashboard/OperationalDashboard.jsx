@@ -204,7 +204,7 @@ function PaymentRequestSection({ items = [] }) {
 
     return (
         <section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
-            <div className="bg-gradient-to-r from-sky-50 via-white to-blue-50 p-5 md:p-6">
+            <div className="bg-linear-to-r from-sky-50 via-white to-blue-50 p-5 md:p-6">
                 <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
                     Payment Request
                 </h2>
