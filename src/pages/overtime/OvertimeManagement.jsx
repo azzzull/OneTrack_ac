@@ -283,7 +283,7 @@ export default function OvertimeManagement() {
             <div className="flex min-h-screen">
                 <Sidebar collapsed={collapsed} onToggle={toggle} />
                 <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mb-6">
                         <div>
                             <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
                                 Overtime Management
@@ -292,14 +292,6 @@ export default function OvertimeManagement() {
                                 Pengajuan, approval, dan laporan lembur.
                             </p>
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => setModalOpen(true)}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-600"
-                        >
-                            <Plus size={16} />
-                            Add Overtime
-                        </button>
                     </div>
 
                     {loadError && (
@@ -820,6 +812,16 @@ export default function OvertimeManagement() {
                     </div>
                 </div>
             )}
+
+            <button
+                type="button"
+                onClick={() => setModalOpen(true)}
+                className="fixed bottom-24 right-4 z-40 inline-flex h-14 w-14 items-center justify-center gap-2 rounded-full bg-sky-500 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-sky-600 hover:shadow-xl md:bottom-6 md:right-6 md:h-auto md:w-auto md:px-5 md:py-3"
+                aria-label="Add Overtime"
+            >
+                <Plus size={21} />
+                <span className="sr-only md:not-sr-only">Add Overtime</span>
+            </button>
 
             <MobileBottomNav />
         </div>

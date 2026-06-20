@@ -360,9 +360,9 @@ export default function OvertimeRequestModal({
                             />
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
                             {canChooseTechnician && (
-                                <label className="block sm:col-span-2">
+                                <label className="block w-full min-w-0 sm:col-span-2">
                                     <span className="mb-2 block text-xs font-medium text-slate-600">
                                         Teknisi
                                     </span>
@@ -380,7 +380,7 @@ export default function OvertimeRequestModal({
                                     />
                                 </label>
                             )}
-                            <label className="block">
+                            <label className="block w-full min-w-0">
                                 <span className="mb-2 block text-xs font-medium text-slate-600">
                                     Tanggal
                                 </span>
@@ -388,19 +388,19 @@ export default function OvertimeRequestModal({
                                     type="date"
                                     value={date}
                                     onChange={(e) => setDate(e.target.value)}
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
+                                    className="h-10 w-full min-w-0 max-w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
                                 />
                             </label>
-                            <label className="block">
+                            <label className="block w-full min-w-0">
                                 <span className="mb-2 block text-xs font-medium text-slate-600">
                                     Durasi
                                 </span>
-                                <div className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm text-slate-700">
+                                <div className="flex h-10 w-full min-w-0 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm text-slate-700">
                                     <Clock3 size={15} />
                                     {formatOvertimeDuration(durationMinutes)}
                                 </div>
                             </label>
-                            <label className="block">
+                            <label className="block w-full min-w-0">
                                 <span className="mb-2 block text-xs font-medium text-slate-600">
                                     Jam Mulai
                                 </span>
@@ -408,10 +408,10 @@ export default function OvertimeRequestModal({
                                     type="time"
                                     value={startTime}
                                     onChange={(e) => setStartTime(e.target.value)}
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
+                                    className="h-10 w-full min-w-0 max-w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
                                 />
                             </label>
-                            <label className="block">
+                            <label className="block w-full min-w-0">
                                 <span className="mb-2 block text-xs font-medium text-slate-600">
                                     Jam Selesai
                                 </span>
@@ -419,7 +419,7 @@ export default function OvertimeRequestModal({
                                     type="time"
                                     value={endTime}
                                     onChange={(e) => setEndTime(e.target.value)}
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
+                                    className="h-10 w-full min-w-0 max-w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
                                 />
                             </label>
                             <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
@@ -582,7 +582,7 @@ export default function OvertimeRequestModal({
                         </div>
                     </div>
 
-                    <label className="block">
+                    <label className="block w-full min-w-0">
                         <span className="mb-2 block text-xs font-medium text-slate-600">
                             Catatan Lembur
                         </span>
@@ -590,7 +590,7 @@ export default function OvertimeRequestModal({
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                             rows={3}
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
+                            className="w-full min-w-0 max-w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
                             placeholder="Opsional"
                         />
                     </label>
