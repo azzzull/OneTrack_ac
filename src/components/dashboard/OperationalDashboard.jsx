@@ -2,10 +2,12 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
     BarChart3,
+    Banknote,
+    Building2,
     ChartPie,
     ChevronRight,
     CircleCheckBig,
-    ClipboardList,
+    ReceiptText,
     WalletCards,
 } from "lucide-react";
 import { buildStatusSegments } from "../../utils/dashboardStatus";
@@ -170,6 +172,102 @@ function QuickActions({ actions }) {
                         </p>
                     </Link>
                 ))}
+            </div>
+        </section>
+    );
+}
+
+const paymentToneClasses = {
+    blue: {
+        border: "border-sky-500",
+        icon: "bg-sky-50 text-sky-500",
+        amount: "text-sky-500",
+    },
+    teal: {
+        border: "border-teal-500",
+        icon: "bg-teal-50 text-teal-600",
+        amount: "text-teal-700",
+    },
+    violet: {
+        border: "border-violet-500",
+        icon: "bg-violet-50 text-violet-600",
+        amount: "text-violet-700",
+    },
+};
+
+function PaymentRequestSection({ items = [] }) {
+    const icons = {
+        accommodation: Building2,
+        loan: Banknote,
+        reimbursement: ReceiptText,
+    };
+
+    return (
+        <section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
+            <div className="bg-gradient-to-r from-sky-50 via-white to-blue-50 p-5 md:p-6">
+                <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
+                    Payment Request
+                </h2>
+            </div>
+
+            <div className="grid auto-cols-[minmax(230px,78vw)] grid-flow-col gap-3 overflow-x-auto p-4 md:grid-flow-row md:grid-cols-3 md:gap-4 md:overflow-visible md:p-5">
+                {items.map((item) => {
+                    const Icon = icons[item.key] ?? WalletCards;
+                    const tone = paymentToneClasses.blue;
+                    return (
+                        <Link
+                            key={item.key}
+                            to={item.to}
+                            className={`group rounded-2xl border border-sky-50 border-b-4 ${tone.border} p-4 text-slate-700 no-underline transition hover:-translate-y-0.5 hover:shadow-md md:p-5`}
+                            style={{ textDecoration: "none" }}
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <span
+                                        className={`rounded-xl p-2.5 md:p-3 ${tone.icon}`}
+                                    >
+                                        <Icon size={21} />
+                                    </span>
+                                    <div>
+                                        <h3 className="font-semibold text-slate-900">
+                                            {item.label}
+                                        </h3>
+                                        <p className="text-xs text-slate-400">
+                                            Menunggu persetujuan
+                                        </p>
+                                    </div>
+                                </div>
+                                <ChevronRight
+                                    size={18}
+                                    className="text-slate-300 transition group-hover:translate-x-1"
+                                />
+                            </div>
+                            <div className="mt-4 border-t border-slate-100 pt-3 md:mt-5 md:pt-4">
+                                <p className="text-xs text-slate-500">
+                                    Pending Amount
+                                </p>
+                                <p
+                                    className={`mt-1 text-lg font-semibold md:text-xl ${tone.amount}`}
+                                >
+                                    {item.amountLabel}
+                                </p>
+                                <div className="mt-3 flex items-end justify-between md:mt-4">
+                                    <div>
+                                        <p className="text-xs text-slate-500">
+                                            Jumlah Pengajuan
+                                        </p>
+                                        <p className="mt-1 text-2xl font-semibold text-slate-900 md:text-3xl">
+                                            {item.count}
+                                        </p>
+                                    </div>
+                                    <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                                        Pending
+                                    </span>
+                                </div>
+                            </div>
+                        </Link>
+                    );
+                })}
             </div>
         </section>
     );
@@ -390,71 +488,6 @@ function ActivityChartCard({ days, hoveredDayKey, onHoverDay }) {
     );
 }
 
-function AccommodationSummaryCard({ items }) {
-    if (!items?.length) return null;
-
-    return (
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-            <SectionTitle
-                icon={WalletCards}
-                title="Ringkasan Akomodasi"
-                description="Status pengajuan akomodasi yang relevan."
-            />
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {items.map((item) => (
-                    <div
-                        key={item.label}
-                        className="rounded-xl border border-slate-200 p-4"
-                    >
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                            {item.label}
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-slate-900">
-                            {item.value}
-                        </p>
-                    </div>
-                ))}
-            </div>
-        </section>
-    );
-}
-
-function RecentActivityCard({ items }) {
-    return (
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-            <SectionTitle
-                icon={ClipboardList}
-                title="Recent Activity"
-                description="Aktivitas terbaru dari pekerjaan dan akomodasi."
-            />
-            {items.length ? (
-                <div className="space-y-3">
-                    {items.slice(0, 10).map((item) => (
-                        <div
-                            key={`${item.type}-${item.id}-${item.time}`}
-                            className="flex items-start gap-3 rounded-xl border border-slate-100 p-3"
-                        >
-                            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500" />
-                            <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-slate-700">
-                                    {item.text}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-400">
-                                    {item.timeLabel}
-                                </p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <div className="rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">
-                    Belum ada aktivitas terbaru.
-                </div>
-            )}
-        </section>
-    );
-}
-
 export default function OperationalDashboard({
     user,
     profile,
@@ -462,12 +495,11 @@ export default function OperationalDashboard({
     attendance,
     kpis,
     quickActions,
+    paymentRequests,
     completedCount,
     totalCount,
     statusSegments,
     activityDays,
-    accommodationItems,
-    recentActivities,
     hoveredStatus,
     onHoverStatus,
     hoveredDayKey,
@@ -494,6 +526,9 @@ export default function OperationalDashboard({
                 </section>
             ) : null}
 
+            {paymentRequests?.length ? (
+                <PaymentRequestSection items={paymentRequests} />
+            ) : null}
             <KPISummary items={kpis} />
             <QuickActions actions={quickActions} />
             <CompletionSummaryCard
@@ -514,9 +549,6 @@ export default function OperationalDashboard({
                     onHoverDay={onHoverDay}
                 />
             </div>
-
-            <AccommodationSummaryCard items={accommodationItems} />
-            <RecentActivityCard items={recentActivities} />
         </div>
     );
 }

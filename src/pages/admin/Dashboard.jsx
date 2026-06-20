@@ -8,10 +8,12 @@ import {
     Users,
     Wallet,
     Wrench,
+    X,
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import AttendanceDashboardSimple from "../../components/AttendanceDashboardSimple";
 import OperationalDashboard from "../../components/dashboard/OperationalDashboard";
+import AppToast from "../../components/ui/AppToast";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
@@ -89,6 +91,13 @@ export default function AdminDashboard() {
     const { user, profile, role, loading: authLoading } = useAuth();
     const [requests, setRequests] = useState([]);
     const [accommodations, setAccommodations] = useState([]);
+    const [paymentRequests, setPaymentRequests] = useState({
+        accommodation: [],
+        reimbursement: [],
+        loan: [],
+    });
+    const [paymentSummaryLoaded, setPaymentSummaryLoaded] = useState(false);
+    const [paymentToast, setPaymentToast] = useState("");
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
     const channelRef = useRef(null);
@@ -130,6 +139,31 @@ export default function AdminDashboard() {
         }
     };
 
+    const loadPaymentRequests = async () => {
+        const queries = [
+            ["accommodation", supabase.from("accommodation_requests").select("id, requested_amount").eq("status", "pending")],
+            ["reimbursement", supabase.from("reimbursements").select("id, claim_amount").eq("status", "pending")],
+            ["loan", supabase.from("loans").select("id, loan_amount").eq("status", "pending")],
+        ];
+        const results = await Promise.allSettled(queries.map(([, query]) => query));
+        if (!isMountedRef.current) return;
+
+        setPaymentRequests((current) => {
+            const next = { ...current };
+            results.forEach((result, index) => {
+                const key = queries[index][0];
+                if (result.status === "fulfilled" && !result.value.error) {
+                    next[key] = result.value.data ?? [];
+                } else {
+                    const error = result.status === "rejected" ? result.reason : result.value.error;
+                    console.warn(`[AdminDashboard] ${key} payment summary skipped:`, error?.message ?? error);
+                }
+            });
+            return next;
+        });
+        setPaymentSummaryLoaded(true);
+    };
+
     useEffect(() => {
         isMountedRef.current = true;
         return () => {
@@ -143,6 +177,7 @@ export default function AdminDashboard() {
         const timerId = setTimeout(() => {
             loadRequests();
             loadAccommodations();
+            loadPaymentRequests();
         }, 0);
 
         const setupChannel = async () => {
@@ -183,8 +218,21 @@ export default function AdminDashboard() {
                         table: "accommodation_requests",
                     },
                     () => {
-                        if (isMountedRef.current) loadAccommodations();
+                        if (isMountedRef.current) {
+                            loadAccommodations();
+                            loadPaymentRequests();
+                        }
                     },
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "reimbursements" },
+                    () => isMountedRef.current && loadPaymentRequests(),
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "loans" },
+                    () => isMountedRef.current && loadPaymentRequests(),
                 );
 
             const { error } = await channelRef.current.subscribe();
@@ -257,6 +305,64 @@ export default function AdminDashboard() {
 
     const baseAccommodationPath =
         role === "management" ? "/management/accommodation" : "/admin/accommodation";
+    const formatRupiah = (value) =>
+        new Intl.NumberFormat("id-ID", {
+            style: "currency",
+            currency: "IDR",
+            maximumFractionDigits: 0,
+        }).format(value);
+    const paymentRequestItems = [
+        {
+            key: "accommodation",
+            label: "Akomodasi",
+            tone: "blue",
+            to: `${baseAccommodationPath}?status=pending&period=all`,
+            count: paymentRequests.accommodation.length,
+            amountLabel: formatRupiah(paymentRequests.accommodation.reduce((sum, row) => sum + Number(row.requested_amount ?? 0), 0)),
+        },
+        {
+            key: "reimbursement",
+            label: "Reimbursement",
+            tone: "blue",
+            to: "/reimburse?status=pending&period=all",
+            count: paymentRequests.reimbursement.length,
+            amountLabel: formatRupiah(paymentRequests.reimbursement.reduce((sum, row) => sum + Number(row.claim_amount ?? 0), 0)),
+        },
+        {
+            key: "loan",
+            label: "Pinjaman",
+            tone: "blue",
+            to: "/loans?status=pending&period=all",
+            count: paymentRequests.loan.length,
+            amountLabel: formatRupiah(paymentRequests.loan.reduce((sum, row) => sum + Number(row.loan_amount ?? 0), 0)),
+        },
+    ];
+    const pendingPaymentCount = paymentRequestItems.reduce(
+        (sum, item) => sum + item.count,
+        0,
+    );
+
+    useEffect(() => {
+        if (!paymentSummaryLoaded || !pendingPaymentCount || !user?.id) return;
+
+        const toastKey = `payment-pending-toast:${user.id}`;
+        try {
+            if (sessionStorage.getItem(toastKey)) return;
+            sessionStorage.setItem(toastKey, "shown");
+        } catch {
+            // Tetap tampilkan toast jika sessionStorage tidak tersedia.
+        }
+
+        setPaymentToast(
+            `Ada ${pendingPaymentCount} transaksi pembayaran yang menunggu persetujuan. Silakan ditinjau agar tidak tertunda.`,
+        );
+    }, [paymentSummaryLoaded, pendingPaymentCount, user?.id]);
+
+    useEffect(() => {
+        if (!paymentToast) return undefined;
+        const timerId = window.setTimeout(() => setPaymentToast(""), 7000);
+        return () => window.clearTimeout(timerId);
+    }, [paymentToast]);
     const quickActions = [
         { label: "Buat Pekerjaan", to: "/jobs/new", icon: Plus },
         { label: "Tambah Customer", to: "/master-data", icon: Users },
@@ -332,6 +438,7 @@ export default function AdminDashboard() {
                         }
                         kpis={kpis}
                         quickActions={quickActions}
+                        paymentRequests={paymentRequestItems}
                         completedCount={statusCounts.completed}
                         totalCount={totalRequests}
                         statusSegments={buildStatusSegments(statusCounts)}
@@ -358,6 +465,20 @@ export default function AdminDashboard() {
             </div>
 
             <MobileBottomNav />
+            {paymentToast ? (
+                <AppToast tone="amber" className="flex items-start gap-3">
+                    <Wallet size={19} className="mt-0.5 shrink-0" />
+                    <p className="min-w-0 flex-1">{paymentToast}</p>
+                    <button
+                        type="button"
+                        onClick={() => setPaymentToast("")}
+                        className="rounded-md p-0.5 text-amber-600 hover:bg-amber-100"
+                        aria-label="Tutup notifikasi"
+                    >
+                        <X size={17} />
+                    </button>
+                </AppToast>
+            ) : null}
         </div>
     );
 }

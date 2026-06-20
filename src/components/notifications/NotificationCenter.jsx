@@ -114,6 +114,15 @@ export default function NotificationCenter({ compact = false, align = "left" }) 
         const viewportWidth = window.innerWidth;
         const width = Math.min(352, viewportWidth - 24);
 
+        if (viewportWidth < 768) {
+            setFloatingPosition({
+                left: (viewportWidth - width) / 2,
+                top: 80,
+                width,
+            });
+            return;
+        }
+
         if (!containerRef.current) {
             setFloatingPosition({
                 left: 12,
@@ -123,7 +132,17 @@ export default function NotificationCenter({ compact = false, align = "left" }) 
             return;
         }
 
-        const rect = containerRef.current.getBoundingClientRect();
+        const ownRect = containerRef.current.getBoundingClientRect();
+        const visibleAnchor =
+            ownRect.width > 0 && ownRect.height > 0
+                ? containerRef.current
+                : [...document.querySelectorAll("[data-notification-anchor]")].find(
+                      (element) => {
+                          const candidate = element.getBoundingClientRect();
+                          return candidate.width > 0 && candidate.height > 0;
+                      },
+                  );
+        const rect = visibleAnchor?.getBoundingClientRect() ?? ownRect;
         const preferredLeft =
             align === "left" ? rect.left : rect.right - width;
         const left = Math.min(
@@ -133,7 +152,7 @@ export default function NotificationCenter({ compact = false, align = "left" }) 
 
         setFloatingPosition({
             left,
-            top: rect.bottom + 8,
+            top: rect.bottom,
             width,
         });
     }, [align]);
@@ -322,10 +341,7 @@ export default function NotificationCenter({ compact = false, align = "left" }) 
                       {toastNotification && !open && (
                           <div
                               ref={floatingRef}
-                              style={{
-                                  ...floatingPosition,
-                                  width: Math.min(floatingPosition.width, 320),
-                              }}
+                              style={floatingPosition}
                               className="fixed z-[2147483647] rounded-2xl border border-sky-200 bg-white p-4 text-left shadow-2xl"
                           >
                               <div className="flex items-start gap-3">
@@ -373,6 +389,7 @@ export default function NotificationCenter({ compact = false, align = "left" }) 
     return (
         <div ref={containerRef} className="relative">
             <button
+                data-notification-anchor
                 type="button"
                 onClick={() => setOpen((prev) => !prev)}
                 className={`relative inline-flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-800 ${

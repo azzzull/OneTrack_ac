@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { LogInIcon, LogOutIcon, Loader } from "lucide-react";
 import { useAttendance } from "../hooks/useAttendance";
+import { observeToastPosition } from "../utils/toastPosition";
 
 /**
  * Smart attendance button - changes based on daily status
@@ -168,8 +169,10 @@ function getOrCreateToastContainer() {
     if (!container) {
         container = document.createElement("div");
         container.id = "toast-container";
-        container.className = "fixed top-4 right-4 z-50 pointer-events-auto";
+        container.className =
+            "fixed z-[2147483647] pointer-events-auto space-y-2";
         document.body.appendChild(container);
+        observeToastPosition(container);
     }
 
     return container;

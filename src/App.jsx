@@ -6,6 +6,7 @@ import { useAuth } from "@/context/useAuth";
 import AuthLoadingScreen from "@/components/AuthLoadingScreen";
 import OfflineSyncStatus from "@/components/offline/OfflineSyncStatus";
 import useAndroidBackButton from "@/hooks/useAndroidBackButton";
+import useResumeToDashboard from "@/hooks/useResumeToDashboard";
 
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminMasterDataPage from "@/pages/admin/MasterData";
@@ -44,6 +45,11 @@ function App() {
     const { loading, user, isOffline, role } = useAuth();
 
     useAndroidBackButton(role);
+    useResumeToDashboard({
+        userId: user?.id,
+        role,
+        loading,
+    });
 
     useEffect(() => {
         if (loading || !user?.id || isOffline) return;

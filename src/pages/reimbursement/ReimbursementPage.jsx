@@ -20,7 +20,7 @@ import ImagePreviewModal from "../../components/ImagePreviewModal";
 import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import supabase from "../../supabaseClient";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import {
@@ -334,6 +334,7 @@ export default function ReimbursementPage() {
     const { collapsed, toggle } = useSidebarCollapsed();
     const { user, role } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [rows, setRows] = useState([]);
     const [requesters, setRequesters] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -357,11 +358,11 @@ export default function ReimbursementPage() {
         transferFile: null,
     });
     const [filters, setFilters] = useState({
-        period: "month",
+        period: searchParams.get("period") === "all" ? "all" : "month",
         dateFrom: "",
         dateTo: "",
         requesterId: "",
-        status: "all",
+        status: searchParams.get("status") === "pending" ? "pending" : "all",
         search: "",
     });
     const channelRef = useRef(null);
@@ -656,6 +657,7 @@ export default function ReimbursementPage() {
                                 value={filters.period}
                                 onChange={(value) => setFilters((prev) => ({ ...prev, period: value }))}
                                 options={[
+                                    { value: "all", label: "Semua periode" },
                                     { value: "today", label: "Hari ini" },
                                     { value: "week", label: "Minggu ini" },
                                     { value: "month", label: "Bulan ini" },

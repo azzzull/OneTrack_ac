@@ -24,6 +24,7 @@ import useRequestStats from "../../hooks/useRequestStats";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import NotificationCenter from "../notifications/NotificationCenter";
 import WebPushActivation from "../notifications/WebPushActivation";
+import AppToast from "../ui/AppToast";
 import {
     clearOfflineQueueItems,
     getOfflineQueueStats,
@@ -752,14 +753,14 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 </nav>
             </aside>
             {newRequestToast && (
-                <div className="fixed right-4 top-4 z-80 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700 shadow-lg">
+                <AppToast tone="sky">
                     {newRequestToast}
-                </div>
+                </AppToast>
             )}
             {accommodationToast && (
-                <div className="fixed right-4 top-4 z-80 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-lg">
+                <AppToast tone="red">
                     {accommodationToast}
-                </div>
+                </AppToast>
             )}
         </>
     );

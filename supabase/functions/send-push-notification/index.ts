@@ -260,8 +260,6 @@ const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
     job_no_progress_reminder: ["admin", "management", "technician"],
     accommodation_unrealized_reminder: ["technician"],
     realization_unreviewed_reminder: ["admin", "management"],
-    attendance_reminder: ["technician"],
-    attendance_status_changed: ["technician", "admin", "management"],
     overtime_requested: ["admin", "management"],
     overtime_approved: ["technician"],
     overtime_rejected: ["technician"],
@@ -276,7 +274,6 @@ const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
     loan_repayment_approved: ["technician"],
     loan_repayment_rejected: ["technician"],
     loan_deducted: ["technician"],
-    attendance_status_changed: ["technician", "admin", "management"],
 };
 
 const canUseBusinessRecipients = (

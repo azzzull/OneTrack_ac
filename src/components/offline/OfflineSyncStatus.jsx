@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCcw, Trash2, WifiOff, X } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import useNetworkStatus from "../../hooks/useNetworkStatus";
+import AppToast from "../ui/AppToast";
 import { syncOfflineQueue } from "../../services/offlineSyncService";
 import {
     clearSyncedOfflineQueueItems,
@@ -108,18 +109,18 @@ export default function OfflineSyncStatus() {
     return (
         <>
             {isOffline && (
-                <div className="fixed left-1/2 top-3 z-[100] -translate-x-1/2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 shadow-lg">
+                <AppToast tone="amber" className="rounded-full py-2">
                     <span className="flex items-center gap-2">
                         <WifiOff className="h-4 w-4" />
                         Mode Offline - Perubahan akan disimpan sebagai draft.
                     </span>
-                </div>
+                </AppToast>
             )}
 
             {toast && (
-                <div className="fixed right-4 top-16 z-[101] max-w-sm rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-800 shadow-lg">
+                <AppToast tone="sky">
                     {toast}
-                </div>
+                </AppToast>
             )}
 
             {items.length > 0 && (

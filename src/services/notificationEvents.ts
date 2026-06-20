@@ -23,7 +23,6 @@ export const NOTIFICATION_EVENT_TYPES = {
     LOAN_REPAYMENT_APPROVED: "loan_repayment_approved",
     LOAN_REPAYMENT_REJECTED: "loan_repayment_rejected",
     LOAN_DEDUCTED: "loan_deducted",
-    ATTENDANCE_STATUS_CHANGED: "attendance_status_changed",
 } as const;
 
 type NotificationEventType =
@@ -676,26 +675,6 @@ export const notifyEvent = async (
                     loan_id: loanId,
                     loan_repayment_id: loanRepaymentId,
                     rejection_note: payload.rejection_note ?? null,
-                },
-            });
-        }
-
-        if (type === NOTIFICATION_EVENT_TYPES.ATTENDANCE_STATUS_CHANGED) {
-            const attendanceActorName =
-                technicianName === "Teknisi" ? "Pengguna" : technicianName;
-            return invokePushNotification({
-                recipientRoles: ["admin", "management"],
-                recipientUserIds: uniqueStrings([String(payload.technician_id ?? "")]),
-                title: "Status Absensi Berubah",
-                body: `${attendanceActorName} memperbarui status absensi: ${formatStatusLabel(payload.status)}.`,
-                type,
-                referenceTable: "attendance",
-                referenceId: String(payload.attendance_id ?? "").trim() || null,
-                data: {
-                    technician_name: attendanceActorName,
-                    technician_id: payload.technician_id ?? null,
-                    attendance_id: payload.attendance_id ?? null,
-                    status: payload.status ?? null,
                 },
             });
         }

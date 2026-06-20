@@ -24,7 +24,7 @@ import {
     X,
     XCircle,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import ImagePreviewModal from "../../components/ImagePreviewModal";
 import CustomSelect from "../../components/ui/CustomSelect";
@@ -57,6 +57,7 @@ const statusFilters = [
 ];
 
 const periodOptions = [
+    { key: "all", label: "Semua" },
     { key: "weekly", label: "Weekly" },
     { key: "monthly", label: "Monthly" },
     { key: "yearly", label: "Yearly" },
@@ -229,6 +230,7 @@ export default function AccommodationPage({ mode = "technician" }) {
     const { user, role, profile } = useAuth();
     const { alert: showAlert } = useDialog();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const [requests, setRequests] = useState([]);
@@ -236,8 +238,18 @@ export default function AccommodationPage({ mode = "technician" }) {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [filter, setFilter] = useState(null);
-    const [periodMode, setPeriodMode] = useState("weekly");
+    const initialStatus = searchParams.get("status");
+    const initialPeriod = searchParams.get("period");
+    const [filter, setFilter] = useState(
+        statusFilters.some((item) => item.key === initialStatus)
+            ? initialStatus
+            : null,
+    );
+    const [periodMode, setPeriodMode] = useState(
+        periodOptions.some((item) => item.key === initialPeriod)
+            ? initialPeriod
+            : "weekly",
+    );
     const [weekStart, setWeekStart] = useState(getWeekStartKey());
     const [weekEnd, setWeekEnd] = useState(getWeekEndKey());
     const [monthFilter, setMonthFilter] = useState(getMonthKey());
@@ -366,6 +378,7 @@ export default function AccommodationPage({ mode = "technician" }) {
     );
 
     const periodLabel = useMemo(() => {
+        if (periodMode === "all") return "Semua periode";
         if (periodMode === "weekly") {
             return `${formatDate(weekStart)} - ${formatDate(weekEnd)}`;
         }

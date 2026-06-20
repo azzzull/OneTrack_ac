@@ -16,8 +16,7 @@ type ReminderType =
     | "job_unclaimed_reminder"
     | "job_no_progress_reminder"
     | "accommodation_unrealized_reminder"
-    | "realization_unreviewed_reminder"
-    | "attendance_reminder";
+    | "realization_unreviewed_reminder";
 
 type Candidate = {
     type: ReminderType;
@@ -56,32 +55,6 @@ const unique = (values: Array<string | null | undefined>) =>
     [...new Set(values.map((value) => String(value ?? "").trim()))].filter(
         Boolean,
     );
-
-const toJakartaDate = (date = new Date()) =>
-    new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Jakarta",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-    }).format(date);
-
-const getJakartaTime = (date = new Date()) => {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Asia/Jakarta",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-    }).formatToParts(date);
-    return {
-        hour: Number(parts.find((part) => part.type === "hour")?.value ?? 0),
-        minute: Number(parts.find((part) => part.type === "minute")?.value ?? 0),
-    };
-};
-
-const isAttendanceWindow = () => {
-    const { hour, minute } = getJakartaTime();
-    return hour === 7 && minute >= 30 && minute <= 59;
-};
 
 const formatRupiah = (value: unknown) =>
     new Intl.NumberFormat("id-ID", {
@@ -130,8 +103,6 @@ Deno.serve(async (req) => {
 
     const input = await req.json().catch(() => ({}));
     const dryRun = Boolean(input?.dryRun);
-    const includeAttendance =
-        input?.includeAttendance === true || isAttendanceWindow();
     const errors: unknown[] = [];
     const admin = createClient(supabaseUrl, serviceRoleKey, {
         auth: { persistSession: false, autoRefreshToken: false },
@@ -314,58 +285,6 @@ Deno.serve(async (req) => {
             type: "realization_unreviewed_reminder",
             message: String(error),
         });
-    }
-
-    if (includeAttendance) {
-        try {
-            const today = toJakartaDate();
-            const { data: technicians, error } = await admin
-                .from("profiles")
-                .select("id, first_name, last_name, email, role")
-                .eq("role", "technician")
-                .eq("is_active", true)
-                .limit(500);
-            if (error) throw error;
-
-            const technicianIds = unique((technicians ?? []).map((row) => row.id));
-            const { data: attendance, error: attendanceError } =
-                technicianIds.length
-                    ? await admin
-                          .from("attendance")
-                          .select("technician_id")
-                          .eq("attendance_date", today)
-                          .in("technician_id", technicianIds)
-                    : { data: [], error: null };
-            if (attendanceError) throw attendanceError;
-
-            const checkedInIds = new Set(
-                (attendance ?? []).map((row) => String(row.technician_id)),
-            );
-
-            addCandidates(
-                (technicians ?? [])
-                    .filter((profile) => !checkedInIds.has(String(profile.id)))
-                    .map((profile) => {
-                        const technicianName = getProfileName(profile);
-                        return {
-                            type: "attendance_reminder",
-                            referenceTable: "attendance",
-                            referenceId: null,
-                            trackingReferenceId: `${profile.id}:${today}`,
-                            recipientUserIds: [profile.id],
-                            title: "Reminder Absen",
-                            body: `Halo ${technicianName}, jangan lupa melakukan absen masuk hari ini sebelum pukul 08:00.`,
-                            data: {
-                                technician_id: profile.id,
-                                technician_name: technicianName,
-                                attendance_date: today,
-                            },
-                        };
-                    }),
-            );
-        } catch (error) {
-            errors.push({ type: "attendance_reminder", message: String(error) });
-        }
     }
 
     const uniqueCandidates = [
