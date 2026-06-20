@@ -1,4 +1,4 @@
-import { createContext, useCallback, useMemo, useState } from "react";
+import { createContext, useCallback, useEffect, useMemo, useState } from "react";
 
 const DialogContext = createContext(null);
 
@@ -44,6 +44,25 @@ export function DialogProvider({ children }) {
         }),
         [openDialog],
     );
+
+    useEffect(() => {
+        const handleAndroidBack = (event) => {
+            setDialog((current) => {
+                if (!current) return current;
+                event.preventDefault();
+                current.resolve?.(false);
+                return null;
+            });
+        };
+
+        window.addEventListener("onetrack:android-back", handleAndroidBack);
+        return () => {
+            window.removeEventListener(
+                "onetrack:android-back",
+                handleAndroidBack,
+            );
+        };
+    }, []);
 
     return (
         <DialogContext.Provider value={value}>

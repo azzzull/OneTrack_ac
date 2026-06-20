@@ -16,10 +16,13 @@ function Login() {
 
     useEffect(() => {
         if (user && role) {
-            if (role === "management") navigate("/admin");
-            else if (role === "admin") navigate("/admin");
-            else if (role === "technician") navigate("/technician");
-            else if (role === "customer") navigate("/customer");
+            if (role === "management") navigate("/admin", { replace: true });
+            else if (role === "admin") navigate("/admin", { replace: true });
+            else if (role === "technician") {
+                navigate("/technician", { replace: true });
+            } else if (role === "customer") {
+                navigate("/customer", { replace: true });
+            }
         }
     }, [user, role, navigate]);
 
