@@ -279,6 +279,7 @@ export default function AdminDashboard() {
             meta: totalRequests ? `${Math.round((statusCounts.pending / totalRequests) * 100)}% dari total` : "0%",
             icon: Clock3,
             tone: "amber",
+            to: "/requests?status=pending",
         },
         {
             label: "In Progress",
@@ -286,6 +287,7 @@ export default function AdminDashboard() {
             meta: totalRequests ? `${Math.round((statusCounts.in_progress / totalRequests) * 100)}% dari total` : "0%",
             icon: Wrench,
             tone: "sky",
+            to: "/requests?status=in_progress",
         },
         {
             label: "Completed",
@@ -293,6 +295,7 @@ export default function AdminDashboard() {
             meta: `${completionRate}% selesai`,
             icon: CircleCheckBig,
             tone: "emerald",
+            to: "/requests?status=completed",
         },
         {
             label: "Total Pekerjaan",
@@ -300,6 +303,7 @@ export default function AdminDashboard() {
             meta: `${activeAttention} aktif`,
             icon: BriefcaseBusiness,
             tone: "slate",
+            to: "/requests?status=all",
         },
     ];
 
@@ -437,6 +441,7 @@ export default function AdminDashboard() {
                             />
                         }
                         kpis={kpis}
+                        kpiTitle="Ringkasan Pekerjaan"
                         quickActions={quickActions}
                         paymentRequests={paymentRequestItems}
                         completedCount={statusCounts.completed}

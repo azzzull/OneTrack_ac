@@ -97,45 +97,79 @@ function SectionTitle({ icon: Icon, title, description }) {
     );
 }
 
-function KPISummary({ items }) {
+function KPISummary({ items, title = "Ringkasan Pekerjaan" }) {
     return (
-        <section>
-            <div className="-mx-4 overflow-x-auto px-4 pb-1 md:mx-0 md:overflow-visible md:px-0">
-                <div className="grid auto-cols-[minmax(190px,1fr)] grid-flow-col gap-3 md:grid-flow-row md:grid-cols-4 md:gap-4">
+        <section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
+            <div className="bg-linear-to-r from-sky-50 via-white to-blue-50 p-5 md:p-6">
+                <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
+                    {title}
+                </h2>
+            </div>
+            <div className="overflow-x-auto p-4 md:overflow-visible md:p-5">
+                <div className="grid auto-cols-[minmax(190px,72vw)] grid-flow-col gap-3 md:grid-flow-row md:grid-cols-4 md:gap-4">
                     {items.map(
-                        ({ label, value, meta, icon: Icon, tone = "sky" }) => (
-                            <article
-                                key={label}
-                                className="rounded-2xl bg-white p-4 shadow-sm md:p-5"
-                            >
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="text-sm font-medium text-slate-500">
-                                        {label}
+                        ({
+                            label,
+                            value,
+                            meta,
+                            icon: Icon,
+                            tone = "sky",
+                            to,
+                        }) => {
+                            const Component = to ? Link : "article";
+                            return (
+                                <Component
+                                    key={label}
+                                    to={to}
+                                    className={`rounded-2xl border border-slate-200 bg-white p-4 text-slate-700 no-underline transition md:p-5 ${
+                                        to
+                                            ? "group hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md"
+                                            : ""
+                                    }`}
+                                    style={
+                                        to
+                                            ? { textDecoration: "none" }
+                                            : undefined
+                                    }
+                                >
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-sm font-medium text-slate-500">
+                                            {label}
+                                        </p>
+                                        <span
+                                            className={`rounded-xl p-2 ${
+                                                tone === "amber"
+                                                    ? "bg-amber-100 text-amber-600"
+                                                    : tone === "emerald"
+                                                    ? "bg-emerald-100 text-emerald-600"
+                                                    : tone === "slate"
+                                                    ? "bg-slate-100 text-slate-500"
+                                                    : "bg-sky-100 text-sky-600"
+                                            }`}
+                                        >
+                                            {Icon ? <Icon size={18} /> : null}
+                                        </span>
+                                    </div>
+                                    <p className="mt-4 text-3xl font-semibold text-slate-900">
+                                        {value}
                                     </p>
-                                    <span
-                                        className={`rounded-xl p-2 ${
-                                            tone === "amber"
-                                                ? "bg-amber-100 text-amber-600"
-                                                : tone === "emerald"
-                                                ? "bg-emerald-100 text-emerald-600"
-                                                : tone === "slate"
-                                                ? "bg-slate-100 text-slate-500"
-                                                : "bg-sky-100 text-sky-600"
-                                        }`}
-                                    >
-                                        {Icon ? <Icon size={18} /> : null}
-                                    </span>
-                                </div>
-                                <p className="mt-4 text-3xl font-semibold text-slate-900">
-                                    {value}
-                                </p>
-                                {meta ? (
-                                    <p className="mt-1 text-xs font-medium text-slate-400">
-                                        {meta}
-                                    </p>
-                                ) : null}
-                            </article>
-                        ),
+                                    {meta ? (
+                                        <p className="mt-1 text-xs font-medium text-slate-400">
+                                            {meta}
+                                        </p>
+                                    ) : null}
+                                    {to ? (
+                                        <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-sky-600">
+                                            Lihat daftar
+                                            <ChevronRight
+                                                size={14}
+                                                className="transition group-hover:translate-x-1"
+                                            />
+                                        </div>
+                                    ) : null}
+                                </Component>
+                            );
+                        },
                     )}
                 </div>
             </div>
@@ -494,6 +528,7 @@ export default function OperationalDashboard({
     attentionCount,
     attendance,
     kpis,
+    kpiTitle,
     quickActions,
     paymentRequests,
     completedCount,
@@ -529,7 +564,7 @@ export default function OperationalDashboard({
             {paymentRequests?.length ? (
                 <PaymentRequestSection items={paymentRequests} />
             ) : null}
-            <KPISummary items={kpis} />
+            <KPISummary items={kpis} title={kpiTitle} />
             <QuickActions actions={quickActions} />
             <CompletionSummaryCard
                 completed={completedCount}
