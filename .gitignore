@@ -30,7 +30,6 @@ docs/**/*.md
 docs/**/*.sql
 
 supabase/migrations/*.sql
-!supabase/migrations/202606120001_create_reimbursement_module.sql
 
 # Ignore ad-hoc markdown files, keep README files
 *.md
