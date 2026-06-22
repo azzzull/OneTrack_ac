@@ -275,11 +275,15 @@ export default function AccommodationPage({ mode = "technician" }) {
         isTechnician && profile?.technician_type === "internal";
     const isAdmin = role === "admin";
     const showTechnicianColumn = mode !== "technician";
-    const canApprove = isManagement && mode === "management";
+    const canApprove =
+        (isManagement && mode === "management") ||
+        (isAdmin && mode === "admin");
     const canCreate =
         (mode === "technician" && isInternalTechnician) ||
         (mode === "admin" && isAdmin);
-    const canAddRealization = mode === "technician" && isInternalTechnician;
+    const canAddRealization =
+        (mode === "technician" && isInternalTechnician) ||
+        (mode === "admin" && isAdmin);
     const canViewAccommodationReport =
         ["admin", "management"].includes(role) &&
         ["admin", "management"].includes(mode);
@@ -1483,8 +1487,9 @@ function DetailDrawer({
 
                 {mode === "admin" && (
                     <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                        Admin dapat monitoring dan menghapus pengajuan. Approval
-                        tetap hanya untuk role management.
+                        Admin dapat monitoring, menambahkan realisasi, dan
+                        menghapus pengajuan, serta approve atau reject
+                        pengajuan.
                     </p>
                 )}
                 {imagePreview.open && (

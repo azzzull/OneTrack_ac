@@ -36,6 +36,7 @@ supabase/migrations/*.sql
 *.md
 !README.md
 !README.*.md
+!DOKUMENTASI_FITUR.md
 !**/README.md
 !**/README.*.md
 

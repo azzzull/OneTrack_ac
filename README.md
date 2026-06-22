@@ -1,114 +1,94 @@
 # OneTrack
 
-OneTrack adalah aplikasi operasional untuk pencatatan dan pengelolaan pekerjaan teknisi berbasis scope proyek. Aplikasi ini mendukung alur admin, customer, dan teknisi dalam satu sistem.
+OneTrack adalah aplikasi operasional berbasis React, Vite, Supabase, dan Capacitor untuk mengelola pekerjaan teknisi, absensi, payment request, notifikasi, dan laporan dalam satu sistem.
 
-## Fitur Utama
+## Role Pengguna
 
-- Master data customer, project, role, dan scope pekerjaan
-- Dynamic detail form per scope
-- Checklist pekerjaan per scope
-- Multi-technician collaboration dalam satu job
-- Upload foto before, progress, dan after
-- Scan barcode/serial number via kamera
-- Dashboard dan daftar job per role
-- Detail job dengan badge pembuat
-- Integrasi Supabase untuk data, auth, storage, dan realtime
+- `admin`: mengelola dashboard operasional, pekerjaan, job baru, accommodation, master data, absensi, lembur, reimburse, pinjaman, dan laporan.
+- `management`: memantau dashboard, pekerjaan, approval accommodation, master data, absensi, lembur, reimburse, pinjaman, dan laporan.
+- `technician`: melihat dan mengambil pekerjaan, membuat job, absensi, lembur, reimburse, pinjaman, dan accommodation untuk teknisi internal.
+- `customer`: membuat request pekerjaan, memantau progres service, mengunduh laporan pekerjaan, dan mengelola profil.
 
-## Alur Penggunaan
+## Fitur Utama Saat Ini
 
-### 1. Login
+- Login berbasis Supabase Auth dengan proteksi halaman sesuai role.
+- Dashboard operasional dengan KPI pekerjaan, distribusi status, aktivitas 7 hari terakhir, absensi hari ini, dan ringkasan payment request.
+- Manajemen pekerjaan: request customer, job baru, assignment teknisi, detail scope dinamis, checklist, foto before/progress/after, barcode/serial number, status pekerjaan, dan export Excel.
+- Master data: user, role, customer, project, scope pekerjaan, merk AC, tipe AC, dan kapasitas AC.
+- Dynamic scope fields dan checklist per scope pekerjaan.
+- Absensi teknisi dengan check-in/check-out, geolocation, riwayat teknisi, log admin, peta lokasi, edit jam absensi, dan export Excel.
+- Lembur dengan validasi absensi, pengajuan teknisi, approval/reject admin atau management, dan filter data.
+- Accommodation/cash advance untuk teknisi internal, approval management/admin sesuai mode, realisasi, laporan, dan export Excel.
+- Reimburse dengan upload bukti, approval/reject, laporan, dan export Excel.
+- Pinjaman dengan pengajuan, approval/reject, pembayaran cicilan, approval pembayaran, laporan, dan export Excel.
+- Notifikasi realtime, notification center, web push, dan badge pending pada menu.
+- Dukungan offline queue untuk update pekerjaan dan upload yang menunggu sinkronisasi.
+- PWA dan build Android melalui Capacitor.
 
-- Masuk menggunakan akun yang sudah terdaftar.
-- Sistem akan menampilkan menu sesuai role:
-  - Admin
-  - Teknisi
-  - Customer
-
-### 2. Kelola Master Data
-
-Admin bisa membuka menu **Master Data** untuk mengelola:
-
-- User
-- Customer
-- Project
-- Scope Pekerjaan
-- Brand, tipe, dan PK AC
-
-### 3. Atur Scope Pekerjaan
-
-Di menu **Scope Pekerjaan**, admin bisa:
-
-- menambah field detail per scope
-- mengubah field detail
-- menghapus field detail
-- mengatur urutan field
-- mengatur checklist pekerjaan
-
-Field detail akan tampil otomatis di form job sesuai scope project yang dipilih.
-
-### 4. Membuat Job Baru
-
-Saat membuat job:
-
-- pilih customer
-- pilih project
-- scope akan otomatis mengikuti project
-- isi detail pekerjaan yang muncul
-- tambahkan teknisi lain jika diperlukan
-- unggah foto pekerjaan bila ada
-- simpan job
-
-Serial number tersedia di semua scope, tetapi sifatnya opsional.
-
-### 5. Multi-Technician Collaboration
-
-Satu job bisa dikerjakan oleh lebih dari satu teknisi.
-
-- teknisi pembuat akan diberi badge **Pembuat**
-- teknisi lain yang ditambahkan akan melihat job yang sama
-- teknisi member juga bisa ikut memperbarui job sesuai aturan sistem
-
-### 6. Menyimpan Pekerjaan
-
-Setelah job dibuat:
-
-- job muncul di daftar sesuai role
-- detail job bisa dibuka dari halaman daftar job
-- foto dan progress bisa dilanjutkan dari detail job
-
-## Catatan Penggunaan
-
-- Jika field detail belum muncul, pastikan scope project sudah dipilih.
-- Jika teknisi lain belum terlihat, pastikan relasi teknisi pada job sudah tersimpan.
-- Jika perubahan schema atau policy Supabase belum terlihat, lakukan refresh browser setelah migration dijalankan.
+Dokumentasi penggunaan lengkap tersedia di [DOKUMENTASI_FITUR.md](./DOKUMENTASI_FITUR.md).
 
 ## Environment
 
-Gunakan file environment lokal untuk menyimpan secret.
-
-Contoh variabel yang biasa dipakai:
+Buat file environment lokal dan isi variabel berikut:
 
 ```env
 VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
+VITE_SUPABASE_KEY=
+VITE_WEB_PUSH_VAPID_PUBLIC_KEY=
 ```
 
-Jangan menyimpan secret service role, password database, atau token admin ke dalam file yang di-commit.
-
-## Struktur Teknologi
-
-- React
-- Vite
-- Supabase
-- Tailwind CSS
+Jangan menyimpan service role key, password database, token admin, atau secret production di file yang di-commit.
 
 ## Pengembangan Lokal
 
-1. Install dependency
-2. Jalankan aplikasi dengan `npm run dev`
-3. Buka browser ke alamat lokal yang ditampilkan Vite
+1. Install dependency:
 
-## Migrasi Database
+```bash
+npm install
+```
 
-Migration Supabase ada di folder `supabase/migrations/` pada workspace lokal. Jalankan migration yang diperlukan di environment Supabase sebelum memakai fitur baru.
+2. Jalankan dev server:
+
+```bash
+npm run dev
+```
+
+3. Build production:
+
+```bash
+npm run build
+```
+
+4. Cek lint:
+
+```bash
+npm run lint
+```
+
+## Supabase
+
+Migration database berada di folder `supabase/migrations/`. Edge Function yang dipakai aplikasi berada di `supabase/functions/`, termasuk:
+
+- `admin-create-user`
+- `admin-update-user-password`
+- `admin-delete-user`
+- `send-push-notification`
+- `send-accommodation-notification`
+- `run-scheduled-reminders`
+
+Deploy migration dan Edge Function yang relevan sebelum memakai fitur admin, notifikasi, payment request, atau laporan di environment baru.
+
+## Struktur Penting
+
+- `src/App.jsx`: routing dan proteksi role.
+- `src/components/layout/sidebar.jsx`: menu per role, badge pending, notification center, dan logout.
+- `src/pages/admin/`: dashboard, pekerjaan, job baru, master data, dan absensi.
+- `src/pages/customer/`: dashboard customer, request, dan service history.
+- `src/pages/technician/`: dashboard teknisi dan riwayat absensi.
+- `src/pages/accommodation/`: pengajuan accommodation dan laporan.
+- `src/pages/overtime/`: pengajuan dan approval lembur.
+- `src/pages/reimbursement/`: reimburse dan laporan.
+- `src/pages/loan/`: pinjaman dan laporan.
+- `src/services/`: akses data Supabase dan event notifikasi.
+- `src/utils/`: helper export Excel, offline queue, geolocation, barcode, dan format data.
 
