@@ -170,6 +170,24 @@ const StatusBadge = ({ status }) => (
     </span>
 );
 
+const getSettlementLabel = (request) => {
+    if (!request?.approved_amount) return "-";
+    if (Number(request.companyOwesAmount ?? 0) > 0) return "Company Owes";
+    if (Number(request.technicianOwesAmount ?? 0) > 0) return "Unused Advance";
+    return "Balanced";
+};
+
+const getSettlementValue = (request) => {
+    if (!request?.approved_amount) return "-";
+    if (Number(request.companyOwesAmount ?? 0) > 0) {
+        return formatCurrency(request.companyOwesAmount);
+    }
+    if (Number(request.technicianOwesAmount ?? 0) > 0) {
+        return formatCurrency(request.technicianOwesAmount);
+    }
+    return formatCurrency(0);
+};
+
 const SummaryCard = ({
     title,
     value,
@@ -446,6 +464,10 @@ export default function AccommodationPage({ mode = "technician" }) {
             realized: count("realized"),
             outstanding: periodRequests.reduce(
                 (sum, item) => sum + Number(item.remainingAmount ?? 0),
+                0,
+            ),
+            companyOwes: periodRequests.reduce(
+                (sum, item) => sum + Number(item.companyOwesAmount ?? 0),
                 0,
             ),
             pendingAmount: periodRequests
@@ -808,7 +830,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                 ))}
                                 <div className="min-w-64">
                                     <SummaryCard
-                                        title="Outstanding"
+                                        title="Unused Advance"
                                         value={formatCurrency(
                                             dashboardStats.outstanding,
                                         )}
@@ -819,6 +841,17 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         onClick={() =>
                                             handleCardFilter("outstanding")
                                         }
+                                    />
+                                </div>
+                                <div className="min-w-64">
+                                    <SummaryCard
+                                        title="Company Owes"
+                                        value={formatCurrency(
+                                            dashboardStats.companyOwes,
+                                        )}
+                                        icon={Banknote}
+                                        compact
+                                        wide
                                     />
                                 </div>
                             </div>
@@ -852,7 +885,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                 ))}
                                 <div className="min-w-72 flex-1">
                                     <SummaryCard
-                                        title="Outstanding"
+                                        title="Unused Advance"
                                         value={formatCurrency(
                                             dashboardStats.outstanding,
                                         )}
@@ -862,6 +895,16 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         onClick={() =>
                                             handleCardFilter("outstanding")
                                         }
+                                    />
+                                </div>
+                                <div className="min-w-72 flex-1">
+                                    <SummaryCard
+                                        title="Company Owes"
+                                        value={formatCurrency(
+                                            dashboardStats.companyOwes,
+                                        )}
+                                        icon={Banknote}
+                                        wide
                                     />
                                 </div>
                                 <div className="min-w-72 flex-1">
@@ -981,14 +1024,14 @@ export default function AccommodationPage({ mode = "technician" }) {
                                                 </div>
                                                 <div className="rounded-xl bg-amber-50 px-3 py-2">
                                                     <p className="text-xs font-medium text-amber-700">
-                                                        Remaining
+                                                        {getSettlementLabel(
+                                                            item,
+                                                        )}
                                                     </p>
                                                     <p className="mt-1 wrap-break-word font-semibold text-amber-900">
-                                                        {item.approved_amount
-                                                            ? formatCurrency(
-                                                                  item.remainingAmount,
-                                                              )
-                                                            : "-"}
+                                                        {getSettlementValue(
+                                                            item,
+                                                        )}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1359,12 +1402,8 @@ function DetailDrawer({
                         }
                     />
                     <InfoCard
-                        label="Remaining"
-                        value={
-                            request.approved_amount
-                                ? formatCurrency(request.remainingAmount)
-                                : "-"
-                        }
+                        label={getSettlementLabel(request)}
+                        value={getSettlementValue(request)}
                     />
                 </section>
 

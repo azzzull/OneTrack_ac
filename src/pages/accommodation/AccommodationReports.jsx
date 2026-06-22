@@ -33,6 +33,24 @@ import {
     parseExcelDate,
 } from "../../utils/excelExport";
 
+const getSettlementLabel = (request) => {
+    if (!request?.approved_amount) return "-";
+    if (Number(request.companyOwesAmount ?? 0) > 0) return "Company Owes";
+    if (Number(request.technicianOwesAmount ?? 0) > 0) return "Unused Advance";
+    return "Balanced";
+};
+
+const getSettlementValue = (request) => {
+    if (!request?.approved_amount) return "-";
+    if (Number(request.companyOwesAmount ?? 0) > 0) {
+        return formatCurrency(request.companyOwesAmount);
+    }
+    if (Number(request.technicianOwesAmount ?? 0) > 0) {
+        return formatCurrency(request.technicianOwesAmount);
+    }
+    return formatCurrency(0);
+};
+
 const formatDate = (value) => {
     if (!value) return "-";
     const date = new Date(value);
@@ -263,6 +281,10 @@ export default function AccommodationReports() {
                 (sum, item) => sum + Number(item.remainingAmount ?? 0),
                 0,
             ),
+            companyOwes: filteredRequests.reduce(
+                (sum, item) => sum + Number(item.companyOwesAmount ?? 0),
+                0,
+            ),
             pending: filteredRequests
                 .filter((item) => item.status === "pending")
                 .reduce(
@@ -297,6 +319,7 @@ export default function AccommodationReports() {
                 realized: 0,
                 remaining: 0,
                 pending: 0,
+                companyOwes: 0,
             };
 
             current.requestCount += 1;
@@ -304,6 +327,7 @@ export default function AccommodationReports() {
             current.approved += Number(item.approved_amount ?? 0);
             current.realized += Number(item.totalRealized ?? 0);
             current.remaining += Number(item.remainingAmount ?? 0);
+            current.companyOwes += Number(item.companyOwesAmount ?? 0);
             if (item.status === "pending") {
                 current.pending += Number(item.requested_amount ?? 0);
             }
@@ -336,6 +360,8 @@ export default function AccommodationReports() {
             { key: "approvedAmount", header: "Nominal Disetujui" },
             { key: "realizedAmount", header: "Nominal Realisasi" },
             { key: "remainingAmount", header: "Sisa Dana" },
+            { key: "companyOwesAmount", header: "Perusahaan Bayar Teknisi" },
+            { key: "settlementLabel", header: "Settlement" },
             { key: "status", header: "Status" },
             { key: "daysSinceApproval", header: "Hari Sejak Approval" },
         ];
@@ -351,6 +377,8 @@ export default function AccommodationReports() {
             approvedAmount: Number(row.approved_amount ?? 0),
             realizedAmount: Number(row.totalRealized ?? 0),
             remainingAmount: Number(row.remainingAmount ?? 0),
+            companyOwesAmount: Number(row.companyOwesAmount ?? 0),
+            settlementLabel: getSettlementLabel(row),
             status: STATUS_LABELS[row.status] ?? row.status ?? "-",
             daysSinceApproval: daysSince(row.reviewed_at),
         }));
@@ -383,6 +411,7 @@ export default function AccommodationReports() {
                     ["Total Disetujui", summary.approved, "currency"],
                     ["Total Realisasi", summary.realized, "currency"],
                     ["Outstanding", summary.outstanding, "currency"],
+                    ["Perusahaan Bayar Teknisi", summary.companyOwes, "currency"],
                     ["Pending", summary.pending, "currency"],
                 ],
                 dateKeys: ["requestedAt", "reviewedAt"],
@@ -391,6 +420,7 @@ export default function AccommodationReports() {
                     "approvedAmount",
                     "realizedAmount",
                     "remainingAmount",
+                    "companyOwesAmount",
                 ],
                 wrapKeys: ["customer", "project", "requestTitle"],
             });
@@ -502,7 +532,7 @@ export default function AccommodationReports() {
                         </div>
                     </section>
 
-                    <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+                    <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
                         <SummaryCard
                             title="Total Requested"
                             value={formatCurrency(summary.requested)}
@@ -519,9 +549,14 @@ export default function AccommodationReports() {
                             icon={Receipt}
                         />
                         <SummaryCard
-                            title="Outstanding"
+                            title="Unused Advance"
                             value={formatCurrency(summary.outstanding)}
                             icon={Clock3}
+                        />
+                        <SummaryCard
+                            title="Company Owes"
+                            value={formatCurrency(summary.companyOwes)}
+                            icon={Banknote}
                         />
                         <SummaryCard
                             title="Pending Amount"
@@ -589,7 +624,12 @@ export default function AccommodationReports() {
                                         <th className="px-3 py-3">Requested</th>
                                         <th className="px-3 py-3">Approved</th>
                                         <th className="px-3 py-3">Realized</th>
-                                        <th className="px-3 py-3">Remaining</th>
+                                        <th className="px-3 py-3">
+                                            Unused Advance
+                                        </th>
+                                        <th className="px-3 py-3">
+                                            Company Owes
+                                        </th>
                                         <th className="px-3 py-3">Pending</th>
                                     </tr>
                                 </thead>
@@ -597,7 +637,7 @@ export default function AccommodationReports() {
                                     {loading ? (
                                         <tr>
                                             <td
-                                                colSpan={7}
+                                                colSpan={8}
                                                 className="px-3 py-8 text-center text-slate-500"
                                             >
                                                 Loading report...
@@ -637,6 +677,11 @@ export default function AccommodationReports() {
                                                         item.remaining,
                                                     )}
                                                 </td>
+                                                <td className="px-3 py-3 font-semibold text-slate-900">
+                                                    {formatCurrency(
+                                                        item.companyOwes,
+                                                    )}
+                                                </td>
                                                 <td className="px-3 py-3 text-slate-700">
                                                     {formatCurrency(
                                                         item.pending,
@@ -647,7 +692,7 @@ export default function AccommodationReports() {
                                     ) : (
                                         <tr>
                                             <td
-                                                colSpan={7}
+                                                colSpan={8}
                                                 className="px-3 py-8 text-center text-slate-500"
                                             >
                                                 Tidak ada data teknisi pada
@@ -683,7 +728,7 @@ export default function AccommodationReports() {
                                         <th className="px-3 py-3">Requested</th>
                                         <th className="px-3 py-3">Approved</th>
                                         <th className="px-3 py-3">Realized</th>
-                                        <th className="px-3 py-3">Remaining</th>
+                                        <th className="px-3 py-3">Settlement</th>
                                         <th className="px-3 py-3">Status</th>
                                         <th className="px-3 py-3">
                                             Days Since Approval
@@ -740,11 +785,12 @@ export default function AccommodationReports() {
                                                     )}
                                                 </td>
                                                 <td className="px-3 py-3 text-slate-700">
-                                                    {item.approved_amount
-                                                        ? formatCurrency(
-                                                              item.remainingAmount,
-                                                          )
-                                                        : "-"}
+                                                    {getSettlementLabel(item)}
+                                                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                                                        {getSettlementValue(
+                                                            item,
+                                                        )}
+                                                    </p>
                                                 </td>
                                                 <td className="px-3 py-3">
                                                     <span
@@ -859,12 +905,8 @@ function ReportDetailDrawer({ request, onClose, onPreview }) {
                         }
                     />
                     <DetailMetric
-                        label="Remaining"
-                        value={
-                            request.approved_amount
-                                ? formatCurrency(request.remainingAmount)
-                                : "-"
-                        }
+                        label={getSettlementLabel(request)}
+                        value={getSettlementValue(request)}
                     />
                 </section>
 

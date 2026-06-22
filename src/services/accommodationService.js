@@ -70,10 +70,24 @@ export const summarizeAccommodation = (request) => {
         (sum, item) => sum + Number(item.amount ?? 0),
         0,
     );
+    const settlementAmount = totalRealized - approvedAmount;
+    const companyOwesAmount = Math.max(settlementAmount, 0);
+    const technicianOwesAmount = Math.max(-settlementAmount, 0);
+    const hasAdvance = approvedAmount > 0;
 
     return {
         totalRealized,
         remainingAmount: Math.max(approvedAmount - totalRealized, 0),
+        settlementAmount: hasAdvance ? settlementAmount : 0,
+        companyOwesAmount: hasAdvance ? companyOwesAmount : 0,
+        technicianOwesAmount: hasAdvance ? technicianOwesAmount : 0,
+        settlementType: !hasAdvance
+            ? "not_approved"
+            : companyOwesAmount > 0
+              ? "company_owes_technician"
+              : technicianOwesAmount > 0
+                ? "technician_owes_company"
+                : "balanced",
     };
 };
 

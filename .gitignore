@@ -30,6 +30,7 @@ docs/**/*.md
 docs/**/*.sql
 
 supabase/migrations/*.sql
+!supabase/migrations/202606220002_allow_accommodation_over_realization.sql
 
 # Ignore ad-hoc markdown files, keep README files
 *.md
