@@ -27,15 +27,6 @@ OneTrack adalah aplikasi operasional berbasis React, Vite, Supabase, dan Capacit
 
 Dokumentasi penggunaan lengkap tersedia di [DOKUMENTASI_FITUR.md](./DOKUMENTASI_FITUR.md).
 
-## Environment
-
-Buat file environment lokal dan isi variabel berikut:
-
-```env
-VITE_SUPABASE_URL=
-VITE_SUPABASE_KEY=
-VITE_WEB_PUSH_VAPID_PUBLIC_KEY=
-```
 
 Jangan menyimpan service role key, password database, token admin, atau secret production di file yang di-commit.
 
