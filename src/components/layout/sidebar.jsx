@@ -16,6 +16,7 @@ import {
     Wallet,
     Receipt,
     HandCoins,
+    BriefcaseBusiness,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
@@ -44,6 +45,11 @@ const menuByRole = {
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
+        {
+            label: "Business Trip",
+            path: "/business-trip",
+            icon: BriefcaseBusiness,
+        },
     ],
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
@@ -55,6 +61,11 @@ const menuByRole = {
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
+        {
+            label: "Business Trip",
+            path: "/business-trip",
+            icon: BriefcaseBusiness,
+        },
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
@@ -68,6 +79,11 @@ const menuByRole = {
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
+        {
+            label: "Business Trip",
+            path: "/business-trip",
+            icon: BriefcaseBusiness,
+        },
     ],
     customer: [
         { label: "Dashboard", path: "/customer", icon: LayoutDashboard },

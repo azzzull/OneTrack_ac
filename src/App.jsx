@@ -21,6 +21,7 @@ import ReimbursementPage from "@/pages/reimbursement/ReimbursementPage";
 import ReimbursementReports from "@/pages/reimbursement/ReimbursementReports";
 import LoanPage from "@/pages/loan/LoanPage";
 import LoanReports from "@/pages/loan/LoanReports";
+import BusinessTripPage from "@/pages/business-trip/BusinessTripPage";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
 import TechnicianAttendanceHistoryPage from "@/pages/technician/AttendanceHistory";
 import CustomerDashboard from "@/pages/customer/Dashboard";
@@ -268,6 +269,16 @@ function App() {
                     element={
                         <ProtectedRoute allowedRoles={["admin", "management"]}>
                             <LoanReports />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/business-trip"
+                    element={
+                        <ProtectedRoute
+                            allowedRoles={["admin", "management", "technician"]}
+                        >
+                            <BusinessTripPage />
                         </ProtectedRoute>
                     }
                 />
