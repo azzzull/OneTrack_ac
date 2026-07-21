@@ -41,6 +41,16 @@ const formatNotificationTime = (value) => {
 
 const getNotificationTargetPath = (notification, role) => {
     const table = String(notification?.reference_table ?? "").toLowerCase();
+    const route = notification?.data?.route;
+
+    if (
+        table === "business_trips" ||
+        String(notification?.type ?? "").startsWith("business_trip_")
+    ) {
+        return typeof route === "string" && route.startsWith("/")
+            ? route
+            : "/business-trip";
+    }
 
     if (table === "requests" || table === "jobs") {
         if (role === "technician") return "/technician/requests";

@@ -21,7 +21,11 @@ import ReimbursementPage from "@/pages/reimbursement/ReimbursementPage";
 import ReimbursementReports from "@/pages/reimbursement/ReimbursementReports";
 import LoanPage from "@/pages/loan/LoanPage";
 import LoanReports from "@/pages/loan/LoanReports";
-import BusinessTripPage from "@/pages/business-trip/BusinessTripPage";
+import BusinessTripRoutes from "@/pages/business-trip/BusinessTripRoutes";
+import BusinessTripApprovalPage from "@/pages/business-trip/BusinessTripApprovalPage";
+import BusinessTripDisbursementPage from "@/pages/business-trip/BusinessTripDisbursementPage";
+import BusinessTripRealizationVerificationPage from "@/pages/business-trip/BusinessTripRealizationVerificationPage";
+import BusinessTripReportsPage from "@/pages/business-trip/BusinessTripReportsPage";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
 import TechnicianAttendanceHistoryPage from "@/pages/technician/AttendanceHistory";
 import CustomerDashboard from "@/pages/customer/Dashboard";
@@ -273,32 +277,44 @@ function App() {
                     }
                 />
                 <Route
-                    path="/business-trip"
+                    path="/business-trip/approval"
                     element={
-                        <ProtectedRoute
-                            allowedRoles={["admin", "management", "technician"]}
-                        >
-                            <BusinessTripPage type="request" />
+                        <ProtectedRoute allowedRoles={["admin", "management"]}>
+                            <BusinessTripApprovalPage />
                         </ProtectedRoute>
                     }
                 />
                 <Route
-                    path="/business-trip/agenda"
+                    path="/business-trip/disbursement"
                     element={
-                        <ProtectedRoute
-                            allowedRoles={["admin", "management", "technician"]}
-                        >
-                            <BusinessTripPage type="agenda" />
+                        <ProtectedRoute allowedRoles={["admin", "management"]}>
+                            <BusinessTripDisbursementPage />
                         </ProtectedRoute>
                     }
                 />
                 <Route
-                    path="/business-trip/review"
+                    path="/business-trip/realization-verification"
+                    element={
+                        <ProtectedRoute allowedRoles={["admin", "management"]}>
+                            <BusinessTripRealizationVerificationPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/business-trip/reports"
+                    element={
+                        <ProtectedRoute allowedRoles={["admin", "management"]}>
+                            <BusinessTripReportsPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/business-trip/*"
                     element={
                         <ProtectedRoute
                             allowedRoles={["admin", "management", "technician"]}
                         >
-                            <BusinessTripPage type="review" />
+                            <BusinessTripRoutes />
                         </ProtectedRoute>
                     }
                 />

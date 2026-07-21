@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     BarChart3,
     BriefcaseBusiness,
     CircleCheckBig,
     Clock3,
+    Plane,
     Plus,
     Users,
     Wallet,
@@ -19,6 +20,7 @@ import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import { buildStatusSegments } from "../../utils/dashboardStatus";
+import { getBusinessTripDashboardSummary } from "../../services/businessTripService";
 
 const normalizeStatusKey = (value) => {
     const raw = String(value ?? "")
@@ -97,6 +99,12 @@ export default function AdminDashboard() {
         loan: [],
     });
     const [paymentSummaryLoaded, setPaymentSummaryLoaded] = useState(false);
+    const [businessTripSummary, setBusinessTripSummary] = useState({
+        pendingApproval: 0,
+        pendingDisbursement: 0,
+        pendingVerification: 0,
+        pendingSettlement: 0,
+    });
     const [paymentToast, setPaymentToast] = useState("");
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
@@ -164,6 +172,22 @@ export default function AdminDashboard() {
         setPaymentSummaryLoaded(true);
     };
 
+    const loadBusinessTripSummary = useCallback(async () => {
+        if (!user?.id || !role) return;
+        try {
+            const summary = await getBusinessTripDashboardSummary({
+                role,
+                userId: user.id,
+            });
+            if (isMountedRef.current) setBusinessTripSummary(summary);
+        } catch (error) {
+            console.warn(
+                "[AdminDashboard] Business Trip summary skipped:",
+                error.message,
+            );
+        }
+    }, [role, user?.id]);
+
     useEffect(() => {
         isMountedRef.current = true;
         return () => {
@@ -178,6 +202,7 @@ export default function AdminDashboard() {
             loadRequests();
             loadAccommodations();
             loadPaymentRequests();
+            loadBusinessTripSummary();
         }, 0);
 
         const setupChannel = async () => {
@@ -233,6 +258,11 @@ export default function AdminDashboard() {
                     "postgres_changes",
                     { event: "*", schema: "public", table: "loans" },
                     () => isMountedRef.current && loadPaymentRequests(),
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "business_trips" },
+                    () => isMountedRef.current && loadBusinessTripSummary(),
                 );
 
             const { error } = await channelRef.current.subscribe();
@@ -248,7 +278,7 @@ export default function AdminDashboard() {
                 channelRef.current = null;
             }
         };
-    }, [user?.id]);
+    }, [loadBusinessTripSummary, user?.id]);
 
     const statusCounts = useMemo(() => {
         const counts = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
@@ -371,10 +401,47 @@ export default function AdminDashboard() {
         { label: "Buat Pekerjaan", to: "/jobs/new", icon: Plus },
         { label: "Tambah Customer", to: "/master-data", icon: Users },
         { label: "Pengajuan Akomodasi", to: baseAccommodationPath, icon: Wallet },
+        { label: "Ajukan Business Trip", to: "/business-trip", icon: Plane },
         {
             label: "Laporan",
             to: `${baseAccommodationPath}/reports`,
             icon: BarChart3,
+        },
+        {
+            label: "Laporan Business Trip",
+            to: "/business-trip/reports",
+            icon: Plane,
+        },
+    ];
+
+    const businessTripSummaryItems = [
+        {
+            label: "Menunggu Approval",
+            value: businessTripSummary.pendingApproval,
+            meta: "Perlu ditinjau",
+            icon: Clock3,
+            to: "/business-trip/approval",
+        },
+        {
+            label: "Menunggu Pencairan",
+            value: businessTripSummary.pendingDisbursement,
+            meta: "Uang muka",
+            icon: Wallet,
+            to: "/business-trip/disbursement",
+        },
+        {
+            label: "Verifikasi Realisasi",
+            value: businessTripSummary.pendingVerification,
+            meta: "Laporan masuk",
+            icon: CircleCheckBig,
+            to: "/business-trip/realization-verification",
+        },
+        {
+            label: "Menunggu Settlement",
+            value: businessTripSummary.pendingSettlement,
+            meta: "Refund/kekurangan",
+            icon: BriefcaseBusiness,
+            to: "/business-trip/realization-verification",
         },
     ];
 
@@ -444,6 +511,7 @@ export default function AdminDashboard() {
                         kpiTitle="Ringkasan Pekerjaan"
                         quickActions={quickActions}
                         paymentRequests={paymentRequestItems}
+                        businessTripSummaryItems={businessTripSummaryItems}
                         completedCount={statusCounts.completed}
                         totalCount={totalRequests}
                         statusSegments={buildStatusSegments(statusCounts)}

@@ -19,49 +19,6 @@ export const useOfflineUpload = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
 
-  // Track online/offline status
-  useEffect(() => {
-    const handleOnline = () => {
-      console.log('[useOfflineUpload] Online');
-      setIsOnline(true);
-      // Trigger sync when online
-      triggerSync();
-    };
-
-    const handleOffline = () => {
-      console.log('[useOfflineUpload] Offline');
-      setIsOnline(false);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  // Listen for Service Worker messages
-  useEffect(() => {
-    if (!('serviceWorker' in navigator)) {
-      return;
-    }
-
-    const handleSWMessage = (event) => {
-      if (event.data.type === 'SYNC_OFFLINE_UPLOADS') {
-        console.log('[useOfflineUpload] Sync message from SW');
-        triggerSync();
-      }
-    };
-
-    navigator.serviceWorker.addEventListener('message', handleSWMessage);
-
-    return () => {
-      navigator.serviceWorker.removeEventListener('message', handleSWMessage);
-    };
-  }, []);
-
   // Refresh queued photos list
   const refreshQueuedPhotos = useCallback(() => {
     const queued = getQueuedPhotos();
@@ -82,9 +39,9 @@ export const useOfflineUpload = () => {
    * @param {string} uploadPath - Full path for upload (e.g., "job-photos/userId/requests/123/after/1234567890.jpg")
    * @returns {Promise<string>} URL of uploaded photo
    */
-  const uploadPhotoToStorage = async (file, folderName, supabaseClient, uploadPath) => {
+  const uploadPhotoToStorage = useCallback(async (file, folderName, supabaseClient, uploadPath) => {
     try {
-      const { data, error } = await supabaseClient.storage
+      const { error } = await supabaseClient.storage
         .from('job-photos')
         .upload(uploadPath, file, {
           cacheControl: '3600',
@@ -103,7 +60,7 @@ export const useOfflineUpload = () => {
       console.error(`[useOfflineUpload] Upload failed for ${uploadPath}:`, error);
       throw error;
     }
-  };
+  }, []);
 
   /**
    * Retry upload with exponential backoff
@@ -113,7 +70,7 @@ export const useOfflineUpload = () => {
    * @param {Function} onUploadSuccess - Callback when upload succeeds
    * @returns {Promise<boolean>} Success flag
    */
-  const retryUploadWithBackoff = async (
+  const retryUploadWithBackoff = useCallback(async (
     queueId,
     queueItem,
     supabaseClient,
@@ -177,7 +134,7 @@ export const useOfflineUpload = () => {
     }
 
     return false;
-  };
+  }, [refreshQueuedPhotos, uploadPhotoToStorage]);
 
   /**
    * Sync all queued photos
@@ -220,8 +177,51 @@ export const useOfflineUpload = () => {
       setIsSyncing(false);
       refreshQueuedPhotos();
     },
-    [isSyncing, isOnline]
+    [isSyncing, isOnline, refreshQueuedPhotos, retryUploadWithBackoff]
   );
+
+  // Track online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('[useOfflineUpload] Online');
+      setIsOnline(true);
+      // Trigger sync when online
+      triggerSync();
+    };
+
+    const handleOffline = () => {
+      console.log('[useOfflineUpload] Offline');
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [triggerSync]);
+
+  // Listen for Service Worker messages
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) {
+      return;
+    }
+
+    const handleSWMessage = (event) => {
+      if (event.data.type === 'SYNC_OFFLINE_UPLOADS') {
+        console.log('[useOfflineUpload] Sync message from SW');
+        triggerSync();
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSWMessage);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+    };
+  }, [triggerSync]);
 
   /**
    * Queue a photo for offline upload
@@ -241,7 +241,7 @@ export const useOfflineUpload = () => {
         throw error;
       }
     },
-    []
+    [refreshQueuedPhotos]
   );
 
   /**
@@ -294,7 +294,7 @@ export const useOfflineUpload = () => {
         };
       }
     },
-    [isOnline, queuePhoto]
+    [isOnline, queuePhoto, uploadPhotoToStorage]
   );
 
   /**
@@ -320,7 +320,7 @@ export const useOfflineUpload = () => {
         onUploadSuccess
       );
     },
-    []
+    [retryUploadWithBackoff]
   );
 
   return {

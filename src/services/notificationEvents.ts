@@ -23,6 +23,16 @@ export const NOTIFICATION_EVENT_TYPES = {
     LOAN_REPAYMENT_APPROVED: "loan_repayment_approved",
     LOAN_REPAYMENT_REJECTED: "loan_repayment_rejected",
     LOAN_DEDUCTED: "loan_deducted",
+    BUSINESS_TRIP_SUBMITTED: "business_trip_submitted",
+    BUSINESS_TRIP_APPROVED: "business_trip_approved",
+    BUSINESS_TRIP_REJECTED: "business_trip_rejected",
+    BUSINESS_TRIP_ADVANCE_DISBURSED: "business_trip_advance_disbursed",
+    BUSINESS_TRIP_STARTED: "business_trip_started",
+    BUSINESS_TRIP_REALIZATION_SUBMITTED: "business_trip_realization_submitted",
+    BUSINESS_TRIP_REALIZATION_REVISION_REQUIRED:
+        "business_trip_realization_revision_required",
+    BUSINESS_TRIP_REALIZATION_VERIFIED: "business_trip_realization_verified",
+    BUSINESS_TRIP_SETTLEMENT_COMPLETED: "business_trip_settlement_completed",
 } as const;
 
 type NotificationEventType =
@@ -41,6 +51,9 @@ type NotifyEventPayload = Record<string, unknown> & {
     reimbursement_id?: string | null;
     loan_id?: string | null;
     loan_repayment_id?: string | null;
+    business_trip_id?: string | null;
+    business_trip_no?: string | null;
+    settlement_difference?: number | string | null;
     requester_id?: string | null;
     requester_name?: string | null;
     approved_amount?: number | string | null;
@@ -316,6 +329,10 @@ export const notifyEvent = async (
         const loanId = String(payload.loan_id ?? "").trim() || null;
         const loanRepaymentId =
             String(payload.loan_repayment_id ?? "").trim() || null;
+        const businessTripId =
+            String(payload.business_trip_id ?? "").trim() || null;
+        const businessTripNo =
+            String(payload.business_trip_no ?? "").trim() || "Business Trip";
 
         if (type === NOTIFICATION_EVENT_TYPES.JOB_REQUESTED) {
             return invokePushNotification({
@@ -675,6 +692,176 @@ export const notifyEvent = async (
                     loan_id: loanId,
                     loan_repayment_id: loanRepaymentId,
                     rejection_note: payload.rejection_note ?? null,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_SUBMITTED) {
+            return invokePushNotification({
+                recipientRoles: ["admin", "management"],
+                title: "Pengajuan Business Trip Baru",
+                body: `${requesterName} mengajukan Business Trip ${businessTripNo}.`,
+                type,
+                referenceTable: "business_trips",
+                referenceId: businessTripId,
+                data: {
+                    business_trip_id: businessTripId,
+                    business_trip_no: businessTripNo,
+                    requester_id: requesterId,
+                    requester_name: requesterName,
+                    route: "/business-trip/approval",
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_APPROVED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Business Trip Disetujui",
+                body: `Pengajuan ${businessTripNo} telah disetujui.`,
+                type,
+                referenceTable: "business_trips",
+                referenceId: businessTripId,
+                data: {
+                    business_trip_id: businessTripId,
+                    business_trip_no: businessTripNo,
+                    route: "/business-trip",
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_REJECTED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Business Trip Ditolak",
+                body: `Pengajuan ${businessTripNo} ditolak. Silakan periksa alasan penolakan.`,
+                type,
+                referenceTable: "business_trips",
+                referenceId: businessTripId,
+                data: {
+                    business_trip_id: businessTripId,
+                    business_trip_no: businessTripNo,
+                    route: "/business-trip",
+                    rejection_note: payload.rejection_note ?? null,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_ADVANCE_DISBURSED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Uang Muka Business Trip Dicairkan",
+                body: `Uang muka untuk ${businessTripNo} sebesar ${formatRupiah(amount)} telah dicairkan.`,
+                type,
+                referenceTable: "business_trips",
+                referenceId: businessTripId,
+                data: {
+                    amount,
+                    business_trip_id: businessTripId,
+                    business_trip_no: businessTripNo,
+                    route: "/business-trip",
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_STARTED) {
+            return invokePushNotification({
+                recipientRoles: ["admin", "management"],
+                title: "Business Trip Berlangsung",
+                body: `${businessTripNo} telah dimulai oleh ${requesterName}.`,
+                type,
+                referenceTable: "business_trips",
+                referenceId: businessTripId,
+                data: {
+                    business_trip_id: businessTripId,
+                    business_trip_no: businessTripNo,
+                    requester_id: requesterId,
+                    requester_name: requesterName,
+                    route: "/business-trip",
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_REALIZATION_SUBMITTED) {
+            return invokePushNotification({
+                recipientRoles: ["admin", "management"],
+                title: "Laporan Realisasi Menunggu Verifikasi",
+                body: `Laporan realisasi ${businessTripNo} telah dikirim oleh ${requesterName}.`,
+                type,
+                referenceTable: "business_trips",
+                referenceId: businessTripId,
+                data: {
+                    business_trip_id: businessTripId,
+                    business_trip_no: businessTripNo,
+                    requester_id: requesterId,
+                    requester_name: requesterName,
+                    route: "/business-trip/realization-verification",
+                },
+            });
+        }
+
+        if (
+            type ===
+            NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_REALIZATION_REVISION_REQUIRED
+        ) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Laporan Realisasi Perlu Revisi",
+                body: `Laporan ${businessTripNo} perlu diperbaiki. Silakan periksa catatan revisi.`,
+                type,
+                referenceTable: "business_trips",
+                referenceId: businessTripId,
+                data: {
+                    business_trip_id: businessTripId,
+                    business_trip_no: businessTripNo,
+                    route: businessTripId
+                        ? `/business-trip/realization/${businessTripId}`
+                        : "/business-trip",
+                    revision_note: payload.revision_note ?? null,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_REALIZATION_VERIFIED) {
+            const difference = Number(payload.settlement_difference ?? 0);
+            const settlementMessage =
+                difference > 0
+                    ? `Terdapat sisa uang muka ${formatRupiah(difference)} yang perlu dikembalikan.`
+                    : difference < 0
+                      ? `Terdapat kekurangan ${formatRupiah(Math.abs(difference))} yang akan dibayarkan perusahaan.`
+                      : "dan selesai.";
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Laporan Realisasi Terverifikasi",
+                body: `Laporan ${businessTripNo} telah diverifikasi ${settlementMessage}`,
+                type,
+                referenceTable: "business_trips",
+                referenceId: businessTripId,
+                data: {
+                    business_trip_id: businessTripId,
+                    business_trip_no: businessTripNo,
+                    route: businessTripId
+                        ? `/business-trip/realization/${businessTripId}`
+                        : "/business-trip",
+                    settlement_difference: difference,
+                },
+            });
+        }
+
+        if (type === NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_SETTLEMENT_COMPLETED) {
+            return invokePushNotification({
+                recipientUserIds: uniqueStrings([requesterId]),
+                title: "Business Trip Selesai",
+                body: `Proses Business Trip ${businessTripNo} telah selesai.`,
+                type,
+                referenceTable: "business_trips",
+                referenceId: businessTripId,
+                data: {
+                    business_trip_id: businessTripId,
+                    business_trip_no: businessTripNo,
+                    route: businessTripId
+                        ? `/business-trip/realization/${businessTripId}`
+                        : "/business-trip",
                 },
             });
         }

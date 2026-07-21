@@ -5,6 +5,7 @@ import {
     ClipboardPlus,
     Clock3,
     FilePenLine,
+    Plane,
     Plus,
     Wallet,
     Wrench,
@@ -21,6 +22,7 @@ import {
     getTechnicianVisibleJobIds,
 } from "../../services/jobTechniciansService";
 import { buildStatusSegments } from "../../utils/dashboardStatus";
+import { getBusinessTripDashboardSummary } from "../../services/businessTripService";
 
 const normalizeStatusKey = (value) => {
     const raw = String(value ?? "")
@@ -95,6 +97,12 @@ export default function TechnicianDashboard() {
     const [tasks, setTasks] = useState([]);
     const [availableJobs, setAvailableJobs] = useState(0);
     const [accommodations, setAccommodations] = useState([]);
+    const [businessTripSummary, setBusinessTripSummary] = useState({
+        draft: 0,
+        pendingApproval: 0,
+        needsRealization: 0,
+        completed: 0,
+    });
     const [hoveredStatus, setHoveredStatus] = useState(null);
     const [hoveredDayKey, setHoveredDayKey] = useState(null);
     const channelRef = useRef(null);
@@ -184,6 +192,22 @@ export default function TechnicianDashboard() {
         }
     };
 
+    const loadBusinessTripSummary = async () => {
+        if (!userIdRef.current) return;
+        try {
+            const summary = await getBusinessTripDashboardSummary({
+                role: "technician",
+                userId: userIdRef.current,
+            });
+            if (isMountedRef.current) setBusinessTripSummary(summary);
+        } catch (error) {
+            console.warn(
+                "[TechDashboard] Business Trip summary skipped:",
+                error.message,
+            );
+        }
+    };
+
     useEffect(() => {
         isMountedRef.current = true;
         return () => {
@@ -197,6 +221,7 @@ export default function TechnicianDashboard() {
         const timerId = setTimeout(() => {
             loadTasks();
             loadAccommodations();
+            loadBusinessTripSummary();
         }, 0);
 
         const setupChannel = async () => {
@@ -238,6 +263,13 @@ export default function TechnicianDashboard() {
                     },
                     () => {
                         if (isMountedRef.current) loadAccommodations();
+                    },
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "business_trips" },
+                    () => {
+                        if (isMountedRef.current) loadBusinessTripSummary();
                     },
                 );
 
@@ -313,7 +345,39 @@ export default function TechnicianDashboard() {
         { label: "Ambil Job", to: "/technician/requests", icon: ClipboardList },
         { label: "Buat Job Baru", to: "/jobs/new", icon: Plus },
         { label: "Ajukan Akomodasi", to: "/accommodation", icon: Wallet },
+        { label: "Ajukan Business Trip", to: "/business-trip", icon: Plane },
         { label: "Draft Offline", to: "/jobs/new", icon: FilePenLine },
+    ];
+
+    const businessTripSummaryItems = [
+        {
+            label: "Draft",
+            value: businessTripSummary.draft,
+            meta: "Belum diajukan",
+            icon: FilePenLine,
+            to: "/business-trip",
+        },
+        {
+            label: "Menunggu Approval",
+            value: businessTripSummary.pendingApproval,
+            meta: "Sedang ditinjau",
+            icon: Clock3,
+            to: "/business-trip",
+        },
+        {
+            label: "Perlu Realisasi",
+            value: businessTripSummary.needsRealization,
+            meta: "Lanjutkan laporan",
+            icon: Plane,
+            to: "/business-trip",
+        },
+        {
+            label: "Selesai",
+            value: businessTripSummary.completed,
+            meta: "Riwayat selesai",
+            icon: CircleCheckBig,
+            to: "/business-trip",
+        },
     ];
 
     const last7Days = useMemo(() => {
@@ -380,6 +444,7 @@ export default function TechnicianDashboard() {
                         }
                         kpis={kpis}
                         quickActions={quickActions}
+                        businessTripSummaryItems={businessTripSummaryItems}
                         completedCount={statusCounts.completed}
                         totalCount={totalTasks}
                         statusSegments={buildStatusSegments(statusCounts)}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import supabase from '../supabaseClient';
 
 /**
@@ -6,7 +6,6 @@ import supabase from '../supabaseClient';
  * Handles assigning/unassigning technicians to/from customers
  */
 export function useTechnicianAssignments() {
-  const [assignments, setAssignments] = useState([]);
   const [technicianAssignments, setTechnicianAssignments] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -66,10 +65,10 @@ export function useTechnicianAssignments() {
       if (data && data[0] && data[0].success) {
         // Refresh assignments after successful assignment
         const updatedAssignments = await getAssignmentsForTechnician(technicianId);
-        setTechnicianAssignments({
-          ...technicianAssignments,
+        setTechnicianAssignments((current) => ({
+          ...current,
           [technicianId]: updatedAssignments,
-        });
+        }));
         return { success: true, message: data[0].message };
       } else {
         return { success: false, message: data?.[0]?.message || 'Assignment failed' };
@@ -82,7 +81,7 @@ export function useTechnicianAssignments() {
     } finally {
       setLoading(false);
     }
-  }, [technicianAssignments, getAssignmentsForTechnician]);
+  }, [getAssignmentsForTechnician]);
 
   // Unassign internal technician from customer
   const unassignTechnicianFromCustomer = useCallback(async (technicianId, customerId) => {
@@ -99,10 +98,10 @@ export function useTechnicianAssignments() {
       if (data && data[0] && data[0].success) {
         // Refresh assignments after successful unassignment
         const updatedAssignments = await getAssignmentsForTechnician(technicianId);
-        setTechnicianAssignments({
-          ...technicianAssignments,
+        setTechnicianAssignments((current) => ({
+          ...current,
           [technicianId]: updatedAssignments,
-        });
+        }));
         return { success: true, message: data[0].message };
       } else {
         return { success: false, message: data?.[0]?.message || 'Unassignment failed' };
@@ -115,7 +114,7 @@ export function useTechnicianAssignments() {
     } finally {
       setLoading(false);
     }
-  }, [technicianAssignments, getAssignmentsForTechnician]);
+  }, [getAssignmentsForTechnician]);
 
   // Assign external technician to customer
   const assignExternalTechnician = useCallback(async (technicianId, customerId) => {
@@ -187,7 +186,6 @@ export function useTechnicianAssignments() {
   }, []);
 
   return {
-    assignments,
     technicianAssignments,
     loading,
     error,

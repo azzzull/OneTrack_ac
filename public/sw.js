@@ -11,6 +11,30 @@ const URLS_TO_CACHE = [
     "/apple-touch-icon.png",
 ];
 
+const IS_LOCAL_DEVELOPMENT = ["localhost", "127.0.0.1", "::1"].includes(
+    self.location.hostname,
+);
+
+if (IS_LOCAL_DEVELOPMENT) {
+    self.addEventListener("install", () => {
+        self.skipWaiting();
+    });
+
+    self.addEventListener("activate", (event) => {
+        event.waitUntil(
+            caches
+                .keys()
+                .then((cacheNames) =>
+                    Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName))),
+                )
+                .then(() => self.registration.unregister())
+                .then(() => self.clients.matchAll({ type: "window" }))
+                .then((clients) =>
+                    Promise.all(clients.map((client) => client.navigate(client.url))),
+                ),
+        );
+    });
+} else {
 // Install event - cache static assets
 self.addEventListener("install", (event) => {
     console.log("[SW] Installing Service Worker");
@@ -198,3 +222,4 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 console.log("[SW] Service Worker loaded");
+}
