@@ -20,8 +20,6 @@ import {
 import { parseAccommodationAmount } from "./businessTripAccommodationModel";
 import { BUSINESS_TRIP_STATUS } from "./businessTripConstants";
 
-export const dummyMasterProjects = [];
-
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
 const createLocalId = (prefix) => {
@@ -232,7 +230,6 @@ export function BusinessTripDraftProvider({ children }) {
             createTrip,
             deleteTrip,
             draft,
-            dummyMasterProjects: projects,
             error,
             getProjectById,
             loadBusinessTripById,

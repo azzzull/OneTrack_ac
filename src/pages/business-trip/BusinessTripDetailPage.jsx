@@ -72,7 +72,7 @@ export default function BusinessTripDetailPage() {
     return (
         <BusinessTripLayout
             title="Detail Business Trip"
-            description="Pantau status perjalanan, timeline approval, dan akses laporan realisasi sesuai status dummy."
+            description="Pantau status perjalanan, timeline approval, dan akses laporan realisasi sesuai status pengajuan."
             activeIcon={Plane}
         >
             <div className={businessTripUi.pageGap}>
@@ -211,7 +211,7 @@ function DetailActions({
         return (
             <ActionPanel>
                 <p className="col-span-2 text-center text-sm font-semibold text-slate-600">
-                    Pengajuan sedang menunggu proses approval dummy.
+                    Pengajuan sedang menunggu proses approval.
                 </p>
                 {status === BUSINESS_TRIP_STATUS.SUBMITTED && (
                     <ActionButton onClick={onPending} icon={Send}>

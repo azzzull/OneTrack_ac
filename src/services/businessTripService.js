@@ -6,7 +6,7 @@ import {
     notifyEvent,
 } from "./notificationEvents";
 
-export const BUSINESS_TRIP_PHOTO_BUCKET = "business-trip-photos";
+export const BUSINESS_TRIP_PHOTO_BUCKET = "business-trip-evidence";
 export const BUSINESS_TRIP_MAX_PHOTOS_PER_AGENDA = 10;
 export const BUSINESS_TRIP_MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 export const BUSINESS_TRIP_ALLOWED_PHOTO_TYPES = [
@@ -198,7 +198,7 @@ export const loadBusinessTripProjects = async () => {
 
 const mapAgendaPhotoFromDb = (photo) => ({
     id: photo.id,
-    name: photo.file_name ?? "Foto bukti kunjungan",
+    name: photo.original_file_name ?? photo.file_name ?? "Foto bukti kunjungan",
     size: Number(photo.file_size ?? 0),
     mimeType: photo.mime_type ?? "",
     storagePath: photo.storage_path,
@@ -976,18 +976,8 @@ export const getBusinessTripApprovalDetail = async (tripId) => {
     };
 };
 
-export const createBusinessTripDraft = async ({ requesterId }) => {
-    const { data, error } = await supabase
-        .from("business_trips")
-        .insert({
-            requester_id: requesterId,
-            created_by: requesterId,
-            status: BUSINESS_TRIP_DB_STATUS.DRAFT,
-            requested_amount: 0,
-        })
-        .select()
-        .single();
-
+export const createBusinessTripDraft = async () => {
+    const { data, error } = await supabase.rpc("create_business_trip_draft");
     if (error) throw error;
     return hydrateBusinessTripPhotoUrls(mapBusinessTripFromDb(data));
 };
@@ -1652,6 +1642,7 @@ export const uploadBusinessTripAgendaPhoto = async ({
             agenda_id: agendaId,
             business_trip_id: businessTripId,
             file_name: file.name,
+            original_file_name: file.name,
             file_size: fileToUpload.size,
             mime_type: fileToUpload.type || file.type,
             realization_id: realization?.id ?? null,
