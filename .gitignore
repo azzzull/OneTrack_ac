@@ -29,6 +29,8 @@ docs/*.md
 docs/**/*.md
 docs/**/*.sql
 
+supabase/**/*.sql
+
 
 # Ignore ad-hoc markdown files, keep README files
 *.md
