@@ -109,14 +109,29 @@ export function BusinessTripDraftProvider({ children }) {
 
     const loadBusinessTrips = useCallback(
         async (options = {}) => {
+            if (!user?.id) {
+                setBusinessTrips([]);
+                setTotalCount(0);
+                setStatusCounts(initialStatusCounts);
+                return {
+                    items: [],
+                    projects: [],
+                    total: 0,
+                };
+            }
+
             setLoading(true);
             setError("");
             try {
                 const [listResult, countsResult] = await Promise.all([
-                    getMyBusinessTrips(options),
+                    getMyBusinessTrips({
+                        ...options,
+                        requesterId: user.id,
+                    }),
                     getBusinessTripStatusCounts({
                         startDate: options.startDate,
                         endDate: options.endDate,
+                        requesterId: user.id,
                     }),
                 ]);
                 setBusinessTrips(listResult.items);
@@ -134,7 +149,7 @@ export function BusinessTripDraftProvider({ children }) {
                 setLoading(false);
             }
         },
-        [],
+        [user?.id],
     );
 
     const loadBusinessTripById = useCallback(

@@ -6,12 +6,12 @@ export const BUSINESS_TRIP_CARD_STYLE = {
         borderColor: "#BBD1F4",
     },
     [BUSINESS_TRIP_STATUS.SUBMITTED]: {
-        background: "linear-gradient(135deg, #EAF3FF 0%, #E0E7FF 100%)",
-        borderColor: "#B8C7F4",
+        background: "linear-gradient(135deg, #FFF7D6 0%, #FFE9A8 100%)",
+        borderColor: "#F59E0B",
     },
     [BUSINESS_TRIP_STATUS.PENDING_APPROVAL]: {
-        background: "linear-gradient(135deg, #FFF3D8 0%, #FFE4A3 100%)",
-        borderColor: "#EAC16F",
+        background: "linear-gradient(135deg, #FFF7D6 0%, #FFE9A8 100%)",
+        borderColor: "#F59E0B",
     },
     [BUSINESS_TRIP_STATUS.REJECTED]: {
         background: "linear-gradient(135deg, #FFF0F3 0%, #FFC9D2 100%)",

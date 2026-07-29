@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
     ChevronDown,
     ChevronUp,
@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import BusinessTripLayout from "./BusinessTripLayout";
 import { useBusinessTripDraft } from "./BusinessTripDraftContext";
+import { useAuth } from "../../context/useAuth";
 import {
     BUSINESS_TRIP_STATUS,
     BUSINESS_TRIP_STATUS_LABELS,
@@ -138,6 +139,16 @@ const getDefaultFilterDates = () => {
     };
 };
 
+const normalizeStatusParam = (value) => {
+    if (!value) return BUSINESS_TRIP_STATUS.DRAFT;
+    if (value === "submitted" || value === "pending_approval") {
+        return BUSINESS_TRIP_STATUS.PENDING_APPROVAL;
+    }
+    return STATUS_FILTERS.some((item) => item.value === value)
+        ? value
+        : BUSINESS_TRIP_STATUS.DRAFT;
+};
+
 const formatDate = (value, options = {}) =>
     value
         ? new Intl.DateTimeFormat("id-ID", {
@@ -205,6 +216,8 @@ const getQuickFilterDates = (mode) => {
 
 export default function BusinessTripListPage() {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const { user } = useAuth();
     const {
         businessTrips,
         createTrip,
@@ -220,7 +233,9 @@ export default function BusinessTripListPage() {
     const [filters, setFilters] = useState(getDefaultFilterDates);
     const [draftFilters, setDraftFilters] = useState(getDefaultFilterDates);
     const [query, setQuery] = useState("");
-    const [statusFilter, setStatusFilter] = useState(BUSINESS_TRIP_STATUS.DRAFT);
+    const [statusFilter, setStatusFilter] = useState(() =>
+        normalizeStatusParam(searchParams.get("status")),
+    );
     const [sortMode, setSortMode] = useState("newest");
     const [page, setPage] = useState(1);
     const [filterOpen, setFilterOpen] = useState(false);
@@ -229,6 +244,8 @@ export default function BusinessTripListPage() {
     const [toast, setToast] = useState("");
 
     useEffect(() => {
+        if (!user?.id) return undefined;
+
         const timeoutId = window.setTimeout(() => {
             loadBusinessTrips({
                 endDate: filters.endDate,
@@ -250,11 +267,29 @@ export default function BusinessTripListPage() {
         query,
         sortMode,
         statusFilter,
+        user?.id,
     ]);
 
     const showToast = (message) => {
         setToast(message);
         window.setTimeout(() => setToast(""), 2600);
+    };
+
+    const updateStatusFilter = (value) => {
+        setStatusFilter(value);
+        setPage(1);
+        setSearchParams(
+            (current) => {
+                const next = new URLSearchParams(current);
+                if (value === BUSINESS_TRIP_STATUS.DRAFT) {
+                    next.delete("status");
+                } else {
+                    next.set("status", value);
+                }
+                return next;
+            },
+            { replace: true },
+        );
     };
 
     const selectedSummaryTrip = businessTrips.find(
@@ -286,7 +321,7 @@ export default function BusinessTripListPage() {
         setDraftFilters(nextDates);
         setFilters(nextDates);
         setQuery("");
-        setStatusFilter(BUSINESS_TRIP_STATUS.DRAFT);
+        updateStatusFilter(BUSINESS_TRIP_STATUS.DRAFT);
         setSortMode("newest");
         setPage(1);
     };
@@ -373,10 +408,7 @@ export default function BusinessTripListPage() {
                 <BusinessTripStatusSummary
                     activeStatus={statusFilter}
                     counts={statusCounts}
-                    onChange={(value) => {
-                        setStatusFilter(value);
-                        setPage(1);
-                    }}
+                    onChange={updateStatusFilter}
                 />
 
                 <BusinessTripHistoryFilter
@@ -446,7 +478,7 @@ export default function BusinessTripListPage() {
                         </span>
                     </EmptyState>
                 ) : (
-                    <div className="grid gap-3 lg:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                         {businessTrips.map((trip) => (
                             <BusinessTripCard
                                 key={trip.id}
@@ -527,7 +559,7 @@ function BusinessTripStatusSummary({ activeStatus, counts, onChange }) {
             className="max-w-full overflow-x-auto overscroll-x-contain pb-2"
             aria-label="Filter status Business Trip"
         >
-            <div className="flex w-max min-w-full touch-pan-x gap-2">
+            <div className="flex w-max min-w-full touch-pan-x gap-2 xl:w-full">
                 {STATUS_FILTERS.map((item) => {
                     const selected = activeStatus === item.value;
                     return (
@@ -536,7 +568,7 @@ function BusinessTripStatusSummary({ activeStatus, counts, onChange }) {
                             type="button"
                             data-active={selected}
                             onClick={() => onChange(item.value)}
-                            className={`min-w-[118px] shrink-0 rounded-xl border px-3 py-2 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-100 ${
+                            className={`min-w-[118px] shrink-0 rounded-xl border px-3 py-2 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-100 xl:min-w-0 xl:flex-1 ${
                                 STATUS_FILTER_STYLES[item.value]
                             }`}
                         >

@@ -179,6 +179,9 @@ export default function BusinessTripApprovalPage() {
                 }),
                 getBusinessTripApprovalCounts({
                     endDate: filters.endDate,
+                    projectId,
+                    requester,
+                    search: query,
                     startDate: filters.startDate,
                 }),
             ]);
@@ -242,10 +245,10 @@ export default function BusinessTripApprovalPage() {
         if (!selectedTrip || actionLoading) return;
         setActionLoading("approve");
         try {
-            const approvedTrip = await approveBusinessTrip({
+            await approveBusinessTrip({
                 tripId: selectedTrip.id,
             });
-            setSelectedTrip(approvedTrip);
+            setSelectedTrip(null);
             showToast("Pengajuan Business Trip disetujui.");
             await loadData();
         } catch (approveError) {
@@ -267,11 +270,11 @@ export default function BusinessTripApprovalPage() {
         if (!selectedTrip || rejectReason.trim().length < 10 || actionLoading) return;
         setActionLoading("reject");
         try {
-            const rejectedTrip = await rejectBusinessTrip({
+            await rejectBusinessTrip({
                 rejectionReason: rejectReason.trim(),
                 tripId: selectedTrip.id,
             });
-            setSelectedTrip(rejectedTrip);
+            setSelectedTrip(null);
             setRejectOpen(false);
             setRejectReason("");
             setRejectTouched(false);

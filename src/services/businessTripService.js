@@ -83,6 +83,12 @@ export const APPROVAL_STATUS_FILTERS = {
     REJECTED: BUSINESS_TRIP_DB_STATUS.REJECTED,
 };
 
+const statusFiltersForApprovalCounts = [
+    APPROVAL_STATUS_FILTERS.PENDING,
+    APPROVAL_STATUS_FILTERS.APPROVED,
+    APPROVAL_STATUS_FILTERS.REJECTED,
+];
+
 export const BUSINESS_TRIP_PAYMENT_METHODS = [
     { value: "transfer", label: "Transfer" },
     { value: "cash", label: "Tunai" },
@@ -98,9 +104,15 @@ export const BUSINESS_TRIP_PAYMENT_METHOD_LABELS =
 const toDateOnly = (value) => (value ? String(value).slice(0, 10) : "");
 
 const addOneDay = (dateKey) => {
-    const date = new Date(`${dateKey}T00:00:00`);
-    date.setDate(date.getDate() + 1);
+    const [year, month, day] = dateKey.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day + 1));
     return date.toISOString().slice(0, 10);
+};
+
+const ensureSupabaseSession = async () => {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) return "";
+    return data?.user?.id ?? "";
 };
 
 const getProjectLabel = (project) =>
@@ -551,6 +563,45 @@ const getRealizationVerificationDbStatuses = (statusFilter) => {
     return [statusFilter];
 };
 
+const buildBusinessTripApprovalQuery = ({
+    endDate,
+    projectId = "",
+    startDate,
+    statusFilter = APPROVAL_STATUS_FILTERS.PENDING,
+} = {}) => {
+    let query = supabase
+        .from("business_trips")
+        .select("*, business_trip_agendas(id, sequence_no, title, objective)", {
+            count: "exact",
+        });
+
+    if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
+    if (endDate) query = query.lt("created_at", `${addOneDay(endDate)}T00:00:00`);
+    if (projectId) query = query.eq("project_id", projectId);
+
+    const statuses = getApprovalDbStatuses(statusFilter);
+    if (statuses.length === 1) query = query.eq("status", statuses[0]);
+    if (statuses.length > 1) query = query.in("status", statuses);
+
+    return query;
+};
+
+const applyBusinessTripApprovalSort = (query, sortMode = "oldest") => {
+    if (sortMode === "newest") {
+        return query
+            .order("submitted_at", { ascending: false, nullsFirst: false })
+            .order("created_at", { ascending: false });
+    }
+    if (sortMode === "trip-nearest") {
+        return query
+            .order("trip_date", { ascending: true, nullsFirst: false })
+            .order("trip_start_date", { ascending: true, nullsFirst: false });
+    }
+    return query
+        .order("submitted_at", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true });
+};
+
 const applyApprovalClientFilters = (rows, projects, profiles, filters) => {
     const keyword = String(filters.search ?? "").trim().toLowerCase();
     const requesterKeyword = String(filters.requester ?? "").trim().toLowerCase();
@@ -578,6 +629,25 @@ const applyApprovalClientFilters = (rows, projects, profiles, filters) => {
     });
 };
 
+const fetchBusinessTripApprovalRows = async (filters = {}) => {
+    const rows = [];
+
+    for (let offset = 0; offset < REPORT_FETCH_MAX_ROWS; offset += REPORT_FETCH_PAGE_SIZE) {
+        const to = Math.min(offset + REPORT_FETCH_PAGE_SIZE - 1, REPORT_FETCH_MAX_ROWS - 1);
+        const { data, error } = await applyBusinessTripApprovalSort(
+            buildBusinessTripApprovalQuery(filters),
+            filters.sortMode,
+        ).range(offset, to);
+        if (error) throw error;
+
+        const nextRows = data ?? [];
+        rows.push(...nextRows);
+        if (nextRows.length < REPORT_FETCH_PAGE_SIZE) break;
+    }
+
+    return rows;
+};
+
 export const getBusinessTripsForApproval = async ({
     endDate,
     page = 1,
@@ -590,78 +660,97 @@ export const getBusinessTripsForApproval = async ({
     statusFilter = APPROVAL_STATUS_FILTERS.PENDING,
 } = {}) => {
     const projects = await loadBusinessTripProjects();
-    let query = supabase
-        .from("business_trips")
-        .select("*, business_trip_agendas(id, sequence_no, title, objective)", {
-            count: "exact",
-        });
-
-    if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
-    if (endDate) query = query.lt("created_at", `${addOneDay(endDate)}T00:00:00`);
-    if (projectId) query = query.eq("project_id", projectId);
-
-    const statuses = getApprovalDbStatuses(statusFilter);
-    if (statuses.length === 1) query = query.eq("status", statuses[0]);
-    if (statuses.length > 1) query = query.in("status", statuses);
-
-    if (sortMode === "newest") {
-        query = query.order("submitted_at", { ascending: false, nullsFirst: false });
-        query = query.order("created_at", { ascending: false });
-    } else if (sortMode === "trip-nearest") {
-        query = query.order("trip_date", { ascending: true, nullsFirst: false });
-        query = query.order("trip_start_date", { ascending: true, nullsFirst: false });
-    } else {
-        query = query.order("submitted_at", { ascending: true, nullsFirst: false });
-        query = query.order("created_at", { ascending: true });
-    }
-
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-    const { data, error, count } = await query.range(from, to);
+    const usesClientFilter = Boolean(search.trim() || requester.trim());
+
+    if (usesClientFilter) {
+        const rows = await fetchBusinessTripApprovalRows({
+            endDate,
+            projectId,
+            sortMode,
+            startDate,
+            statusFilter,
+        });
+        const profileMap = await loadProfileMap(rows.map((row) => row.requester_id));
+        const filteredRows = applyApprovalClientFilters(rows, projects, profileMap, {
+            requester,
+            search,
+        });
+        const pageRows = filteredRows.slice(from, from + pageSize);
+        const decorated = await decorateBusinessTripRowsWithMoney(pageRows, projects);
+
+        return {
+            items: decorated,
+            projects,
+            total: filteredRows.length,
+        };
+    }
+
+    const { data, error, count } = await applyBusinessTripApprovalSort(
+        buildBusinessTripApprovalQuery({
+            endDate,
+            projectId,
+            startDate,
+            statusFilter,
+        }),
+        sortMode,
+    ).range(from, to);
     if (error) throw error;
 
     const rows = data ?? [];
-    const profileMap = await loadProfileMap(rows.map((row) => row.requester_id));
-    const filteredRows = applyApprovalClientFilters(rows, projects, profileMap, {
-        requester,
-        search,
-    });
-    const decorated = await decorateBusinessTripRowsWithMoney(filteredRows, projects);
+    const decorated = await decorateBusinessTripRowsWithMoney(rows, projects);
 
     return {
         items: decorated,
         projects,
-        total:
-            search.trim() || requester.trim()
-                ? filteredRows.length
-                : count ?? filteredRows.length,
+        total: count ?? rows.length,
     };
 };
 
 export const getBusinessTripApprovalCounts = async ({
     endDate,
+    projectId = "",
+    requester = "",
+    search = "",
     startDate,
 } = {}) => {
-    const { data, error } = await supabase.rpc(
-        "get_business_trip_approval_counts",
-        {
-            p_end_date_exclusive: endDate ? `${addOneDay(endDate)}T00:00:00` : null,
-            p_start_date: startDate ? `${startDate}T00:00:00` : null,
-        },
-    );
-    if (error) throw error;
+    const projects = await loadBusinessTripProjects();
+    const countStatus = async (statusFilter) => {
+        if (search.trim() || requester.trim()) {
+            const rows = await fetchBusinessTripApprovalRows({
+                endDate,
+                projectId,
+                sortMode: "oldest",
+                startDate,
+                statusFilter,
+            });
+            const profileMap = await loadProfileMap(rows.map((row) => row.requester_id));
+            return applyApprovalClientFilters(rows, projects, profileMap, {
+                requester,
+                search,
+            }).length;
+        }
 
-    return (data ?? []).reduce(
-        (acc, item) => ({
-            ...acc,
-            [item.status]: Number(item.total ?? 0),
-        }),
-        {
-            [APPROVAL_STATUS_FILTERS.PENDING]: 0,
-            [APPROVAL_STATUS_FILTERS.APPROVED]: 0,
-            [APPROVAL_STATUS_FILTERS.REJECTED]: 0,
-        },
+        const { count, error } = await buildBusinessTripApprovalQuery({
+            endDate,
+            projectId,
+            startDate,
+            statusFilter,
+        })
+            .select("id", { count: "exact", head: true });
+        if (error) throw error;
+        return Number(count ?? 0);
+    };
+
+    const entries = await Promise.all(
+        statusFiltersForApprovalCounts.map(async (statusFilter) => [
+            statusFilter,
+            await countStatus(statusFilter),
+        ]),
     );
+
+    return Object.fromEntries(entries);
 };
 
 export const getBusinessTripsReadyForDisbursement = async ({
@@ -831,11 +920,15 @@ export const getMyBusinessTrips = async ({
     endDate,
     page = 1,
     pageSize = 20,
+    requesterId,
     search = "",
     sortMode = "newest",
     startDate,
     statusFilter,
 } = {}) => {
+    const sessionRequesterId = await ensureSupabaseSession();
+    const resolvedRequesterId = sessionRequesterId || requesterId;
+
     const projects = await loadBusinessTripProjects();
     let query = supabase
         .from("business_trips")
@@ -845,6 +938,7 @@ export const getMyBusinessTrips = async ({
 
     if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
     if (endDate) query = query.lt("created_at", `${addOneDay(endDate)}T00:00:00`);
+    if (resolvedRequesterId) query = query.eq("requester_id", resolvedRequesterId);
 
     const statuses = STATUS_GROUP_TO_DB_STATUSES[statusFilter] ?? (
         UI_TO_DB_STATUS[statusFilter] ? [UI_TO_DB_STATUS[statusFilter]] : []
@@ -882,22 +976,40 @@ export const getMyBusinessTrips = async ({
     };
 };
 
-export const getBusinessTripStatusCounts = async ({ endDate, startDate } = {}) => {
-    const { data, error } = await supabase.rpc("get_business_trip_status_counts", {
-        p_end_date_exclusive: endDate ? `${addOneDay(endDate)}T00:00:00` : null,
-        p_start_date: startDate ? `${startDate}T00:00:00` : null,
-    });
-    if (error) throw error;
+export const getBusinessTripStatusCounts = async ({
+    endDate,
+    requesterId,
+    startDate,
+} = {}) => {
+    const sessionRequesterId = await ensureSupabaseSession();
+    const resolvedRequesterId = sessionRequesterId || requesterId;
+    const entries = await Promise.all(
+        Object.entries(STATUS_GROUP_TO_DB_STATUSES).map(
+            async ([uiStatus, statuses]) => {
+                let query = supabase
+                    .from("business_trips")
+                    .select("id", { count: "exact", head: true });
 
-    return (data ?? []).reduce((acc, item) => {
-        const total = Number(item.total ?? 0);
-        const groupEntry = Object.entries(STATUS_GROUP_TO_DB_STATUSES).find(
-            ([, statuses]) => statuses.includes(item.status),
-        );
-        const uiStatus = groupEntry?.[0] ?? DB_TO_UI_STATUS[item.status] ?? item.status;
-        acc[uiStatus] = Number(acc[uiStatus] ?? 0) + total;
-        return acc;
-    }, {});
+                if (startDate) {
+                    query = query.gte("created_at", `${startDate}T00:00:00`);
+                }
+                if (endDate) {
+                    query = query.lt("created_at", `${addOneDay(endDate)}T00:00:00`);
+                }
+                if (resolvedRequesterId) {
+                    query = query.eq("requester_id", resolvedRequesterId);
+                }
+                if (statuses.length === 1) query = query.eq("status", statuses[0]);
+                if (statuses.length > 1) query = query.in("status", statuses);
+
+                const { count, error } = await query;
+                if (error) throw error;
+                return [uiStatus, Number(count ?? 0)];
+            },
+        ),
+    );
+
+    return Object.fromEntries(entries);
 };
 
 export const getBusinessTripById = async (tripId) => {

@@ -395,6 +395,19 @@ const usePendingBusinessTripApprovalCount = (role, userId, isOnline) => {
         };
 
         loadPendingCount();
+        const channelName = createUniqueChannelName(
+            "business-trip-approval-badge",
+            userId,
+        );
+        const channel = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "business_trips" },
+                loadPendingCount,
+            );
+        channel.subscribe();
+
         const intervalId = setInterval(loadPendingCount, 8000);
         const handleFocus = () => {
             if (document.visibilityState === "visible") loadPendingCount();
@@ -407,6 +420,7 @@ const usePendingBusinessTripApprovalCount = (role, userId, isOnline) => {
             clearInterval(intervalId);
             document.removeEventListener("visibilitychange", handleFocus);
             window.removeEventListener("focus", handleFocus);
+            supabase.removeChannel(channel);
         };
     }, [isOnline, role, userId]);
 
@@ -443,6 +457,19 @@ const usePendingBusinessTripDisbursementCount = (role, userId, isOnline) => {
         };
 
         loadPendingCount();
+        const channelName = createUniqueChannelName(
+            "business-trip-disbursement-badge",
+            userId,
+        );
+        const channel = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "business_trips" },
+                loadPendingCount,
+            );
+        channel.subscribe();
+
         const intervalId = setInterval(loadPendingCount, 8000);
         const handleFocus = () => {
             if (document.visibilityState === "visible") loadPendingCount();
@@ -455,6 +482,7 @@ const usePendingBusinessTripDisbursementCount = (role, userId, isOnline) => {
             clearInterval(intervalId);
             document.removeEventListener("visibilitychange", handleFocus);
             window.removeEventListener("focus", handleFocus);
+            supabase.removeChannel(channel);
         };
     }, [isOnline, role, userId]);
 
@@ -494,6 +522,19 @@ const usePendingBusinessTripRealizationVerificationCount = (
         };
 
         loadPendingCount();
+        const channelName = createUniqueChannelName(
+            "business-trip-realization-verification-badge",
+            userId,
+        );
+        const channel = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "business_trips" },
+                loadPendingCount,
+            );
+        channel.subscribe();
+
         const intervalId = setInterval(loadPendingCount, 8000);
         const handleFocus = () => {
             if (document.visibilityState === "visible") loadPendingCount();
@@ -506,6 +547,7 @@ const usePendingBusinessTripRealizationVerificationCount = (
             clearInterval(intervalId);
             document.removeEventListener("visibilitychange", handleFocus);
             window.removeEventListener("focus", handleFocus);
+            supabase.removeChannel(channel);
         };
     }, [isOnline, role, userId]);
 

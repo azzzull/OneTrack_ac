@@ -16,15 +16,11 @@ export default function BusinessTripLayout({
     const navigate = useNavigate();
 
     return (
-        <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900">
+        <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 md:flex">
             <Sidebar collapsed={collapsed} onToggle={toggle} />
-            <div
-                className={`transition-all duration-300 ${
-                    collapsed ? "md:ml-20" : "md:ml-64"
-                }`}
-            >
+            <div className="min-w-0 flex-1 transition-all duration-300">
                 <header className="sticky top-0 z-30 bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 md:static">
-                    <div className="mx-auto flex max-w-5xl items-center gap-2.5 px-3.5 py-2.5 md:px-5">
+                    <div className="mx-auto flex w-full max-w-screen-2xl items-center gap-2.5 px-3.5 py-2.5 md:px-6 xl:px-8">
                         {showBack && (
                             <button
                                 type="button"
@@ -51,7 +47,7 @@ export default function BusinessTripLayout({
                     </div>
                 </header>
 
-                <main className="mx-auto min-h-screen max-w-3xl px-3 pb-28 pt-2.5 md:px-5 md:pb-10 md:pt-4">
+                <main className="mx-auto min-h-screen w-full max-w-screen-2xl px-3 pb-28 pt-2.5 md:px-6 md:pb-10 md:pt-4 xl:px-8">
                     {children}
                 </main>
             </div>
