@@ -1268,12 +1268,22 @@ export const startBusinessTrip = async (tripId) => {
     return result.trip;
 };
 
-const buildRealizationPayload = (agendas = []) =>
-    agendas.map((agenda) => ({
+const normalizeRealizationPayloadItem = (agenda) => {
+    const realization = agenda?.realization ?? {};
+    return {
         agenda_id: agenda.id,
-        realized_amount: Number(agenda.realization?.realizedAmount ?? 0),
-        result: agenda.realization?.result ?? "",
-    }));
+        realized_amount: Number(
+            realization.realizedAmount ??
+                agenda.realizedAmount ??
+                agenda.realized_amount ??
+                0,
+        ),
+        result: realization.result ?? agenda.result ?? "",
+    };
+};
+
+const buildRealizationPayload = (agendas = []) =>
+    agendas.map(normalizeRealizationPayloadItem);
 
 export const getBusinessTripForRealization = async (tripId) => {
     const result = await getBusinessTripById(tripId);
