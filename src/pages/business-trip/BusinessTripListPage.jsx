@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
     ChevronDown,
     ChevronUp,
@@ -138,6 +138,16 @@ const getDefaultFilterDates = () => {
     };
 };
 
+const normalizeStatusParam = (value) => {
+    if (!value) return BUSINESS_TRIP_STATUS.DRAFT;
+    if (value === "submitted" || value === "pending_approval") {
+        return BUSINESS_TRIP_STATUS.PENDING_APPROVAL;
+    }
+    return STATUS_FILTERS.some((item) => item.value === value)
+        ? value
+        : BUSINESS_TRIP_STATUS.DRAFT;
+};
+
 const formatDate = (value, options = {}) =>
     value
         ? new Intl.DateTimeFormat("id-ID", {
@@ -205,6 +215,7 @@ const getQuickFilterDates = (mode) => {
 
 export default function BusinessTripListPage() {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const {
         businessTrips,
         createTrip,
@@ -220,7 +231,9 @@ export default function BusinessTripListPage() {
     const [filters, setFilters] = useState(getDefaultFilterDates);
     const [draftFilters, setDraftFilters] = useState(getDefaultFilterDates);
     const [query, setQuery] = useState("");
-    const [statusFilter, setStatusFilter] = useState(BUSINESS_TRIP_STATUS.DRAFT);
+    const [statusFilter, setStatusFilter] = useState(() =>
+        normalizeStatusParam(searchParams.get("status")),
+    );
     const [sortMode, setSortMode] = useState("newest");
     const [page, setPage] = useState(1);
     const [filterOpen, setFilterOpen] = useState(false);
@@ -257,6 +270,23 @@ export default function BusinessTripListPage() {
         window.setTimeout(() => setToast(""), 2600);
     };
 
+    const updateStatusFilter = (value) => {
+        setStatusFilter(value);
+        setPage(1);
+        setSearchParams(
+            (current) => {
+                const next = new URLSearchParams(current);
+                if (value === BUSINESS_TRIP_STATUS.DRAFT) {
+                    next.delete("status");
+                } else {
+                    next.set("status", value);
+                }
+                return next;
+            },
+            { replace: true },
+        );
+    };
+
     const selectedSummaryTrip = businessTrips.find(
         (trip) => trip.id === summaryTripId,
     );
@@ -286,7 +316,7 @@ export default function BusinessTripListPage() {
         setDraftFilters(nextDates);
         setFilters(nextDates);
         setQuery("");
-        setStatusFilter(BUSINESS_TRIP_STATUS.DRAFT);
+        updateStatusFilter(BUSINESS_TRIP_STATUS.DRAFT);
         setSortMode("newest");
         setPage(1);
     };
@@ -373,10 +403,7 @@ export default function BusinessTripListPage() {
                 <BusinessTripStatusSummary
                     activeStatus={statusFilter}
                     counts={statusCounts}
-                    onChange={(value) => {
-                        setStatusFilter(value);
-                        setPage(1);
-                    }}
+                    onChange={updateStatusFilter}
                 />
 
                 <BusinessTripHistoryFilter

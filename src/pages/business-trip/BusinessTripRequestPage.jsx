@@ -293,7 +293,15 @@ export default function BusinessTripRequestPage() {
             await submitTripRequest(submittedTrip);
             setConfirmOpen(false);
             showToast("Pengajuan Business Trip berhasil dikirim");
-            window.setTimeout(() => navigate("/business-trip"), 650);
+            window.setTimeout(
+                () =>
+                    navigate(
+                        `/business-trip?status=${encodeURIComponent(
+                            BUSINESS_TRIP_STATUS.PENDING_APPROVAL,
+                        )}`,
+                    ),
+                650,
+            );
         } catch (submitError) {
             console.error("[BusinessTrip] submit failed", submitError);
             setConfirmOpen(false);
