@@ -144,8 +144,7 @@ export default function BusinessTripRealizationPage() {
                     ? {
                           ...normalizedAgenda,
                           realization: {
-                              result: normalizedAgenda.realization?.result ?? "",
-                              photos: normalizedAgenda.realization?.photos ?? [],
+                              ...(normalizedAgenda.realization ?? {}),
                               ...patch,
                           },
                       }

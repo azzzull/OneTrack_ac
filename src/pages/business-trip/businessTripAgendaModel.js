@@ -26,7 +26,13 @@ export const normalizeAgenda = (agenda) => ({
     title: getAgendaTitle(agenda),
     objective: getAgendaObjective(agenda),
     realization: {
+        ...(agenda?.realization ?? {}),
         result: agenda?.realization?.result ?? agenda?.result ?? "",
+        realizedAmount:
+            agenda?.realization?.realizedAmount ??
+            agenda?.realizedAmount ??
+            agenda?.realized_amount ??
+            0,
         photos: agenda?.realization?.photos ?? agenda?.photos ?? [],
     },
 });
