@@ -31,6 +31,8 @@ export default function CustomerRequestFormPage() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const { user } = useAuth();
+    const userId = user?.id;
+    const userEmail = user?.email;
     const { alert: showAlert } = useDialog();
     const { labels: jobScopeLabels } = useJobScopeOptions();
     const navigate = useNavigate();
@@ -118,22 +120,24 @@ export default function CustomerRequestFormPage() {
     );
 
     useEffect(() => {
-        setForm((prev) => {
-            if (!prev.scopeDetails || Object.keys(prev.scopeDetails).length === 0) {
-                return prev;
-            }
-            return {
-                ...prev,
-                scopeDetails: {},
-            };
+        queueMicrotask(() => {
+            setForm((prev) => {
+                if (!prev.scopeDetails || Object.keys(prev.scopeDetails).length === 0) {
+                    return prev;
+                }
+                return {
+                    ...prev,
+                    scopeDetails: {},
+                };
+            });
         });
     }, [activeJobScope]);
 
     const fetchCustomerContext = useCallback(async () => {
-        if (!user?.id) return;
+        if (!userId) return;
         setLoading(true);
         try {
-            const email = String(user.email ?? "").trim();
+            const email = String(userEmail ?? "").trim();
 
             const [
                 customersByUserRes,
@@ -145,7 +149,7 @@ export default function CustomerRequestFormPage() {
                 supabase
                     .from("master_customers")
                     .select("*")
-                    .eq("user_id", user.id),
+                    .eq("user_id", userId),
                 email
                     ? supabase
                           .from("master_customers")
@@ -211,10 +215,10 @@ export default function CustomerRequestFormPage() {
         } finally {
             setLoading(false);
         }
-    }, [user?.email, user?.id]);
+    }, [userEmail, userId]);
 
     useEffect(() => {
-        fetchCustomerContext();
+        queueMicrotask(fetchCustomerContext);
     }, [fetchCustomerContext]);
 
     useEffect(() => {
@@ -222,10 +226,12 @@ export default function CustomerRequestFormPage() {
             (item) => item.id === form.projectId,
         );
         if (!isValid && form.projectId) {
-            setForm((prev) => ({
-                ...prev,
-                projectId: "",
-            }));
+            queueMicrotask(() => {
+                setForm((prev) => ({
+                    ...prev,
+                    projectId: "",
+                }));
+            });
         }
     }, [availableProjects, form.projectId]);
 

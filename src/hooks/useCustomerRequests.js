@@ -132,7 +132,7 @@ export default function useCustomerRequests(user) {
 
     // ✅ Initial load and visibility tracking
     useEffect(() => {
-        fetchCustomerRequests();
+        queueMicrotask(fetchCustomerRequests);
 
         const onVisibilityChange = () => {
             if (document.visibilityState === "visible") {

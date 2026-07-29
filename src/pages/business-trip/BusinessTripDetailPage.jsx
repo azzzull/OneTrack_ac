@@ -175,9 +175,6 @@ export default function BusinessTripDetailPage() {
                     }
                     onApprove={() => transitionTo(BUSINESS_TRIP_STATUS.APPROVED)}
                     onReject={() => transitionTo(BUSINESS_TRIP_STATUS.REJECTED)}
-                    onDisburse={() =>
-                        transitionTo(BUSINESS_TRIP_STATUS.ADVANCE_DISBURSED)
-                    }
                     onStartTrip={() =>
                         transitionTo(BUSINESS_TRIP_STATUS.IN_PROGRESS)
                     }
@@ -195,7 +192,6 @@ function DetailActions({
     status,
     onApprove,
     onComplete,
-    onDisburse,
     onEdit,
     onPending,
     onRealization,
@@ -249,10 +245,10 @@ function DetailActions({
         return (
             <ActionPanel>
                 <p className="col-span-2 text-center text-sm font-semibold text-emerald-700">
-                    Disetujui, menunggu pencairan uang muka.
+                    Disetujui. Jika ada uang muka, proses dana mengikuti modul Akomodasi.
                 </p>
-                <ActionButton onClick={onDisburse} icon={CheckCircle2}>
-                    Cairkan Uang Muka
+                <ActionButton onClick={onStartTrip} icon={Plane}>
+                    Mulai Perjalanan
                 </ActionButton>
             </ActionPanel>
         );

@@ -23,7 +23,6 @@ import LoanPage from "@/pages/loan/LoanPage";
 import LoanReports from "@/pages/loan/LoanReports";
 import BusinessTripRoutes from "@/pages/business-trip/BusinessTripRoutes";
 import BusinessTripApprovalPage from "@/pages/business-trip/BusinessTripApprovalPage";
-import BusinessTripDisbursementPage from "@/pages/business-trip/BusinessTripDisbursementPage";
 import BusinessTripRealizationVerificationPage from "@/pages/business-trip/BusinessTripRealizationVerificationPage";
 import BusinessTripReportsPage from "@/pages/business-trip/BusinessTripReportsPage";
 import TechnicianDashboard from "@/pages/technician/Dashboard";
@@ -44,6 +43,20 @@ function ScrollToTop() {
     }, [pathname]);
 
     return null;
+}
+
+function BusinessTripAccommodationRedirect() {
+    const { role } = useAuth();
+
+    if (role === "technician") {
+        return <Navigate to="/accommodation" replace />;
+    }
+
+    if (role === "management") {
+        return <Navigate to="/management/accommodation" replace />;
+    }
+
+    return <Navigate to="/admin/accommodation" replace />;
 }
 
 function App() {
@@ -285,14 +298,6 @@ function App() {
                     }
                 />
                 <Route
-                    path="/business-trip/disbursement"
-                    element={
-                        <ProtectedRoute allowedRoles={["admin", "management"]}>
-                            <BusinessTripDisbursementPage />
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
                     path="/business-trip/realization-verification"
                     element={
                         <ProtectedRoute allowedRoles={["admin", "management"]}>
@@ -305,6 +310,16 @@ function App() {
                     element={
                         <ProtectedRoute allowedRoles={["admin", "management"]}>
                             <BusinessTripReportsPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/business-trip/disbursement"
+                    element={
+                        <ProtectedRoute
+                            allowedRoles={["admin", "management", "technician"]}
+                        >
+                            <BusinessTripAccommodationRedirect />
                         </ProtectedRoute>
                     }
                 />

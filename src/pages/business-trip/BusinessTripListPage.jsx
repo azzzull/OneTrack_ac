@@ -32,6 +32,7 @@ import {
 } from "./BusinessTripShared";
 import {
     formatAccommodationAmount,
+    getBusinessTripAccommodationState,
     hasAccommodationRequest,
 } from "./businessTripAccommodationModel";
 import { getBusinessTripCardStyle } from "./businessTripCardStyle";
@@ -85,7 +86,7 @@ const ACTION_CONFIG = {
     },
     [BUSINESS_TRIP_STATUS.APPROVED]: {
         secondary: { label: "Ringkasan", type: "summary" },
-        info: "Pengajuan disetujui dan menunggu pencairan uang muka",
+        info: "Pengajuan disetujui dan menunggu proses akomodasi",
     },
     [BUSINESS_TRIP_STATUS.ADVANCE_DISBURSED]: {
         primary: { label: "Mulai", type: "start-trip", icon: Plane },
@@ -170,6 +171,16 @@ const getProjectLabel = (project) =>
     project ? `${project.project_name} - ${project.customer_name}` : "Belum dipilih";
 
 const getCardInfo = (trip, fallbackInfo) => {
+    const accommodationState = getBusinessTripAccommodationState(
+        trip.accommodationRequest,
+    );
+    if (
+        trip.status === BUSINESS_TRIP_STATUS.APPROVED &&
+        hasAccommodationRequest(trip.accommodationRequest)
+    ) {
+        return accommodationState.label;
+    }
+
     if (trip.status !== BUSINESS_TRIP_STATUS.ADVANCE_DISBURSED) {
         if (trip.status === BUSINESS_TRIP_STATUS.REALIZATION_REVISION_REQUIRED) {
             return trip.realizationRevisionNote
@@ -364,9 +375,6 @@ export default function BusinessTripListPage() {
                 console.error("[BusinessTrip] delete draft failed", deleteError);
                 showToast("Draft gagal dihapus.");
             }
-        }
-        if (actionType === "disburse") {
-            showToast("Approval dan pencairan belum masuk step integrasi ini.");
         }
         if (actionType === "start-trip") {
             try {
@@ -755,15 +763,26 @@ function BusinessTripCard({
     const baseConfig =
         ACTION_CONFIG[trip.status] ??
         ACTION_CONFIG[BUSINESS_TRIP_STATUS.PENDING_APPROVAL];
+    const accommodationState = getBusinessTripAccommodationState(
+        trip.accommodationRequest,
+    );
     const config =
         trip.status === BUSINESS_TRIP_STATUS.APPROVED &&
-        Number(trip.accommodationRequest?.requestedAmount ?? 0) <= 0
+        (!hasAccommodationRequest(trip.accommodationRequest) ||
+            accommodationState.canStartTrip)
             ? {
                   ...baseConfig,
                   primary: { label: "Mulai", type: "start-trip", icon: Plane },
-                  info: "Pengajuan disetujui. Perjalanan dapat dimulai.",
+                  info: hasAccommodationRequest(trip.accommodationRequest)
+                      ? accommodationState.label
+                      : "Pengajuan disetujui. Perjalanan dapat dimulai.",
               }
-            : baseConfig;
+            : trip.status === BUSINESS_TRIP_STATUS.APPROVED
+              ? {
+                    ...baseConfig,
+                    info: accommodationState.label,
+                }
+              : baseConfig;
     const agendaCount = trip.agendas.length;
     const cardStyle = getBusinessTripCardStyle(trip.status);
 
@@ -1052,6 +1071,9 @@ function BusinessTripAdvanceSummary({ trip }) {
     }
 
     const disbursement = trip.advanceDisbursement;
+    const accommodationState = getBusinessTripAccommodationState(
+        trip.accommodationRequest,
+    );
 
     return (
         <div className="mt-2 grid grid-cols-2 gap-2">
@@ -1063,8 +1085,27 @@ function BusinessTripAdvanceSummary({ trip }) {
             />
             <SummaryItem
                 label="Status"
-                value={disbursement ? "Dicairkan" : "Menunggu Pencairan"}
+                value={
+                    disbursement
+                        ? "Dicairkan via legacy Business Trip"
+                        : accommodationState.label
+                }
             />
+            {trip.accommodationRequest?.approvedAmount > 0 && (
+                <SummaryItem
+                    label="Approved Amount"
+                    value={formatAccommodationAmount(
+                        trip.accommodationRequest.approvedAmount,
+                    )}
+                />
+            )}
+            {trip.accommodationRequest?.rejectionReason && (
+                <SummaryItem
+                    label="Alasan Ditolak"
+                    value={trip.accommodationRequest.rejectionReason}
+                    wide
+                />
+            )}
             {disbursement && (
                 <>
                     <SummaryItem

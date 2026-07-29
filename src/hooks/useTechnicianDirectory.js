@@ -33,7 +33,7 @@ export default function useTechnicianDirectory() {
     }, []);
 
     useEffect(() => {
-        reload();
+        queueMicrotask(reload);
     }, [reload]);
 
     return {

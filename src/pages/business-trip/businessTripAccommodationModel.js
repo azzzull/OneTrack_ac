@@ -26,6 +26,67 @@ export const formatAccommodationAmount = (value) => {
 export const hasAccommodationRequest = (request) =>
     Number(request?.requestedAmount ?? 0) > 0;
 
+export const isAccommodationPaidForBusinessTrip = (request) => {
+    const status = String(request?.status ?? "").toLowerCase();
+    if (["realization_process", "partial_realized", "realized"].includes(status)) {
+        return true;
+    }
+    return status === "approved" && Boolean(request?.transferProofUrl);
+};
+
+export const getBusinessTripAccommodationState = (request) => {
+    if (!hasAccommodationRequest(request)) {
+        return {
+            canStartTrip: true,
+            label: "Tidak mengajukan uang muka akomodasi",
+            tone: "slate",
+        };
+    }
+
+    const status = String(request?.status ?? "").toLowerCase();
+    if (!request?.id) {
+        return {
+            canStartTrip: false,
+            label: "Menunggu Pengajuan Akomodasi",
+            tone: "amber",
+        };
+    }
+    if (status === "pending") {
+        return {
+            canStartTrip: false,
+            label: "Menunggu Approval Akomodasi",
+            tone: "amber",
+        };
+    }
+    if (status === "rejected") {
+        return {
+            canStartTrip: false,
+            label: "Pengajuan Akomodasi Ditolak",
+            tone: "red",
+        };
+    }
+    if (isAccommodationPaidForBusinessTrip(request)) {
+        return {
+            canStartTrip: true,
+            label: "Dana Akomodasi Telah Dibayar",
+            tone: "emerald",
+        };
+    }
+    if (status === "approved") {
+        return {
+            canStartTrip: false,
+            label: "Menunggu Pembayaran Akomodasi",
+            tone: "sky",
+        };
+    }
+
+    return {
+        canStartTrip: false,
+        label: "Menunggu Proses Akomodasi",
+        tone: "slate",
+    };
+};
+
 export const validateAccommodationRequest = (request) => {
     const amount = Number(request?.requestedAmount ?? 0);
     if (!Number.isFinite(amount)) return "Masukkan nominal yang valid";

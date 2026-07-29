@@ -62,8 +62,10 @@ const TechnicianAssignmentManager = ({ customerId, onAssignmentChange }) => {
 
   // Initialize on mount or when customerId changes
   useEffect(() => {
-    fetchAllTechnicians();
-    fetchAssignments();
+    queueMicrotask(() => {
+      fetchAllTechnicians();
+      fetchAssignments();
+    });
   }, [fetchAllTechnicians, fetchAssignments]);
 
   // Handle assigning technician

@@ -366,18 +366,19 @@ export default function ReimbursementPage() {
         search: "",
     });
     const channelRef = useRef(null);
+    const userId = user?.id;
 
     const canReview = ["admin", "management"].includes(role);
     const canDelete = role === "admin";
     const canCreate = ["technician", "admin", "management"].includes(role);
 
     const loadData = useCallback(async () => {
-        if (!user?.id || !role) return;
+        if (!userId || !role) return;
         setLoading(true);
         setError("");
         try {
             const [reimbursements, requesterRows] = await Promise.all([
-                loadReimbursements({ role, userId: user.id }),
+                loadReimbursements({ role, userId }),
                 canReview ? loadReimbursementRequesters() : Promise.resolve([]),
             ]);
             setRows(reimbursements);
@@ -395,15 +396,15 @@ export default function ReimbursementPage() {
         } finally {
             setLoading(false);
         }
-    }, [canReview, role, user?.id]);
+    }, [canReview, role, userId]);
 
     useEffect(() => {
-        loadData();
+        queueMicrotask(loadData);
     }, [loadData]);
 
     useEffect(() => {
-        if (!user?.id) return undefined;
-        const channelName = createUniqueChannelName("reimbursements", user.id);
+        if (!userId) return undefined;
+        const channelName = createUniqueChannelName("reimbursements", userId);
         channelRef.current = supabase
             .channel(channelName)
             .on(
@@ -425,7 +426,7 @@ export default function ReimbursementPage() {
         return () => {
             if (channelRef.current) supabase.removeChannel(channelRef.current);
         };
-    }, [loadData, user?.id]);
+    }, [loadData, userId]);
 
     const filteredRows = useMemo(() => {
         const search = filters.search.trim().toLowerCase();

@@ -434,6 +434,29 @@ const loadSettlementMapByTripIds = async (tripIds) => {
     }, {});
 };
 
+const mapAccommodationForBusinessTrip = (item, fallbackRequestedAmount = 0) => {
+    if (!item) {
+        return {
+            requestedAmount: Number(fallbackRequestedAmount ?? 0),
+        };
+    }
+
+    return {
+        id: item.id,
+        requestedAmount: Number(item.requested_amount ?? fallbackRequestedAmount ?? 0),
+        approvedAmount: Number(item.approved_amount ?? 0),
+        status: item.status ?? "pending",
+        transferProofUrl: item.transfer_proof_url ?? "",
+        rejectionReason: item.rejection_reason ?? "",
+        reviewedAt: item.reviewed_at ?? null,
+        reviewedBy: item.reviewed_by ?? null,
+        businessTripId: item.business_trip_id ?? "",
+        businessTripNo: item.business_trip_no ?? "",
+        createdAt: item.created_at ?? null,
+        updatedAt: item.updated_at ?? null,
+    };
+};
+
 const attachAccommodationAndDisbursement = async (trips) => {
     const tripIds = trips.map((trip) => trip.id);
     const [accommodationMap, disbursementMap, settlementMap] = await Promise.all([
@@ -445,6 +468,10 @@ const attachAccommodationAndDisbursement = async (trips) => {
     return trips.map((trip) => ({
         ...trip,
         accommodation: accommodationMap[trip.id] ?? null,
+        accommodationRequest: mapAccommodationForBusinessTrip(
+            accommodationMap[trip.id],
+            trip.accommodationRequest?.requestedAmount,
+        ),
         advanceDisbursement: disbursementMap[trip.id] ?? null,
         settlements: settlementMap[trip.id] ?? trip.settlements ?? [],
     }));
@@ -483,10 +510,27 @@ const getTripDateLabelFromRow = (row) => {
     return toDateOnly(row.trip_date);
 };
 
+const getAccommodationPaidAmountFromRow = (row) => {
+    const accommodation = row.accommodation_requests?.[0] ?? null;
+    if (!accommodation) return 0;
+
+    const status = String(accommodation.status ?? "").toLowerCase();
+    const hasPaymentProof = Boolean(accommodation.transfer_proof_url);
+    const isPaid =
+        ["realization_process", "partial_realized", "realized"].includes(status) ||
+        (status === "approved" && hasPaymentProof);
+
+    return isPaid ? Number(accommodation.approved_amount ?? 0) : 0;
+};
+
 const mapBusinessTripReportRow = (row, projectMap = {}, profileMap = {}) => {
     const project = projectMap[row.project_id] ?? null;
     const requester = profileMap[row.requester_id] ?? null;
-    const disbursedAmount = Number(row.business_trip_advance_disbursements?.[0]?.amount ?? 0);
+    const legacyDisbursedAmount = Number(
+        row.business_trip_advance_disbursements?.[0]?.amount ?? 0,
+    );
+    const disbursedAmount =
+        getAccommodationPaidAmountFromRow(row) || legacyDisbursedAmount;
     const settlements = row.business_trip_settlements ?? [];
     return {
         id: row.id,
@@ -753,55 +797,16 @@ export const getBusinessTripApprovalCounts = async ({
     return Object.fromEntries(entries);
 };
 
-export const getBusinessTripsReadyForDisbursement = async ({
-    endDate,
-    page = 1,
-    pageSize = 20,
-    projectId = "",
-    search = "",
-    sortMode = "oldest",
-    startDate,
-} = {}) => {
-    const projects = await loadBusinessTripProjects();
-    let query = supabase
-        .from("business_trips")
-        .select("*, business_trip_agendas(id, sequence_no, title, objective)", {
-            count: "exact",
-        })
-        .eq("status", BUSINESS_TRIP_DB_STATUS.APPROVED)
-        .gt("requested_amount", 0);
-
-    if (startDate) query = query.gte("approved_at", `${startDate}T00:00:00`);
-    if (endDate) query = query.lt("approved_at", `${addOneDay(endDate)}T00:00:00`);
-    if (projectId) query = query.eq("project_id", projectId);
-
-    if (sortMode === "newest") {
-        query = query.order("approved_at", { ascending: false, nullsFirst: false });
-    } else if (sortMode === "trip-nearest") {
-        query = query.order("trip_date", { ascending: true, nullsFirst: false });
-        query = query.order("trip_start_date", { ascending: true, nullsFirst: false });
-    } else {
-        query = query.order("approved_at", { ascending: true, nullsFirst: false });
-    }
-
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    const { data, error, count } = await query.range(from, to);
-    if (error) throw error;
-
-    const rows = applyClientSearch(data ?? [], projects, search);
-    const decorated = await decorateBusinessTripRowsWithMoney(rows, projects);
-
-    return {
-        items: decorated,
-        projects,
-        total: search.trim() ? rows.length : count ?? rows.length,
-    };
+export const getBusinessTripsReadyForDisbursement = async () => {
+    throw new Error(
+        "Pencairan Business Trip diproses melalui modul Accommodation.",
+    );
 };
 
-export const getBusinessTripDisbursementDetail = async (tripId) => {
-    const result = await getBusinessTripApprovalDetail(tripId);
-    return result;
+export const getBusinessTripDisbursementDetail = async () => {
+    throw new Error(
+        "Detail pencairan Business Trip diproses melalui modul Accommodation.",
+    );
 };
 
 export const getBusinessTripsForRealizationVerification = async ({
@@ -1183,8 +1188,20 @@ const normalizeApprovalError = (error) => {
     if (message.toLowerCase().includes("akses settlement")) {
         return new Error("Anda tidak memiliki akses settlement Business Trip.");
     }
-    if (message.toLowerCase().includes("uang muka harus dicairkan")) {
-        return new Error("Uang muka harus dicairkan sebelum perjalanan dimulai.");
+    if (
+        message.toLowerCase().includes("uang muka harus dicairkan") ||
+        message.toLowerCase().includes("pembayaran akomodasi belum selesai")
+    ) {
+        return new Error("Pembayaran Akomodasi harus selesai sebelum perjalanan dimulai.");
+    }
+    if (message.toLowerCase().includes("akomodasi belum tersedia")) {
+        return new Error("Pengajuan Akomodasi belum tersedia.");
+    }
+    if (message.toLowerCase().includes("akomodasi belum disetujui")) {
+        return new Error("Pengajuan Akomodasi masih menunggu approval.");
+    }
+    if (message.toLowerCase().includes("akomodasi ditolak")) {
+        return new Error("Pengajuan Akomodasi ditolak.");
     }
     if (message.toLowerCase().includes("tidak dapat memulai")) {
         return new Error("Gagal memulai perjalanan.");
@@ -1232,31 +1249,10 @@ export const rejectBusinessTrip = async ({ rejectionReason, tripId }) => {
     return result.trip;
 };
 
-export const disburseBusinessTripAdvance = async ({
-    amount,
-    notes = "",
-    paymentMethod,
-    referenceNumber = "",
-    tripId,
-}) => {
-    const { data, error } = await supabase.rpc(
-        "disburse_business_trip_advance",
-        {
-            p_amount: Number(amount),
-            p_business_trip_id: tripId,
-            p_notes: notes || null,
-            p_payment_method: paymentMethod,
-            p_reference_number: referenceNumber || null,
-        },
+export const disburseBusinessTripAdvance = async () => {
+    throw new Error(
+        "Pencairan Business Trip diproses melalui modul Accommodation.",
     );
-    if (error) throw normalizeApprovalError(error);
-    const result = await getBusinessTripDisbursementDetail(data.id);
-    await notifyBusinessTripEvent(
-        NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_ADVANCE_DISBURSED,
-        result.trip,
-        { amount: Number(amount) },
-    );
-    return result.trip;
 };
 
 export const startBusinessTrip = async (tripId) => {
@@ -1449,7 +1445,7 @@ const buildBusinessTripReportQuery = ({
     let query = supabase
         .from("business_trips")
         .select(
-            "*, business_trip_agendas(id), business_trip_agenda_photos(id), business_trip_advance_disbursements(amount), business_trip_settlements(type, amount)",
+            "*, business_trip_agendas(id), business_trip_agenda_photos(id), accommodation_requests(approved_amount, status, transfer_proof_url, reviewed_at), business_trip_advance_disbursements(amount), business_trip_settlements(type, amount)",
             { count: "exact" },
         );
 

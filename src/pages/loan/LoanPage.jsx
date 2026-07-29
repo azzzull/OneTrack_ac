@@ -381,6 +381,7 @@ export default function LoanPage() {
         search: "",
     });
     const channelRef = useRef(null);
+    const userId = user?.id;
 
     const canReview = ["admin", "management"].includes(role);
     const canDelete = role === "admin";
@@ -388,12 +389,12 @@ export default function LoanPage() {
     const canUseUniversalRepayment = role === "technician" || canReview;
 
     const loadData = useCallback(async () => {
-        if (!user?.id || !role) return;
+        if (!userId || !role) return;
         setLoading(true);
         setError("");
         try {
             const [loans, requesterRows] = await Promise.all([
-                loadLoans({ role, userId: user.id }),
+                loadLoans({ role, userId }),
                 canReview ? loadLoanRequesters() : Promise.resolve([]),
             ]);
             setRows(loans);
@@ -411,15 +412,15 @@ export default function LoanPage() {
         } finally {
             setLoading(false);
         }
-    }, [canReview, role, user?.id]);
+    }, [canReview, role, userId]);
 
     useEffect(() => {
-        loadData();
+        queueMicrotask(loadData);
     }, [loadData]);
 
     useEffect(() => {
-        if (!user?.id) return undefined;
-        const channelName = createUniqueChannelName("loans", user.id);
+        if (!userId) return undefined;
+        const channelName = createUniqueChannelName("loans", userId);
         channelRef.current = supabase
             .channel(channelName)
             .on(
@@ -450,7 +451,7 @@ export default function LoanPage() {
         return () => {
             if (channelRef.current) supabase.removeChannel(channelRef.current);
         };
-    }, [loadData, user?.id]);
+    }, [loadData, userId]);
 
     const filteredRows = useMemo(() => {
         const search = filters.search.trim().toLowerCase();

@@ -41,7 +41,7 @@ export default function useScopeDetailFields(scopeCode) {
     }, [scopeCode]);
 
     useEffect(() => {
-        loadFields();
+        queueMicrotask(loadFields);
     }, [loadFields]);
 
     const reload = useCallback(async () => {

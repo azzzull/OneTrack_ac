@@ -39,29 +39,30 @@ const getQueueSummary = (items) => ({
 
 export default function OfflineSyncStatus() {
     const { user } = useAuth();
+    const userId = user?.id;
     const [items, setItems] = useState([]);
     const [open, setOpen] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [toast, setToast] = useState("");
 
     const refreshItems = useCallback(async () => {
-        if (!user?.id) {
+        if (!userId) {
             setItems([]);
             return;
         }
 
-        const nextItems = await getOfflineQueueItems({ userId: user.id });
+        const nextItems = await getOfflineQueueItems({ userId });
         setItems(nextItems);
-    }, [user?.id]);
+    }, [userId]);
 
     const runSync = useCallback(
         async (itemId) => {
-            if (!user?.id || !navigator.onLine || syncing) return;
+            if (!userId || !navigator.onLine || syncing) return;
 
             setSyncing(true);
             try {
                 const result = await syncOfflineQueue({
-                    userId: user.id,
+                    userId,
                     itemId,
                 });
                 await refreshItems();
@@ -76,7 +77,7 @@ export default function OfflineSyncStatus() {
                 setSyncing(false);
             }
         },
-        [refreshItems, syncing, user?.id],
+        [refreshItems, syncing, userId],
     );
 
     const { isOffline } = useNetworkStatus({
@@ -87,7 +88,7 @@ export default function OfflineSyncStatus() {
     });
 
     useEffect(() => {
-        refreshItems();
+        queueMicrotask(refreshItems);
         window.addEventListener(OFFLINE_QUEUE_EVENT, refreshItems);
         return () => {
             window.removeEventListener(OFFLINE_QUEUE_EVENT, refreshItems);

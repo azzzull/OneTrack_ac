@@ -191,7 +191,7 @@ const AttendanceLog = () => {
     }, [getAdminAttendanceLog]);
 
     useEffect(() => {
-        loadInitialData();
+        queueMicrotask(loadInitialData);
     }, [loadInitialData]);
 
     useEffect(() => {
@@ -204,7 +204,7 @@ const AttendanceLog = () => {
             );
 
         channel.subscribe((status) => {
-            if (status === "SUBSCRIBED") loadInitialData();
+            if (status === "SUBSCRIBED") queueMicrotask(loadInitialData);
         });
 
         return () => {
@@ -257,7 +257,9 @@ const AttendanceLog = () => {
 
     // Reset pagination when filters change
     useEffect(() => {
-        setCurrentPage(1);
+        queueMicrotask(() => {
+            setCurrentPage(1);
+        });
     }, [filterTechnician, filterDateFrom, filterDateTo, filterStatus]);
 
     const handleShowMap = (data, type, technicianName) => {

@@ -268,6 +268,7 @@ export default function AccommodationPage({ mode = "technician" }) {
     const [receiptPhotoFile, setReceiptPhotoFile] = useState(null);
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
+    const userId = user?.id;
 
     const isManagement = role === "management";
     const isTechnician = role === "technician";
@@ -291,7 +292,7 @@ export default function AccommodationPage({ mode = "technician" }) {
     const loadData = useCallback(async () => {
         try {
             const [requestRows, lookupRows] = await Promise.all([
-                loadAccommodationRequests({ role, userId: user?.id }),
+                loadAccommodationRequests({ role, userId }),
                 loadAccommodationLookups(),
             ]);
             if (!isMountedRef.current) return;
@@ -304,21 +305,21 @@ export default function AccommodationPage({ mode = "technician" }) {
         } finally {
             if (isMountedRef.current) setLoading(false);
         }
-    }, [role, user?.id]);
+    }, [role, userId]);
 
     useEffect(() => {
         isMountedRef.current = true;
-        loadData();
+        queueMicrotask(loadData);
         return () => {
             isMountedRef.current = false;
         };
     }, [loadData]);
 
     useEffect(() => {
-        if (!user?.id) return;
+        if (!userId) return;
         const channelName = `${createUniqueChannelName(
             "accommodation",
-            user.id,
+            userId,
         )}-${Date.now()}`;
         channelRef.current = supabase
             .channel(channelName)
@@ -353,7 +354,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                 channelRef.current = null;
             }
         };
-    }, [loadData, user?.id]);
+    }, [loadData, userId]);
 
     const periodFilter = useMemo(
         () => ({

@@ -535,16 +535,18 @@ export default function AdminRequestsPage() {
     const roleRef = useRef(role);
     const userIdRef = useRef(user?.id);
     const authLoadingRef = useRef(authLoading);
+    const userId = user?.id;
+    const userEmail = user?.email;
 
     useEffect(() => {
         isMountedRef.current = true;
         roleRef.current = role;
-        userIdRef.current = user?.id;
+        userIdRef.current = userId;
         authLoadingRef.current = authLoading;
         return () => {
             isMountedRef.current = false;
         };
-    }, [role, user?.id, authLoading]);
+    }, [role, userId, authLoading]);
 
     const loadRequests = useCallback(async () => {
         try {
@@ -599,22 +601,6 @@ export default function AdminRequestsPage() {
                     console.warn(
                         "Profiles lookup skipped due to RLS:",
                         profilesError.message,
-                    )
-                    .on(
-                        "postgres_changes",
-                        {
-                            event: "*",
-                            schema: "public",
-                            table: "job_technicians",
-                        },
-                        () => {
-                            if (!isMountedRef.current) return;
-                            if (deferRefreshRef.current) {
-                                setHasDeferredRefresh(true);
-                                return;
-                            }
-                            loadRequests();
-                        },
                     );
                 } else {
                     creatorMap = (profiles ?? []).reduce((acc, profile) => {
@@ -953,7 +939,7 @@ export default function AdminRequestsPage() {
                 console.log("[AdminRequests] Channel cleaned up");
             }
         };
-    }, [isOnline, user?.id, loadRequests]);
+    }, [isOnline, userId, loadRequests]);
 
     useEffect(() => {
         deferRefreshRef.current = Boolean(cameraOpen || saving);
@@ -961,8 +947,10 @@ export default function AdminRequestsPage() {
 
     useEffect(() => {
         if (deferRefreshRef.current || !hasDeferredRefresh) return;
-        setHasDeferredRefresh(false);
-        loadRequests();
+        queueMicrotask(() => {
+            setHasDeferredRefresh(false);
+            loadRequests();
+        });
     }, [hasDeferredRefresh, loadRequests]);
 
     // Check if selected request still exists (not deleted elsewhere)
@@ -974,11 +962,13 @@ export default function AdminRequestsPage() {
 
         if (!requestExists) {
             // Request was deleted elsewhere, close modal and clear selection
-            setSelectedRequestId(null);
-            setBeforePhotoUrl(null);
-            setProgressPhotoUrl(null);
-            setAfterPhotoUrl(null);
-            setPhotoPreview({ open: false, url: "", label: "" });
+            queueMicrotask(() => {
+                setSelectedRequestId(null);
+                setBeforePhotoUrl(null);
+                setProgressPhotoUrl(null);
+                setAfterPhotoUrl(null);
+                setPhotoPreview({ open: false, url: "", label: "" });
+            });
         }
     }, [requests, selectedRequestId]);
 
@@ -1398,7 +1388,9 @@ export default function AdminRequestsPage() {
 
     // Reset to page 1 when filters change
     useEffect(() => {
-        setCurrentPage(1);
+        queueMicrotask(() => {
+            setCurrentPage(1);
+        });
     }, [
         activeFilter,
         customEndDate,
@@ -1411,7 +1403,9 @@ export default function AdminRequestsPage() {
     useEffect(() => {
         const nextFilter = getValidFilter(searchParams.get("status") ?? "all");
         if (nextFilter !== activeFilter) {
-            setActiveFilter(nextFilter);
+            queueMicrotask(() => {
+                setActiveFilter(nextFilter);
+            });
         }
     }, [activeFilter, searchParams]);
 
@@ -1465,7 +1459,7 @@ export default function AdminRequestsPage() {
                 technician: {
                     ...(fallbackProfile ?? {}),
                     id: fallbackTechnicianId,
-                    email: fallbackProfile?.email ?? user?.email ?? null,
+                    email: fallbackProfile?.email ?? userEmail ?? null,
                 },
                 technician_name:
                     fallbackName && fallbackName !== "-"
@@ -1477,23 +1471,23 @@ export default function AdminRequestsPage() {
         selectedRequest,
         selectedRequestTechnicians,
         technicianDirectory,
-        user?.email,
+        userEmail,
     ]);
     const canManageTechnicians =
         role === "admin" ||
         role === "management" ||
-        (Boolean(user?.id) && String(creatorTechnicianId) === String(user?.id));
+        (Boolean(userId) && String(creatorTechnicianId) === String(userId));
     const currentTechnicianIsAssigned = useMemo(
         () =>
-            Boolean(user?.id) &&
+            Boolean(userId) &&
             selectedRequestTechnicians.some(
-                (item) => String(item.technician_id) === String(user.id),
+                (item) => String(item.technician_id) === String(userId),
             ),
-        [selectedRequestTechnicians, user?.id],
+        [selectedRequestTechnicians, userId],
     );
     const selectedRequestNeedsClaim =
         role === "technician" &&
-        Boolean(user?.id) &&
+        Boolean(userId) &&
         Boolean(selectedRequest) &&
         !currentTechnicianIsAssigned &&
         ["pending", "requested"].includes(
@@ -1504,20 +1498,22 @@ export default function AdminRequestsPage() {
 
     useEffect(() => {
         if (!selectedRequest) return;
-        setSerialNumberInput(
-            hasValidSerialNumber(selectedRequest.serialNumber)
-                ? String(selectedRequest.serialNumber).trim()
-                : "",
-        );
-        setRepairNotes({
-            troubleDescription: selectedRequest.troubleDescription ?? "",
-            replacedParts: selectedRequest.replacedParts ?? "",
-            reconditionedParts: selectedRequest.reconditionedParts ?? "",
+        queueMicrotask(() => {
+            setSerialNumberInput(
+                hasValidSerialNumber(selectedRequest.serialNumber)
+                    ? String(selectedRequest.serialNumber).trim()
+                    : "",
+            );
+            setRepairNotes({
+                troubleDescription: selectedRequest.troubleDescription ?? "",
+                replacedParts: selectedRequest.replacedParts ?? "",
+                reconditionedParts: selectedRequest.reconditionedParts ?? "",
+            });
+            setBeforePhotoUrl(null);
+            setProgressPhotoUrl(null);
+            setAfterPhotoUrl(null);
+            setPendingPhotoTypes({});
         });
-        setBeforePhotoUrl(null);
-        setProgressPhotoUrl(null);
-        setAfterPhotoUrl(null);
-        setPendingPhotoTypes({});
     }, [selectedRequest]);
 
     const closeDetail = () => {

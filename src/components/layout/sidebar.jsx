@@ -60,11 +60,6 @@ const menuByRole = {
                     icon: ShieldCheck,
                 },
                 {
-                    label: "Pencairan Trip",
-                    path: "/business-trip/disbursement",
-                    icon: Wallet,
-                },
-                {
                     label: "Verifikasi Realisasi",
                     path: "/business-trip/realization-verification",
                     icon: ClipboardCheck,
@@ -97,11 +92,6 @@ const menuByRole = {
                     label: "Approval Trip",
                     path: "/business-trip/approval",
                     icon: ShieldCheck,
-                },
-                {
-                    label: "Pencairan Trip",
-                    path: "/business-trip/disbursement",
-                    icon: Wallet,
                 },
                 {
                     label: "Verifikasi Realisasi",
@@ -427,68 +417,6 @@ const usePendingBusinessTripApprovalCount = (role, userId, isOnline) => {
     return isOnline ? pendingCount : 0;
 };
 
-const usePendingBusinessTripDisbursementCount = (role, userId, isOnline) => {
-    const [pendingCount, setPendingCount] = useState(0);
-
-    useEffect(() => {
-        if (!isOnline || !userId || !["admin", "management"].includes(role)) {
-            return undefined;
-        }
-
-        let mounted = true;
-        const loadPendingCount = async () => {
-            const { count, error } = await supabase
-                .from("business_trips")
-                .select("id", { count: "exact", head: true })
-                .eq("status", "approved")
-                .gt("requested_amount", 0)
-                .neq("requester_id", userId);
-
-            if (error) {
-                console.warn(
-                    "[Sidebar] Business Trip disbursement count skipped:",
-                    error.message,
-                );
-                if (mounted) setPendingCount(0);
-                return;
-            }
-
-            if (mounted) setPendingCount(count ?? 0);
-        };
-
-        loadPendingCount();
-        const channelName = createUniqueChannelName(
-            "business-trip-disbursement-badge",
-            userId,
-        );
-        const channel = supabase
-            .channel(channelName)
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "business_trips" },
-                loadPendingCount,
-            );
-        channel.subscribe();
-
-        const intervalId = setInterval(loadPendingCount, 8000);
-        const handleFocus = () => {
-            if (document.visibilityState === "visible") loadPendingCount();
-        };
-        document.addEventListener("visibilitychange", handleFocus);
-        window.addEventListener("focus", handleFocus);
-
-        return () => {
-            mounted = false;
-            clearInterval(intervalId);
-            document.removeEventListener("visibilitychange", handleFocus);
-            window.removeEventListener("focus", handleFocus);
-            supabase.removeChannel(channel);
-        };
-    }, [isOnline, role, userId]);
-
-    return isOnline ? pendingCount : 0;
-};
-
 const usePendingBusinessTripRealizationVerificationCount = (
     role,
     userId,
@@ -575,8 +503,6 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         user?.id,
         isOnline,
     );
-    const pendingBusinessTripDisbursementCount =
-        usePendingBusinessTripDisbursementCount(role, user?.id, isOnline);
     const pendingBusinessTripRealizationVerificationCount =
         usePendingBusinessTripRealizationVerificationCount(
             role,
@@ -602,7 +528,6 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         "/reimburse": pendingReimbursementCount,
         "/loans": pendingLoanCount,
         "/business-trip/approval": pendingBusinessTripApprovalCount,
-        "/business-trip/disbursement": pendingBusinessTripDisbursementCount,
         "/business-trip/realization-verification":
             pendingBusinessTripRealizationVerificationCount,
     };
@@ -1102,8 +1027,6 @@ export function MobileBottomNav() {
         user?.id,
         isOnline,
     );
-    const pendingBusinessTripDisbursementCount =
-        usePendingBusinessTripDisbursementCount(role, user?.id, isOnline);
     const pendingBusinessTripRealizationVerificationCount =
         usePendingBusinessTripRealizationVerificationCount(
             role,
@@ -1127,7 +1050,6 @@ export function MobileBottomNav() {
         "/reimburse": pendingReimbursementCount,
         "/loans": pendingLoanCount,
         "/business-trip/approval": pendingBusinessTripApprovalCount,
-        "/business-trip/disbursement": pendingBusinessTripDisbursementCount,
         "/business-trip/realization-verification":
             pendingBusinessTripRealizationVerificationCount,
     };
@@ -1242,7 +1164,6 @@ export function MobileBottomNav() {
         pendingReimbursementCount,
         pendingLoanCount,
         pendingBusinessTripApprovalCount,
-        pendingBusinessTripDisbursementCount,
         pendingBusinessTripRealizationVerificationCount,
         menus,
     ]);

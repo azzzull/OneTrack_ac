@@ -30,6 +30,8 @@ docs/**/*.md
 docs/**/*.sql
 
 supabase/**/*.sql
+!supabase/migrations/
+!supabase/migrations/*.sql
 
 
 # Ignore ad-hoc markdown files, keep README files
