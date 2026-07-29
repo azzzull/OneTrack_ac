@@ -126,14 +126,49 @@ const getProfileDisplayName = (profile) =>
     profile?.email ||
     "";
 
-const getBusinessTripPhotoUrl = () => "";
+const normalizeBusinessTripStoragePath = (value = "") => {
+    const rawValue = String(value ?? "").trim();
+    if (!rawValue) return "";
+
+    try {
+        const url = new URL(rawValue);
+        const marker = `/storage/v1/object/${BUSINESS_TRIP_PHOTO_BUCKET}/`;
+        const signedMarker = `/storage/v1/object/sign/${BUSINESS_TRIP_PHOTO_BUCKET}/`;
+        const markerIndex = url.pathname.indexOf(marker);
+        const signedMarkerIndex = url.pathname.indexOf(signedMarker);
+
+        if (markerIndex >= 0) {
+            return decodeURIComponent(
+                url.pathname.slice(markerIndex + marker.length),
+            ).replace(/^\/+/, "");
+        }
+        if (signedMarkerIndex >= 0) {
+            return decodeURIComponent(
+                url.pathname.slice(signedMarkerIndex + signedMarker.length),
+            ).replace(/^\/+/, "");
+        }
+    } catch {
+        // Relative storage paths are expected for normal Business Trip photos.
+    }
+
+    return rawValue
+        .replace(new RegExp(`^${BUSINESS_TRIP_PHOTO_BUCKET}/`), "")
+        .replace(/^\/+/, "");
+};
 
 const getBusinessTripSignedPhotoUrl = async (storagePath) => {
-    if (!storagePath) return "";
+    const normalizedPath = normalizeBusinessTripStoragePath(storagePath);
+    if (!normalizedPath) return "";
     const { data, error } = await supabase.storage
         .from(BUSINESS_TRIP_PHOTO_BUCKET)
-        .createSignedUrl(storagePath, 60 * 60);
-    if (error) return "";
+        .createSignedUrl(normalizedPath, 60 * 60);
+    if (error) {
+        console.warn("[BusinessTrip] failed to create photo preview URL", {
+            storagePath: normalizedPath,
+            message: error.message,
+        });
+        return "";
+    }
     return data?.signedUrl ?? "";
 };
 
@@ -213,8 +248,9 @@ const mapAgendaPhotoFromDb = (photo) => ({
     name: photo.original_file_name ?? photo.file_name ?? "Foto bukti kunjungan",
     size: Number(photo.file_size ?? 0),
     mimeType: photo.mime_type ?? "",
-    storagePath: photo.storage_path,
-    previewUrl: getBusinessTripPhotoUrl(photo.storage_path),
+    storagePath: normalizeBusinessTripStoragePath(photo.storage_path),
+    previewUrl: "",
+    agendaId: photo.agenda_id,
     uploadedBy: photo.uploaded_by,
     createdAt: photo.created_at,
 });
@@ -434,6 +470,23 @@ const loadSettlementMapByTripIds = async (tripIds) => {
     }, {});
 };
 
+const loadAgendaPhotoCountMapByTripIds = async (tripIds) => {
+    const ids = [...new Set(tripIds.filter(Boolean))];
+    if (ids.length === 0) return {};
+
+    const { data, error } = await supabase
+        .from("business_trip_agenda_photos")
+        .select("business_trip_id")
+        .in("business_trip_id", ids);
+
+    if (error) throw error;
+
+    return (data ?? []).reduce((acc, item) => {
+        acc[item.business_trip_id] = (acc[item.business_trip_id] ?? 0) + 1;
+        return acc;
+    }, {});
+};
+
 const mapAccommodationForBusinessTrip = (item, fallbackRequestedAmount = 0) => {
     if (!item) {
         return {
@@ -457,6 +510,21 @@ const mapAccommodationForBusinessTrip = (item, fallbackRequestedAmount = 0) => {
     };
 };
 
+const getAccommodationPaidAmount = (accommodation) => {
+    if (!accommodation) return 0;
+    const status = String(accommodation.status ?? "").toLowerCase();
+    const hasPaymentProof = Boolean(
+        accommodation.transfer_proof_url ?? accommodation.transferProofUrl,
+    );
+    const isPaid =
+        ["realization_process", "partial_realized", "realized"].includes(status) ||
+        (status === "approved" && hasPaymentProof);
+
+    return isPaid
+        ? Number(accommodation.approved_amount ?? accommodation.approvedAmount ?? 0)
+        : 0;
+};
+
 const attachAccommodationAndDisbursement = async (trips) => {
     const tripIds = trips.map((trip) => trip.id);
     const [accommodationMap, disbursementMap, settlementMap] = await Promise.all([
@@ -465,16 +533,75 @@ const attachAccommodationAndDisbursement = async (trips) => {
         loadSettlementMapByTripIds(tripIds),
     ]);
 
-    return trips.map((trip) => ({
-        ...trip,
-        accommodation: accommodationMap[trip.id] ?? null,
-        accommodationRequest: mapAccommodationForBusinessTrip(
-            accommodationMap[trip.id],
+    return trips.map((trip) => {
+        const accommodation = accommodationMap[trip.id] ?? null;
+        const accommodationRequest = mapAccommodationForBusinessTrip(
+            accommodation,
             trip.accommodationRequest?.requestedAmount,
-        ),
-        advanceDisbursement: disbursementMap[trip.id] ?? null,
-        settlements: settlementMap[trip.id] ?? trip.settlements ?? [],
-    }));
+        );
+        const legacyDisbursement = disbursementMap[trip.id] ?? null;
+        const paidAmount = getAccommodationPaidAmount(accommodation);
+        const disbursedAmount = paidAmount || Number(legacyDisbursement?.amount ?? 0);
+        const totalRealizationAmount = Number(trip.totalRealizationAmount ?? 0);
+        const settlementDifference = disbursedAmount - totalRealizationAmount;
+        const computedSettlementStatus =
+            settlementDifference > 0
+                ? BUSINESS_TRIP_DB_STATUS.PENDING_REFUND
+                : settlementDifference < 0
+                  ? BUSINESS_TRIP_DB_STATUS.PENDING_ADDITIONAL_PAYMENT
+                  : BUSINESS_TRIP_DB_STATUS.COMPLETED;
+        const canUseComputedSettlementStatus = [
+            DB_TO_UI_STATUS[BUSINESS_TRIP_DB_STATUS.PENDING_REFUND],
+            DB_TO_UI_STATUS[BUSINESS_TRIP_DB_STATUS.PENDING_ADDITIONAL_PAYMENT],
+        ].includes(trip.status);
+
+        return {
+            ...trip,
+            status: canUseComputedSettlementStatus
+                ? DB_TO_UI_STATUS[computedSettlementStatus]
+                : trip.status,
+            accommodation,
+            accommodationRequest,
+            advanceDisbursement: legacyDisbursement ?? (
+                disbursedAmount > 0
+                    ? {
+                          amount: disbursedAmount,
+                          disbursedAt:
+                              accommodationRequest.reviewedAt ??
+                              accommodationRequest.updatedAt ??
+                              null,
+                          source: "accommodation",
+                      }
+                    : null
+            ),
+            disbursedAmount,
+            settlementDifference,
+            settlementStatus: canUseComputedSettlementStatus
+                ? computedSettlementStatus === BUSINESS_TRIP_DB_STATUS.COMPLETED
+                    ? "not_required"
+                    : computedSettlementStatus
+                : trip.settlementStatus,
+            settlements: settlementMap[trip.id] ?? trip.settlements ?? [],
+        };
+    });
+};
+
+const matchesFinalBusinessTripStatuses = (trip, statuses) => {
+    const finalStatus = UI_TO_DB_STATUS[trip.status] ?? trip.status;
+    return statuses.includes(finalStatus);
+};
+
+const getFinalStatusCandidateDbStatuses = (statusFilter, statuses) => {
+    if (statusFilter === "Selesai") {
+        return [
+            ...new Set([
+                ...statuses,
+                BUSINESS_TRIP_DB_STATUS.PENDING_REFUND,
+                BUSINESS_TRIP_DB_STATUS.PENDING_ADDITIONAL_PAYMENT,
+            ]),
+        ];
+    }
+    return statuses;
 };
 
 const buildProjectMap = (projects) =>
@@ -501,64 +628,47 @@ const applyClientSearch = (rows, projects, search) => {
     });
 };
 
-const getTripDateLabelFromRow = (row) => {
-    if (row.date_mode === "range") {
-        return [toDateOnly(row.trip_start_date), toDateOnly(row.trip_end_date)]
-            .filter(Boolean)
-            .join(" - ");
-    }
-    return toDateOnly(row.trip_date);
-};
+const mapBusinessTripReportFromTrip = (trip) => ({
+    id: trip.id,
+    businessTripNo: trip.businessTripNo,
+    requesterName: trip.requesterName ?? "",
+    projectLabel: trip.projectLabel ?? "-",
+    title: trip.title ?? "",
+    createdAt: trip.createdAt,
+    tripDateLabel:
+        trip.dateMode === "range"
+            ? [trip.startDate, trip.endDate].filter(Boolean).join(" - ")
+            : trip.tripDate,
+    initiatorName: trip.initiatorName ?? "",
+    status: trip.status,
+    dbStatus: UI_TO_DB_STATUS[trip.status] ?? trip.status,
+    requestedAmount: Number(trip.accommodationRequest?.requestedAmount ?? 0),
+    disbursedAmount: Number(trip.disbursedAmount ?? 0),
+    totalRealizationAmount: Number(trip.totalRealizationAmount ?? 0),
+    settlementDifference: Number(trip.settlementDifference ?? 0),
+    settlementStatus: trip.settlementStatus ?? "none",
+    completedAt: trip.completedAt,
+    agendaCount: trip.agendas?.length ?? trip.agendaCount ?? 0,
+    photoCount: trip.photoCount ?? 0,
+    refundAmount: (trip.settlements ?? [])
+        .filter((item) => item.type === "refund")
+        .reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
+    additionalPaymentAmount: (trip.settlements ?? [])
+        .filter((item) => item.type === "additional_payment")
+        .reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
+});
 
-const getAccommodationPaidAmountFromRow = (row) => {
-    const accommodation = row.accommodation_requests?.[0] ?? null;
-    if (!accommodation) return 0;
-
-    const status = String(accommodation.status ?? "").toLowerCase();
-    const hasPaymentProof = Boolean(accommodation.transfer_proof_url);
-    const isPaid =
-        ["realization_process", "partial_realized", "realized"].includes(status) ||
-        (status === "approved" && hasPaymentProof);
-
-    return isPaid ? Number(accommodation.approved_amount ?? 0) : 0;
-};
-
-const mapBusinessTripReportRow = (row, projectMap = {}, profileMap = {}) => {
-    const project = projectMap[row.project_id] ?? null;
-    const requester = profileMap[row.requester_id] ?? null;
-    const legacyDisbursedAmount = Number(
-        row.business_trip_advance_disbursements?.[0]?.amount ?? 0,
-    );
-    const disbursedAmount =
-        getAccommodationPaidAmountFromRow(row) || legacyDisbursedAmount;
-    const settlements = row.business_trip_settlements ?? [];
-    return {
-        id: row.id,
-        businessTripNo: row.business_trip_no,
-        requesterName: requester?.displayName ?? "",
-        projectLabel: getProjectLabel(project) || "-",
-        title: row.title ?? "",
-        createdAt: row.created_at,
-        tripDateLabel: getTripDateLabelFromRow(row),
-        initiatorName: row.initiator_name ?? "",
-        status: DB_TO_UI_STATUS[row.status] ?? row.status,
-        dbStatus: row.status,
-        requestedAmount: Number(row.requested_amount ?? 0),
-        disbursedAmount,
-        totalRealizationAmount: Number(row.total_realization_amount ?? 0),
-        settlementDifference: Number(row.settlement_difference ?? 0),
-        settlementStatus: row.settlement_status ?? "none",
-        completedAt: row.completed_at,
-        agendaCount: row.business_trip_agendas?.length ?? 0,
-        photoCount: (row.business_trip_agenda_photos ?? []).length,
-        refundAmount: settlements
-            .filter((item) => item.type === "refund")
-            .reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
-        additionalPaymentAmount: settlements
-            .filter((item) => item.type === "additional_payment")
-            .reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
-    };
-};
+const filterBusinessTripReportRows = (
+    reportRows,
+    { settlementStatus = "", status = "" } = {},
+) =>
+    reportRows.filter((row) => {
+        const rowDbStatus = UI_TO_DB_STATUS[row.status] ?? row.dbStatus ?? row.status;
+        return (
+            (!status || rowDbStatus === status) &&
+            (!settlementStatus || row.settlementStatus === settlementStatus)
+        );
+    });
 
 const applyBusinessTripReportFilters = (rows, projects, profiles, filters) => {
     const keyword = String(filters.search ?? "").trim().toLowerCase();
@@ -857,7 +967,7 @@ export const getBusinessTripsForRealizationVerification = async ({
 
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-    const { data, error, count } = await query.range(from, to);
+    const { data, error } = await query.range(from, to);
     if (error) throw error;
 
     const rows = data ?? [];
@@ -867,14 +977,15 @@ export const getBusinessTripsForRealizationVerification = async ({
         search,
     });
     const decorated = await decorateBusinessTripRowsWithMoney(filteredRows, projects);
+    const finalStatusFiltered = decorated.filter((trip) => {
+        const dbStatus = UI_TO_DB_STATUS[trip.status] ?? trip.status;
+        return statuses.includes(dbStatus);
+    });
 
     return {
-        items: decorated,
+        items: finalStatusFiltered,
         projects,
-        total:
-            search.trim() || requester.trim()
-                ? filteredRows.length
-                : count ?? filteredRows.length,
+        total: finalStatusFiltered.length,
     };
 };
 
@@ -882,13 +993,15 @@ export const getBusinessTripRealizationVerificationCounts = async ({
     endDate,
     startDate,
 } = {}) => {
+    const projects = await loadBusinessTripProjects();
     const statuses = Object.values(REALIZATION_VERIFICATION_STATUS_FILTERS);
     const entries = await Promise.all(
         statuses.map(async (status) => {
             let query = supabase
                 .from("business_trips")
-                .select("id", { count: "exact", head: true })
+                .select("*, business_trip_agendas(id, sequence_no, title, objective)")
                 .eq("status", status);
+
             if (startDate) {
                 query = query.gte("realization_submitted_at", `${startDate}T00:00:00`);
             }
@@ -898,17 +1011,89 @@ export const getBusinessTripRealizationVerificationCounts = async ({
                     `${addOneDay(endDate)}T00:00:00`,
                 );
             }
-            const { count, error } = await query;
+
+            const { data, error } = await query;
             if (error) throw error;
-            return [status, Number(count ?? 0)];
+            const decorated = await decorateBusinessTripRowsWithMoney(
+                data ?? [],
+                projects,
+            );
+            const finalCount = decorated.filter((trip) => {
+                const dbStatus = UI_TO_DB_STATUS[trip.status] ?? trip.status;
+                return dbStatus === status;
+            }).length;
+            return [status, finalCount];
         }),
     );
-    return Object.fromEntries(entries);
+
+return Object.fromEntries(entries);
+};
+
+const hydrateBusinessTripRealizationDetail = async (trip, tripId) => {
+    const [{ data: realizationRows, error: realizationError }, photoRows] =
+        await Promise.all([
+            supabase
+                .from("business_trip_agenda_realizations")
+                .select("*")
+                .eq("business_trip_id", tripId),
+            getBusinessTripAgendaPhotosByTripId(tripId),
+        ]);
+
+    if (realizationError) throw realizationError;
+
+    const realizationMap = (realizationRows ?? []).reduce((acc, row) => {
+        acc[row.agenda_id] = row;
+        return acc;
+    }, {});
+    const photoMap = photoRows.reduce((acc, photo) => {
+        const agendaId = photo.agendaId ?? photo.agenda_id;
+        if (!agendaId) return acc;
+        acc[agendaId] = [...(acc[agendaId] ?? []), photo];
+        return acc;
+    }, {});
+
+    return {
+        ...trip,
+        agendas: trip.agendas.map((agenda) => {
+            const realization = realizationMap[agenda.id];
+            return {
+                ...agenda,
+                realization: {
+                    ...(agenda.realization ?? {}),
+                    id: realization?.id ?? agenda.realization?.id ?? "",
+                    result:
+                        realization?.result ?? agenda.realization?.result ?? "",
+                    realizedAmount: Number(
+                        realization?.realized_amount ??
+                            agenda.realization?.realizedAmount ??
+                            0,
+                    ),
+                    status:
+                        realization?.status ??
+                        agenda.realization?.status ??
+                        "draft",
+                    submittedAt:
+                        realization?.submitted_at ??
+                        agenda.realization?.submittedAt ??
+                        null,
+                    verifiedAt:
+                        realization?.verified_at ??
+                        agenda.realization?.verifiedAt ??
+                        null,
+                    photos:
+                        photoMap[agenda.id] ?? agenda.realization?.photos ?? [],
+                },
+            };
+        }),
+    };
 };
 
 export const getBusinessTripRealizationVerificationDetail = async (tripId) => {
     const result = await getBusinessTripApprovalDetail(tripId);
-    return result;
+    return {
+        ...result,
+        trip: await hydrateBusinessTripRealizationDetail(result.trip, tripId),
+    };
 };
 
 export const getBusinessTripAccommodation = async (tripId) => {
@@ -948,8 +1133,12 @@ export const getMyBusinessTrips = async ({
     const statuses = STATUS_GROUP_TO_DB_STATUSES[statusFilter] ?? (
         UI_TO_DB_STATUS[statusFilter] ? [UI_TO_DB_STATUS[statusFilter]] : []
     );
-    if (statuses.length === 1) query = query.eq("status", statuses[0]);
-    if (statuses.length > 1) query = query.in("status", statuses);
+    const candidateStatuses = getFinalStatusCandidateDbStatuses(
+        statusFilter,
+        statuses,
+    );
+    if (candidateStatuses.length === 1) query = query.eq("status", candidateStatuses[0]);
+    if (candidateStatuses.length > 1) query = query.in("status", candidateStatuses);
 
     if (sortMode === "oldest") {
         query = query.order("created_at", { ascending: true });
@@ -964,7 +1153,10 @@ export const getMyBusinessTrips = async ({
 
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-    const { data, error, count } = await query.range(from, to);
+    const shouldPageAfterFinalStatusFilter = statuses.length > 0;
+    const { data, error, count } = shouldPageAfterFinalStatusFilter
+        ? await query
+        : await query.range(from, to);
     if (error) throw error;
 
     const searchedRows = applyClientSearch(data ?? [], projects, search);
@@ -974,10 +1166,24 @@ export const getMyBusinessTrips = async ({
         mapBusinessTripFromDb(row, projectMap),
     );
 
+    const decoratedItems = await attachAccommodationAndDisbursement(mappedItems);
+    const finalStatusItems =
+        statuses.length > 0
+            ? decoratedItems.filter((trip) =>
+                  matchesFinalBusinessTripStatuses(trip, statuses),
+              )
+            : decoratedItems;
+    const pagedItems = shouldPageAfterFinalStatusFilter
+        ? finalStatusItems.slice(from, to + 1)
+        : finalStatusItems;
+
     return {
-        items: await attachAccommodationAndDisbursement(mappedItems),
+        items: pagedItems,
         projects,
-        total: search.trim() ? searchedRows.length : count ?? searchedRows.length,
+        total:
+            search.trim() || statuses.length > 0
+                ? finalStatusItems.length
+                : count ?? searchedRows.length,
     };
 };
 
@@ -988,12 +1194,18 @@ export const getBusinessTripStatusCounts = async ({
 } = {}) => {
     const sessionRequesterId = await ensureSupabaseSession();
     const resolvedRequesterId = sessionRequesterId || requesterId;
+    const projects = await loadBusinessTripProjects();
+    const projectMap = buildProjectMap(projects);
     const entries = await Promise.all(
         Object.entries(STATUS_GROUP_TO_DB_STATUSES).map(
             async ([uiStatus, statuses]) => {
+                const candidateStatuses = getFinalStatusCandidateDbStatuses(
+                    uiStatus,
+                    statuses,
+                );
                 let query = supabase
                     .from("business_trips")
-                    .select("id", { count: "exact", head: true });
+                    .select("*, business_trip_agendas(id, sequence_no, title, objective)");
 
                 if (startDate) {
                     query = query.gte("created_at", `${startDate}T00:00:00`);
@@ -1004,12 +1216,24 @@ export const getBusinessTripStatusCounts = async ({
                 if (resolvedRequesterId) {
                     query = query.eq("requester_id", resolvedRequesterId);
                 }
-                if (statuses.length === 1) query = query.eq("status", statuses[0]);
-                if (statuses.length > 1) query = query.in("status", statuses);
+                if (candidateStatuses.length === 1) {
+                    query = query.eq("status", candidateStatuses[0]);
+                }
+                if (candidateStatuses.length > 1) {
+                    query = query.in("status", candidateStatuses);
+                }
 
-                const { count, error } = await query;
+                const { data, error } = await query;
                 if (error) throw error;
-                return [uiStatus, Number(count ?? 0)];
+                const mappedItems = (data ?? []).map((row) =>
+                    mapBusinessTripFromDb(row, projectMap),
+                );
+                const decoratedItems =
+                    await attachAccommodationAndDisbursement(mappedItems);
+                const finalCount = decoratedItems.filter((trip) =>
+                    matchesFinalBusinessTripStatuses(trip, statuses),
+                ).length;
+                return [uiStatus, finalCount];
             },
         ),
     );
@@ -1032,13 +1256,14 @@ export const getBusinessTripById = async (tripId) => {
     const { data, error } = result;
     if (error) throw error;
     const [trip] = await decorateBusinessTripRowsWithMoney([data], projects);
+    const hydratedTrip = await hydrateBusinessTripRealizationDetail(trip, tripId);
     const actorMap = await loadProfileMap(
         (data.business_trip_status_history ?? []).map((item) => item.acted_by),
     );
     return {
         projects,
         trip: {
-            ...trip,
+            ...hydratedTrip,
             statusHistory: (data.business_trip_status_history ?? [])
                 .sort((a, b) => new Date(a.acted_at ?? 0) - new Date(b.acted_at ?? 0))
                 .map((item) => ({
@@ -1454,10 +1679,7 @@ const buildBusinessTripReportQuery = ({
 } = {}) => {
     let query = supabase
         .from("business_trips")
-        .select(
-            "*, business_trip_agendas(id), business_trip_agenda_photos(id), accommodation_requests(approved_amount, status, transfer_proof_url, reviewed_at), business_trip_advance_disbursements(amount), business_trip_settlements(type, amount)",
-            { count: "exact" },
-        );
+        .select("*, business_trip_agendas(id)", { count: "exact" });
 
     const dateColumn =
         dateBasis === "completed"
@@ -1542,9 +1764,7 @@ export const getBusinessTripReport = async ({
         dateBasis,
         endDate,
         projectId,
-        settlementStatus,
         startDate,
-        status,
         sortMode,
     };
 
@@ -1554,57 +1774,55 @@ export const getBusinessTripReport = async ({
             : dateBasis === "trip"
               ? "trip_date"
               : "created_at";
-    const usesClientFilter = Boolean(search.trim() || requester.trim());
-    const rows = usesClientFilter
-        ? await fetchBusinessTripReportRows(baseFilters, { orderColumn, sortMode })
-        : [];
-    const profileMap = await loadProfileMap(rows.map((row) => row.requester_id));
+    const rows = await fetchBusinessTripReportRows(baseFilters, {
+        orderColumn,
+        sortMode,
+    });
+    const [profileMap, photoCountMap] = await Promise.all([
+        loadProfileMap(rows.map((row) => row.requester_id)),
+        loadAgendaPhotoCountMapByTripIds(rows.map((row) => row.id)),
+    ]);
     const projectMap = buildProjectMap(projects);
-
-    if (usesClientFilter) {
-        const filteredRows = applyBusinessTripReportFilters(
-            rows,
-            projects,
-            profileMap,
-            { requester, search },
-        );
-        const from = (page - 1) * pageSize;
-        return {
-            items: filteredRows
-                .slice(from, from + pageSize)
-                .map((row) => mapBusinessTripReportRow(row, projectMap, profileMap)),
-            projects,
-            total: filteredRows.length,
-        };
-    }
-
-    let query = buildBusinessTripReportQuery(baseFilters).order(orderColumn, {
-        ascending: sortMode === "oldest",
-        nullsFirst: false,
+    const filteredRows = applyBusinessTripReportFilters(
+        rows,
+        projects,
+        profileMap,
+        { requester, search },
+    );
+    const mappedTrips = filteredRows.map((row) => ({
+        ...mapBusinessTripFromDb(row, projectMap),
+        requesterName:
+            profileMap[row.requester_id]?.displayName ??
+            row.initiator_name ??
+            "",
+        photoCount: photoCountMap[row.id] ?? 0,
+    }));
+    const decoratedTrips = await attachAccommodationAndDisbursement(mappedTrips);
+    const reportRows = decoratedTrips.map(mapBusinessTripReportFromTrip);
+    const finalRows = filterBusinessTripReportRows(reportRows, {
+        settlementStatus,
+        status,
     });
     const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    const { data, error, count } = await query.range(from, to);
-    if (error) throw error;
-
-    const pageRows = data ?? [];
-    const pageProfileMap = await loadProfileMap(
-        pageRows.map((row) => row.requester_id),
-    );
 
     return {
-        items: pageRows.map((row) =>
-            mapBusinessTripReportRow(row, projectMap, pageProfileMap),
-        ),
+        items: finalRows.slice(from, from + pageSize),
         projects,
-        total: count ?? pageRows.length,
+        total: finalRows.length,
     };
 };
 
 export const getBusinessTripReportSummary = async (filters = {}) => {
     const projects = await loadBusinessTripProjects();
-    const rows = await fetchBusinessTripReportRows(filters);
-    const profileMap = await loadProfileMap(rows.map((row) => row.requester_id));
+    const rows = await fetchBusinessTripReportRows({
+        ...filters,
+        settlementStatus: "",
+        status: "",
+    });
+    const [profileMap, photoCountMap] = await Promise.all([
+        loadProfileMap(rows.map((row) => row.requester_id)),
+        loadAgendaPhotoCountMapByTripIds(rows.map((row) => row.id)),
+    ]);
     const filteredRows = applyBusinessTripReportFilters(
         rows,
         projects,
@@ -1612,8 +1830,18 @@ export const getBusinessTripReportSummary = async (filters = {}) => {
         filters,
     );
     const projectMap = buildProjectMap(projects);
-    const reportRows = filteredRows.map((row) =>
-        mapBusinessTripReportRow(row, projectMap, profileMap),
+    const mappedTrips = filteredRows.map((row) => ({
+        ...mapBusinessTripFromDb(row, projectMap),
+        requesterName:
+            profileMap[row.requester_id]?.displayName ??
+            row.initiator_name ??
+            "",
+        photoCount: photoCountMap[row.id] ?? 0,
+    }));
+    const decoratedTrips = await attachAccommodationAndDisbursement(mappedTrips);
+    const reportRows = filterBusinessTripReportRows(
+        decoratedTrips.map(mapBusinessTripReportFromTrip),
+        filters,
     );
 
     return reportRows.reduce(
@@ -1640,8 +1868,15 @@ export const getBusinessTripReportSummary = async (filters = {}) => {
 
 export const exportBusinessTripReportRows = async (filters = {}) => {
     const projects = await loadBusinessTripProjects();
-    const rows = await fetchBusinessTripReportRows(filters);
-    const profileMap = await loadProfileMap(rows.map((row) => row.requester_id));
+    const rows = await fetchBusinessTripReportRows({
+        ...filters,
+        settlementStatus: "",
+        status: "",
+    });
+    const [profileMap, photoCountMap] = await Promise.all([
+        loadProfileMap(rows.map((row) => row.requester_id)),
+        loadAgendaPhotoCountMapByTripIds(rows.map((row) => row.id)),
+    ]);
     const filteredRows = applyBusinessTripReportFilters(
         rows,
         projects,
@@ -1649,8 +1884,18 @@ export const exportBusinessTripReportRows = async (filters = {}) => {
         filters,
     );
     const projectMap = buildProjectMap(projects);
-    return filteredRows.map((row) =>
-        mapBusinessTripReportRow(row, projectMap, profileMap),
+    const mappedTrips = filteredRows.map((row) => ({
+        ...mapBusinessTripFromDb(row, projectMap),
+        requesterName:
+            profileMap[row.requester_id]?.displayName ??
+            row.initiator_name ??
+            "",
+        photoCount: photoCountMap[row.id] ?? 0,
+    }));
+    const decoratedTrips = await attachAccommodationAndDisbursement(mappedTrips);
+    return filterBusinessTripReportRows(
+        decoratedTrips.map(mapBusinessTripReportFromTrip),
+        filters,
     );
 };
 
@@ -1808,6 +2053,27 @@ export const getBusinessTripAgendaPhotos = async ({ agendaId, businessTripId }) 
         .select("*")
         .eq("business_trip_id", businessTripId)
         .eq("agenda_id", agendaId)
+        .order("created_at", { ascending: true });
+
+    if (error) throw error;
+    return Promise.all(
+        (data ?? []).map(async (photo) => {
+            const mappedPhoto = mapAgendaPhotoFromDb(photo);
+            return {
+                ...mappedPhoto,
+                previewUrl: await getBusinessTripSignedPhotoUrl(
+                    mappedPhoto.storagePath,
+                ),
+            };
+        }),
+    );
+};
+
+const getBusinessTripAgendaPhotosByTripId = async (businessTripId) => {
+    const { data, error } = await supabase
+        .from("business_trip_agenda_photos")
+        .select("*")
+        .eq("business_trip_id", businessTripId)
         .order("created_at", { ascending: true });
 
     if (error) throw error;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
     AlertCircle,
@@ -65,7 +65,8 @@ export default function BusinessTripRealizationPage() {
         loading,
         updateTrip,
     } = useBusinessTripDraft();
-    const trip = businessTrips.find((item) => item.id === tripId);
+    const contextTrip = businessTrips.find((item) => item.id === tripId);
+    const [detailTrip, setDetailTrip] = useState(null);
     const [touched, setTouched] = useState({});
     const [toast, setToast] = useState("");
     const [confirmOpen, setConfirmOpen] = useState(false);
@@ -73,15 +74,22 @@ export default function BusinessTripRealizationPage() {
     const [saving, setSaving] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [uploadingAgendaId, setUploadingAgendaId] = useState("");
+    const loadedTripIdRef = useRef("");
+    const trip = detailTrip?.id === tripId ? detailTrip : contextTrip;
 
     useEffect(() => {
-        if (!tripId || trip) return;
+        if (!tripId || loadedTripIdRef.current === tripId) return;
+        loadedTripIdRef.current = tripId;
         loadBusinessTripById(tripId)
+            .then((loadedTrip) => {
+                setDetailTrip(loadedTrip);
+            })
             .catch((error) => {
                 console.error("[BusinessTrip] realization load failed", error);
                 setLoadError("Gagal memuat laporan realisasi.");
+                loadedTripIdRef.current = "";
             });
-    }, [loadBusinessTripById, trip, tripId]);
+    }, [loadBusinessTripById, tripId]);
 
     if (!trip && loading) {
         return (
@@ -130,13 +138,37 @@ export default function BusinessTripRealizationPage() {
         .map(normalizeAgenda)
         .filter((agenda) => getAgendaTitle(agenda).trim());
 
+    const agendaValidation = agendas.reduce((acc, agenda) => {
+        acc[agenda.id] = {
+            amount: Number(agenda.realization?.realizedAmount ?? 0) < 0,
+            result: !hasText(agenda.realization?.result),
+            photos: (agenda.realization?.photos ?? []).length === 0,
+        };
+        return acc;
+    }, {});
+
     const showToast = (message) => {
         setToast(message);
         window.setTimeout(() => setToast(""), 2600);
     };
 
+    const getRealizationSnapshot = () => ({
+        ...trip,
+        agendas,
+    });
+
+    const applyTripUpdate = (updater) => {
+        setDetailTrip((current) => {
+            if (!current || current.id !== trip.id) return current;
+            return typeof updater === "function"
+                ? updater(current)
+                : { ...current, ...updater };
+        });
+        updateTrip(trip.id, updater);
+    };
+
     const updateRealization = (agendaId, patch) => {
-        updateTrip(trip.id, (current) => ({
+        applyTripUpdate((current) => ({
             ...current,
             agendas: current.agendas.map((agenda) => {
                 const normalizedAgenda = normalizeAgenda(agenda);
@@ -156,7 +188,7 @@ export default function BusinessTripRealizationPage() {
     const addPhotos = async (agendaId, event) => {
         const files = Array.from(event.target.files ?? []);
         if (files.length === 0) return;
-        const agenda = trip.agendas.find((item) => item.id === agendaId);
+        const agenda = agendas.find((item) => item.id === agendaId);
         const currentPhotos = agenda?.realization?.photos ?? [];
         setUploadingAgendaId(agendaId);
         try {
@@ -173,6 +205,13 @@ export default function BusinessTripRealizationPage() {
             updateRealization(agendaId, {
                 photos: [...currentPhotos, ...uploadedPhotos],
             });
+            setTouched((current) => ({
+                ...current,
+                [agendaId]: {
+                    ...current[agendaId],
+                    photos: false,
+                },
+            }));
             showToast(`${uploadedPhotos.length} foto bukti kunjungan diunggah.`);
         } catch (uploadError) {
             console.error("[BusinessTrip] upload photo failed", uploadError);
@@ -184,7 +223,7 @@ export default function BusinessTripRealizationPage() {
     };
 
     const removePhoto = async (agendaId, photoId) => {
-        const agenda = trip.agendas.find((item) => item.id === agendaId);
+        const agenda = agendas.find((item) => item.id === agendaId);
         const photo = agenda?.realization?.photos?.find(
             (item) => item.id === photoId,
         );
@@ -205,7 +244,10 @@ export default function BusinessTripRealizationPage() {
     const saveDraft = async () => {
         setSaving(true);
         try {
-            const savedTrip = await saveBusinessTripRealizationDraft({ trip });
+            const savedTrip = await saveBusinessTripRealizationDraft({
+                trip: getRealizationSnapshot(),
+            });
+            setDetailTrip(savedTrip);
             updateTrip(trip.id, savedTrip);
             showToast("Draft laporan realisasi berhasil disimpan");
             window.setTimeout(() => navigate("/business-trip"), 550);
@@ -222,15 +264,13 @@ export default function BusinessTripRealizationPage() {
         let valid = true;
 
         agendas.forEach((agenda) => {
-            const resultValid = hasText(agenda.realization?.result);
-            const photosValid = (agenda.realization?.photos ?? []).length > 0;
-            const amountValid = Number(agenda.realization?.realizedAmount ?? 0) >= 0;
+            const invalid = agendaValidation[agenda.id];
             nextTouched[agenda.id] = {
-                amount: !amountValid,
-                result: !resultValid,
-                photos: !photosValid,
+                amount: invalid.amount,
+                result: invalid.result,
+                photos: invalid.photos,
             };
-            if (!resultValid || !photosValid || !amountValid) valid = false;
+            if (invalid.result || invalid.photos || invalid.amount) valid = false;
         });
 
         setTouched(nextTouched);
@@ -245,8 +285,11 @@ export default function BusinessTripRealizationPage() {
     const submitRealization = async () => {
         setSubmitting(true);
         try {
-            await saveBusinessTripRealizationDraft({ trip });
+            await saveBusinessTripRealizationDraft({
+                trip: getRealizationSnapshot(),
+            });
             const submittedTrip = await submitBusinessTripRealization(trip.id);
+            setDetailTrip(submittedTrip);
             updateTrip(trip.id, submittedTrip);
             setConfirmOpen(false);
             showToast("Laporan realisasi berhasil dikirim dan menunggu verifikasi");
@@ -375,7 +418,8 @@ export default function BusinessTripRealizationPage() {
                                                 {(agenda.realization?.result ?? "").length}
                                                 /1200
                                             </span>
-                                            {touched[agenda.id]?.result && (
+                                            {touched[agenda.id]?.result &&
+                                                agendaValidation[agenda.id]?.result && (
                                                 <span className="font-semibold text-red-600">
                                                     Hasil business trip wajib diisi
                                                 </span>
@@ -411,7 +455,8 @@ export default function BusinessTripRealizationPage() {
                                             }
                                             className={businessTripUi.input}
                                         />
-                                        {touched[agenda.id]?.amount && (
+                                        {touched[agenda.id]?.amount &&
+                                            agendaValidation[agenda.id]?.amount && (
                                             <p className="mt-2 text-xs font-semibold text-red-600">
                                                 Realisasi biaya tidak boleh negatif
                                             </p>
@@ -447,7 +492,8 @@ export default function BusinessTripRealizationPage() {
                                                 removePhoto(agenda.id, photoId)
                                             }
                                         />
-                                        {touched[agenda.id]?.photos && (
+                                        {touched[agenda.id]?.photos &&
+                                            agendaValidation[agenda.id]?.photos && (
                                             <p className="mt-2 text-xs font-semibold text-red-600">
                                                 Minimal satu foto bukti kunjungan
                                                 wajib ditambahkan
@@ -476,7 +522,9 @@ export default function BusinessTripRealizationPage() {
                             <DetailRow
                                 label="Disbursed Amount"
                                 value={formatAccommodationAmount(
-                                    trip.advanceDisbursement?.amount ?? 0,
+                                    trip.disbursedAmount ??
+                                        trip.advanceDisbursement?.amount ??
+                                        0,
                                 )}
                             />
                             <DetailRow

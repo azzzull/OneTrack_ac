@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import {
     AlertCircle,
     CheckCircle2,
@@ -242,6 +242,8 @@ export function StatusTimeline({ status }) {
 }
 
 export function PhotoPreviewGrid({ photos = [], onRemove, readOnly = false }) {
+    const [selectedPhoto, setSelectedPhoto] = useState(null);
+
     if (photos.length === 0) {
         return (
             <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2.5 text-[13px] text-slate-500">
@@ -251,37 +253,75 @@ export function PhotoPreviewGrid({ photos = [], onRemove, readOnly = false }) {
     }
 
     return (
-        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {photos.map((photo) => (
-                <div
-                    key={photo.id}
-                    className="group relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
-                >
-                    {photo.previewUrl ? (
-                        <img
-                            src={photo.previewUrl}
-                            alt={photo.name}
-                            className="h-16 w-full object-cover"
-                        />
-                    ) : (
-                        <div className="flex h-16 items-center justify-center text-slate-400">
-                            <FileImage size={20} />
-                        </div>
-                    )}
-                    {!readOnly && onRemove && (
+        <>
+            <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {photos.map((photo) => (
+                    <div
+                        key={photo.id}
+                        className="group relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
+                    >
+                        {photo.previewUrl ? (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedPhoto(photo)}
+                                className="block w-full focus:outline-none focus:ring-4 focus:ring-sky-100"
+                                aria-label={`Preview foto ${photo.name}`}
+                            >
+                                <img
+                                    src={photo.previewUrl}
+                                    alt={photo.name}
+                                    className="h-16 w-full object-cover"
+                                    loading="lazy"
+                                />
+                            </button>
+                        ) : (
+                            <div className="flex h-16 flex-col items-center justify-center px-1 text-center text-slate-400">
+                                <FileImage size={20} />
+                                <span className="mt-1 text-[10px] font-semibold leading-tight">
+                                    Preview gagal
+                                </span>
+                            </div>
+                        )}
+                        {!readOnly && onRemove && (
+                            <button
+                                type="button"
+                                onClick={() => onRemove(photo.id)}
+                                className="absolute right-1 top-1 rounded-full bg-white/95 p-1.5 text-red-600 shadow-sm transition hover:bg-red-50 focus:outline-none focus:ring-4 focus:ring-red-100"
+                                aria-label={`Hapus foto ${photo.name}`}
+                                title="Hapus foto"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {selectedPhoto && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4">
+                    <div className="relative max-h-full w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
                         <button
                             type="button"
-                            onClick={() => onRemove(photo.id)}
-                            className="absolute right-1 top-1 rounded-full bg-white/95 p-1.5 text-red-600 shadow-sm transition hover:bg-red-50 focus:outline-none focus:ring-4 focus:ring-red-100"
-                            aria-label={`Hapus foto ${photo.name}`}
-                            title="Hapus foto"
+                            onClick={() => setSelectedPhoto(null)}
+                            className="absolute right-3 top-3 rounded-full bg-white/95 p-2 text-slate-700 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-sky-100"
+                            aria-label="Tutup preview foto"
                         >
-                            <X size={14} />
+                            <X size={18} />
                         </button>
-                    )}
+                        <img
+                            src={selectedPhoto.previewUrl}
+                            alt={selectedPhoto.name}
+                            className="max-h-[78vh] w-full object-contain bg-slate-950"
+                        />
+                        <div className="border-t border-slate-200 px-4 py-3">
+                            <p className="truncate text-sm font-semibold text-slate-900">
+                                {selectedPhoto.name}
+                            </p>
+                        </div>
+                    </div>
                 </div>
-            ))}
-        </div>
+            )}
+        </>
     );
 }
 

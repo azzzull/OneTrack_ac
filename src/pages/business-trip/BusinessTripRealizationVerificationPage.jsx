@@ -95,7 +95,8 @@ const getProjectLabel = (project, trip) =>
     [project?.project_name, project?.customer_name].filter(Boolean).join(" - ") ||
     "Belum dipilih";
 
-const getDisbursedAmount = (trip) => Number(trip.advanceDisbursement?.amount ?? 0);
+const getDisbursedAmount = (trip) =>
+    Number(trip.disbursedAmount ?? trip.advanceDisbursement?.amount ?? 0);
 
 const getSettlementLabel = (difference) => {
     if (difference > 0) return "Sisa yang harus dikembalikan";
@@ -229,13 +230,13 @@ export default function BusinessTripRealizationVerificationPage() {
         if (!selectedTrip || revisionNote.trim().length < 10) return;
         setActionLoading("revision");
         try {
-            const trip = await requestBusinessTripRealizationRevision({
+            await requestBusinessTripRealizationRevision({
                 revisionNote,
                 tripId: selectedTrip.id,
             });
-            setSelectedTrip(trip);
             setRevisionOpen(false);
             setRevisionNote("");
+            setSelectedTrip(null);
             showToast("Laporan dikembalikan untuk revisi.");
             loadData();
         } catch (revisionError) {
@@ -254,8 +255,8 @@ export default function BusinessTripRealizationVerificationPage() {
         if (!selectedTrip) return;
         setActionLoading("verify");
         try {
-            const trip = await verifyBusinessTripRealization(selectedTrip.id);
-            setSelectedTrip(trip);
+            await verifyBusinessTripRealization(selectedTrip.id);
+            setSelectedTrip(null);
             showToast("Laporan realisasi berhasil diverifikasi.");
             loadData();
         } catch (verifyError) {

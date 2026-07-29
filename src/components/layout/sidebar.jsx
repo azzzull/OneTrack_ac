@@ -137,6 +137,19 @@ const getMenus = (role, profile) => {
     ];
 };
 
+const removeExistingChannelByName = (channelName) => {
+    supabase
+        .getChannels()
+        .filter(
+            (channel) =>
+                channel.topic === channelName ||
+                channel.topic === `realtime:${channelName}`,
+        )
+        .forEach((channel) => {
+            supabase.removeChannel(channel);
+        });
+};
+
 const usePendingAccommodationCount = (role, userId, isOnline) => {
     const [pendingCount, setPendingCount] = useState(0);
 
@@ -172,6 +185,7 @@ const usePendingAccommodationCount = (role, userId, isOnline) => {
             "accommodation-pending-badge",
             userId,
         );
+        removeExistingChannelByName(channelName);
         channel = supabase.channel(channelName).on(
             "postgres_changes",
             {
@@ -242,6 +256,7 @@ const usePendingReimbursementCount = (role, userId, isOnline) => {
             "reimbursement-pending-badge",
             userId,
         );
+        removeExistingChannelByName(channelName);
         channel = supabase.channel(channelName).on(
             "postgres_changes",
             {
@@ -322,6 +337,7 @@ const usePendingLoanCount = (role, userId, isOnline) => {
             "loan-pending-badge",
             userId,
         );
+        removeExistingChannelByName(channelName);
         channel = supabase
             .channel(channelName)
             .on(
@@ -389,6 +405,7 @@ const usePendingBusinessTripApprovalCount = (role, userId, isOnline) => {
             "business-trip-approval-badge",
             userId,
         );
+        removeExistingChannelByName(channelName);
         const channel = supabase
             .channel(channelName)
             .on(
@@ -454,6 +471,7 @@ const usePendingBusinessTripRealizationVerificationCount = (
             "business-trip-realization-verification-badge",
             userId,
         );
+        removeExistingChannelByName(channelName);
         const channel = supabase
             .channel(channelName)
             .on(
