@@ -20,7 +20,7 @@ export default function BusinessTripLayout({
             <Sidebar collapsed={collapsed} onToggle={toggle} />
             <div className="min-w-0 flex-1 transition-all duration-300">
                 <header className="sticky top-0 z-30 bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 md:static">
-                    <div className="mx-auto flex w-full max-w-screen-2xl items-center gap-2.5 px-3.5 py-2.5 md:px-6 xl:px-8">
+                    <div className="flex w-full items-center gap-2.5 px-3.5 py-2.5 md:px-6 xl:px-8">
                         {showBack && (
                             <button
                                 type="button"
@@ -47,7 +47,7 @@ export default function BusinessTripLayout({
                     </div>
                 </header>
 
-                <main className="mx-auto min-h-screen w-full max-w-screen-2xl px-3 pb-28 pt-2.5 md:px-6 md:pb-10 md:pt-4 xl:px-8">
+                <main className="min-h-screen w-full px-3 pb-28 pt-2.5 md:px-6 md:pb-10 md:pt-4 xl:px-8">
                     {children}
                 </main>
             </div>
