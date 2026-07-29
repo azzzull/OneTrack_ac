@@ -717,6 +717,19 @@ const getRealizationVerificationDbStatuses = (statusFilter) => {
     return [statusFilter];
 };
 
+const getRealizationVerificationCandidateDbStatuses = (statusFilter, statuses) => {
+    if (statusFilter === REALIZATION_VERIFICATION_STATUS_FILTERS.COMPLETED) {
+        return [
+            ...new Set([
+                ...statuses,
+                BUSINESS_TRIP_DB_STATUS.PENDING_REFUND,
+                BUSINESS_TRIP_DB_STATUS.PENDING_ADDITIONAL_PAYMENT,
+            ]),
+        ];
+    }
+    return statuses;
+};
+
 const buildBusinessTripApprovalQuery = ({
     endDate,
     projectId = "",
@@ -949,8 +962,12 @@ export const getBusinessTripsForRealizationVerification = async ({
     if (projectId) query = query.eq("project_id", projectId);
 
     const statuses = getRealizationVerificationDbStatuses(statusFilter);
-    if (statuses.length === 1) query = query.eq("status", statuses[0]);
-    if (statuses.length > 1) query = query.in("status", statuses);
+    const candidateStatuses = getRealizationVerificationCandidateDbStatuses(
+        statusFilter,
+        statuses,
+    );
+    if (candidateStatuses.length === 1) query = query.eq("status", candidateStatuses[0]);
+    if (candidateStatuses.length > 1) query = query.in("status", candidateStatuses);
 
     if (sortMode === "newest") {
         query = query.order("realization_submitted_at", {
@@ -967,7 +984,10 @@ export const getBusinessTripsForRealizationVerification = async ({
 
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-    const { data, error } = await query.range(from, to);
+    const shouldPageAfterFinalStatusFilter = candidateStatuses.length !== statuses.length;
+    const { data, error } = shouldPageAfterFinalStatusFilter
+        ? await query
+        : await query.range(from, to);
     if (error) throw error;
 
     const rows = data ?? [];
@@ -981,9 +1001,12 @@ export const getBusinessTripsForRealizationVerification = async ({
         const dbStatus = UI_TO_DB_STATUS[trip.status] ?? trip.status;
         return statuses.includes(dbStatus);
     });
+    const pagedItems = shouldPageAfterFinalStatusFilter
+        ? finalStatusFiltered.slice(from, to + 1)
+        : finalStatusFiltered;
 
     return {
-        items: finalStatusFiltered,
+        items: pagedItems,
         projects,
         total: finalStatusFiltered.length,
     };
@@ -997,10 +1020,20 @@ export const getBusinessTripRealizationVerificationCounts = async ({
     const statuses = Object.values(REALIZATION_VERIFICATION_STATUS_FILTERS);
     const entries = await Promise.all(
         statuses.map(async (status) => {
+            const candidateStatuses = getRealizationVerificationCandidateDbStatuses(
+                status,
+                [status],
+            );
             let query = supabase
                 .from("business_trips")
-                .select("*, business_trip_agendas(id, sequence_no, title, objective)")
-                .eq("status", status);
+                .select("*, business_trip_agendas(id, sequence_no, title, objective)");
+
+            if (candidateStatuses.length === 1) {
+                query = query.eq("status", candidateStatuses[0]);
+            }
+            if (candidateStatuses.length > 1) {
+                query = query.in("status", candidateStatuses);
+            }
 
             if (startDate) {
                 query = query.gte("realization_submitted_at", `${startDate}T00:00:00`);
