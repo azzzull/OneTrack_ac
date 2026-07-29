@@ -140,14 +140,15 @@ export default function LoanReports() {
         search: "",
     });
     const channelRef = useRef(null);
+    const userId = user?.id;
 
     const loadData = useCallback(async () => {
-        if (!user?.id || !role) return;
+        if (!userId || !role) return;
         setLoading(true);
         setError("");
         try {
             const [loans, requesterRows] = await Promise.all([
-                loadLoans({ role, userId: user.id }),
+                loadLoans({ role, userId }),
                 loadLoanRequesters(),
             ]);
             setRows(loans);
@@ -159,15 +160,15 @@ export default function LoanReports() {
         } finally {
             setLoading(false);
         }
-    }, [role, user?.id]);
+    }, [role, userId]);
 
     useEffect(() => {
-        loadData();
+        queueMicrotask(loadData);
     }, [loadData]);
 
     useEffect(() => {
-        if (!user?.id) return undefined;
-        const channelName = createUniqueChannelName("loan-reports", user.id);
+        if (!userId) return undefined;
+        const channelName = createUniqueChannelName("loan-reports", userId);
         channelRef.current = supabase
             .channel(channelName)
             .on(
@@ -198,7 +199,7 @@ export default function LoanReports() {
         return () => {
             if (channelRef.current) supabase.removeChannel(channelRef.current);
         };
-    }, [loadData, user?.id]);
+    }, [loadData, userId]);
 
     const filteredRows = useMemo(() => {
         const search = filters.search.trim().toLowerCase();

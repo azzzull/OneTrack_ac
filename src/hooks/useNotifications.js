@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAuth } from "../context/useAuth";
 import supabase from "../supabaseClient";
 import {
@@ -13,14 +13,13 @@ import { createUniqueChannelName } from "../utils/realtimeChannelManager";
 
 export default function useNotifications({ limit = 20, onNewNotification } = {}) {
     const { user } = useAuth();
+    const userId = user?.id;
+    const instanceId = useId();
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const isMountedRef = useRef(true);
-    const instanceIdRef = useRef(
-        `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
     const onNewNotificationRef = useRef(onNewNotification);
 
     useEffect(() => {
@@ -28,7 +27,7 @@ export default function useNotifications({ limit = 20, onNewNotification } = {})
     }, [onNewNotification]);
 
     const refresh = useCallback(async () => {
-        if (!user?.id) {
+        if (!userId) {
             setNotifications([]);
             setUnreadCount(0);
             setLoading(false);
@@ -54,18 +53,18 @@ export default function useNotifications({ limit = 20, onNewNotification } = {})
         } finally {
             if (isMountedRef.current) setLoading(false);
         }
-    }, [limit, user?.id]);
+    }, [limit, userId]);
 
     useEffect(() => {
         isMountedRef.current = true;
-        refresh();
+        queueMicrotask(refresh);
         return () => {
             isMountedRef.current = false;
         };
     }, [refresh]);
 
     useEffect(() => {
-        if (!user?.id) return undefined;
+        if (!userId) return undefined;
 
         let channel = null;
         const subscribeTimer = setTimeout(() => {
@@ -73,8 +72,8 @@ export default function useNotifications({ limit = 20, onNewNotification } = {})
 
             const channelName = `${createUniqueChannelName(
                 "notifications",
-                user.id,
-            )}-${instanceIdRef.current}`;
+                userId,
+            )}-${instanceId}`;
             channel = supabase
                 .channel(channelName)
                 .on(
@@ -83,7 +82,7 @@ export default function useNotifications({ limit = 20, onNewNotification } = {})
                         event: "INSERT",
                         schema: "public",
                         table: "notifications",
-                        filter: `user_id=eq.${user.id}`,
+                        filter: `user_id=eq.${userId}`,
                     },
                     (payload) => {
                         const row = payload.new;
@@ -103,7 +102,7 @@ export default function useNotifications({ limit = 20, onNewNotification } = {})
                         event: "UPDATE",
                         schema: "public",
                         table: "notifications",
-                        filter: `user_id=eq.${user.id}`,
+                        filter: `user_id=eq.${userId}`,
                     },
                     (payload) => {
                         const row = payload.new;
@@ -132,7 +131,7 @@ export default function useNotifications({ limit = 20, onNewNotification } = {})
                         event: "DELETE",
                         schema: "public",
                         table: "notifications",
-                        filter: `user_id=eq.${user.id}`,
+                        filter: `user_id=eq.${userId}`,
                     },
                     (payload) => {
                         const rowId = payload.old?.id;
@@ -171,7 +170,7 @@ export default function useNotifications({ limit = 20, onNewNotification } = {})
                 supabase.removeChannel(channel);
             }
         };
-    }, [limit, refresh, user?.id]);
+    }, [instanceId, limit, refresh, userId]);
 
     const markAsRead = useCallback(async (notificationId) => {
         const row = await markNotificationAsRead(notificationId);

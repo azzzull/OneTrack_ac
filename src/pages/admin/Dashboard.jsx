@@ -91,6 +91,7 @@ export default function AdminDashboard() {
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const { user, profile, role, loading: authLoading } = useAuth();
+    const userId = user?.id;
     const [requests, setRequests] = useState([]);
     const [accommodations, setAccommodations] = useState([]);
     const [paymentRequests, setPaymentRequests] = useState({
@@ -173,11 +174,11 @@ export default function AdminDashboard() {
     };
 
     const loadBusinessTripSummary = useCallback(async () => {
-        if (!user?.id || !role) return;
+        if (!userId || !role) return;
         try {
             const summary = await getBusinessTripDashboardSummary({
                 role,
-                userId: user.id,
+                userId,
             });
             if (isMountedRef.current) setBusinessTripSummary(summary);
         } catch (error) {
@@ -186,7 +187,7 @@ export default function AdminDashboard() {
                 error.message,
             );
         }
-    }, [role, user?.id]);
+    }, [role, userId]);
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -196,7 +197,7 @@ export default function AdminDashboard() {
     }, []);
 
     useEffect(() => {
-        if (authLoadingRef.current || !user?.id) return;
+        if (authLoadingRef.current || !userId) return;
 
         const timerId = setTimeout(() => {
             loadRequests();
@@ -208,7 +209,7 @@ export default function AdminDashboard() {
         const setupChannel = async () => {
             const channelName = createUniqueChannelName(
                 "admin-dashboard",
-                user.id,
+                userId,
             );
             const existing = supabase
                 .getChannels()
@@ -278,7 +279,7 @@ export default function AdminDashboard() {
                 channelRef.current = null;
             }
         };
-    }, [loadBusinessTripSummary, user?.id]);
+    }, [loadBusinessTripSummary, userId]);
 
     const statusCounts = useMemo(() => {
         const counts = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
@@ -377,9 +378,9 @@ export default function AdminDashboard() {
     );
 
     useEffect(() => {
-        if (!paymentSummaryLoaded || !pendingPaymentCount || !user?.id) return;
+        if (!paymentSummaryLoaded || !pendingPaymentCount || !userId) return;
 
-        const toastKey = `payment-pending-toast:${user.id}`;
+        const toastKey = `payment-pending-toast:${userId}`;
         try {
             if (sessionStorage.getItem(toastKey)) return;
             sessionStorage.setItem(toastKey, "shown");
@@ -387,10 +388,12 @@ export default function AdminDashboard() {
             // Tetap tampilkan toast jika sessionStorage tidak tersedia.
         }
 
-        setPaymentToast(
-            `Ada ${pendingPaymentCount} transaksi pembayaran yang menunggu persetujuan. Silakan ditinjau agar tidak tertunda.`,
-        );
-    }, [paymentSummaryLoaded, pendingPaymentCount, user?.id]);
+        queueMicrotask(() => {
+            setPaymentToast(
+                `Ada ${pendingPaymentCount} transaksi pembayaran yang menunggu persetujuan. Silakan ditinjau agar tidak tertunda.`,
+            );
+        });
+    }, [paymentSummaryLoaded, pendingPaymentCount, userId]);
 
     useEffect(() => {
         if (!paymentToast) return undefined;
@@ -423,11 +426,11 @@ export default function AdminDashboard() {
             to: "/business-trip/approval",
         },
         {
-            label: "Menunggu Pencairan",
+            label: "Proses Akomodasi",
             value: businessTripSummary.pendingDisbursement,
             meta: "Uang muka",
             icon: Wallet,
-            to: "/business-trip/disbursement",
+            to: baseAccommodationPath,
         },
         {
             label: "Verifikasi Realisasi",

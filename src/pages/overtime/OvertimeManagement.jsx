@@ -79,14 +79,15 @@ export default function OvertimeManagement() {
 
     const canReview = ["admin", "management"].includes(role);
     const canDelete = role === "admin";
+    const userId = user?.id;
 
     const loadData = useCallback(async () => {
-        if (!user?.id || !role) return;
+        if (!userId || !role) return;
         setLoading(true);
         setLoadError("");
         try {
             const [overtimeData, profilesResult] = await Promise.all([
-                listOvertimeRequests({ role, userId: user.id }),
+                listOvertimeRequests({ role, userId }),
                 supabase.rpc("get_attendance_profiles"),
             ]);
             if (!profilesResult.error) {
@@ -122,16 +123,16 @@ export default function OvertimeManagement() {
         } finally {
             setLoading(false);
         }
-    }, [role, user?.id]);
+    }, [role, userId]);
 
     useEffect(() => {
-        loadData();
+        queueMicrotask(loadData);
     }, [loadData]);
 
     useEffect(() => {
-        if (!user?.id) return undefined;
+        if (!userId) return undefined;
         const channel = supabase
-            .channel(`overtime-management-${user.id}-${Date.now()}`)
+            .channel(`overtime-management-${userId}-${Date.now()}`)
             .on(
                 "postgres_changes",
                 { event: "*", schema: "public", table: "overtime_requests" },
@@ -141,7 +142,7 @@ export default function OvertimeManagement() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [loadData, user?.id]);
+    }, [loadData, userId]);
 
     const filteredRequests = useMemo(() => {
         const search = filters.search.trim().toLowerCase();

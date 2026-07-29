@@ -28,7 +28,7 @@ export const useOfflineUpload = () => {
 
   // Initial load of queued photos
   useEffect(() => {
-    refreshQueuedPhotos();
+    queueMicrotask(refreshQueuedPhotos);
   }, [refreshQueuedPhotos]);
 
   /**

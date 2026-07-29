@@ -139,14 +139,15 @@ export default function ReimbursementReports() {
         search: "",
     });
     const channelRef = useRef(null);
+    const userId = user?.id;
 
     const loadData = useCallback(async () => {
-        if (!user?.id || !role) return;
+        if (!userId || !role) return;
         setLoading(true);
         setError("");
         try {
             const [reimbursements, requesterRows] = await Promise.all([
-                loadReimbursements({ role, userId: user.id }),
+                loadReimbursements({ role, userId }),
                 loadReimbursementRequesters(),
             ]);
             setRows(reimbursements);
@@ -158,17 +159,17 @@ export default function ReimbursementReports() {
         } finally {
             setLoading(false);
         }
-    }, [role, user?.id]);
+    }, [role, userId]);
 
     useEffect(() => {
-        loadData();
+        queueMicrotask(loadData);
     }, [loadData]);
 
     useEffect(() => {
-        if (!user?.id) return undefined;
+        if (!userId) return undefined;
         const channelName = createUniqueChannelName(
             "reimbursement-reports",
-            user.id,
+            userId,
         );
         channelRef.current = supabase
             .channel(channelName)
@@ -191,7 +192,7 @@ export default function ReimbursementReports() {
         return () => {
             if (channelRef.current) supabase.removeChannel(channelRef.current);
         };
-    }, [loadData, user?.id]);
+    }, [loadData, userId]);
 
     const filteredRows = useMemo(() => {
         const search = filters.search.trim().toLowerCase();

@@ -359,41 +359,47 @@ export default function AdminNewJobPage() {
     );
 
     useEffect(() => {
-        setForm((prev) => {
-            if (!prev.scopeDetails || Object.keys(prev.scopeDetails).length === 0) {
-                return prev;
-            }
-            return {
-                ...prev,
-                scopeDetails: {},
-            };
+        queueMicrotask(() => {
+            setForm((prev) => {
+                if (!prev.scopeDetails || Object.keys(prev.scopeDetails).length === 0) {
+                    return prev;
+                }
+                return {
+                    ...prev,
+                    scopeDetails: {},
+                };
+            });
         });
     }, [activeJobScope]);
 
     useEffect(() => {
-        if (!form.customerId) {
-            setForm((prev) => ({ ...prev, projectId: "" }));
-            return;
-        }
-        const isStillValid = availableProjects.some(
-            (item) => item.id === form.projectId,
-        );
-        if (!isStillValid && form.projectId) {
-            setForm((prev) => ({
-                ...prev,
-                projectId: "",
-            }));
-        }
+        queueMicrotask(() => {
+            if (!form.customerId) {
+                setForm((prev) => ({ ...prev, projectId: "" }));
+                return;
+            }
+            const isStillValid = availableProjects.some(
+                (item) => item.id === form.projectId,
+            );
+            if (!isStillValid && form.projectId) {
+                setForm((prev) => ({
+                    ...prev,
+                    projectId: "",
+                }));
+            }
+        });
     }, [availableProjects, form.customerId, form.projectId]);
 
     useEffect(() => {
         if (!selectedProject) return;
         const nextScope = normalizeJobScope(selectedProject.job_scope ?? "AC");
-        setForm((prev) =>
-            prev.jobScope === nextScope
-                ? prev
-                : { ...prev, jobScope: nextScope },
-        );
+        queueMicrotask(() => {
+            setForm((prev) =>
+                prev.jobScope === nextScope
+                    ? prev
+                    : { ...prev, jobScope: nextScope },
+            );
+        });
     }, [selectedProject]);
 
     const stopCameraStream = useCallback(() => {

@@ -29,7 +29,7 @@ export default function useJobTechnicians(jobId) {
     }, [jobId]);
 
     useEffect(() => {
-        reload();
+        queueMicrotask(reload);
     }, [reload]);
 
     return {

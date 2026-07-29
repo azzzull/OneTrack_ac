@@ -80,6 +80,7 @@ const BusinessTripDraftContext = createContext(null);
 
 export function BusinessTripDraftProvider({ children }) {
     const { user, profile } = useAuth();
+    const userId = user?.id;
     const requesterName = getDisplayName(profile, user);
     const [businessTrips, setBusinessTrips] = useState([]);
     const [projects, setProjects] = useState([]);
@@ -109,7 +110,7 @@ export function BusinessTripDraftProvider({ children }) {
 
     const loadBusinessTrips = useCallback(
         async (options = {}) => {
-            if (!user?.id) {
+            if (!userId) {
                 setBusinessTrips([]);
                 setTotalCount(0);
                 setStatusCounts(initialStatusCounts);
@@ -126,12 +127,12 @@ export function BusinessTripDraftProvider({ children }) {
                 const [listResult, countsResult] = await Promise.all([
                     getMyBusinessTrips({
                         ...options,
-                        requesterId: user.id,
+                        requesterId: userId,
                     }),
                     getBusinessTripStatusCounts({
                         startDate: options.startDate,
                         endDate: options.endDate,
-                        requesterId: user.id,
+                        requesterId: userId,
                     }),
                 ]);
                 setBusinessTrips(listResult.items);
@@ -149,7 +150,7 @@ export function BusinessTripDraftProvider({ children }) {
                 setLoading(false);
             }
         },
-        [user?.id],
+        [userId],
     );
 
     const loadBusinessTripById = useCallback(
@@ -172,11 +173,11 @@ export function BusinessTripDraftProvider({ children }) {
     );
 
     const createTrip = useCallback(async () => {
-        if (!user?.id) throw new Error("User belum siap.");
-        const nextTrip = await createBusinessTripDraft({ requesterId: user.id });
+        if (!userId) throw new Error("User belum siap.");
+        const nextTrip = await createBusinessTripDraft({ requesterId: userId });
         nextTrip.initiatorName = nextTrip.initiatorName || requesterName;
         return upsertTrip(nextTrip).id;
-    }, [requesterName, upsertTrip, user?.id]);
+    }, [requesterName, upsertTrip, userId]);
 
     const updateTrip = useCallback(
         (tripId, updater) => {

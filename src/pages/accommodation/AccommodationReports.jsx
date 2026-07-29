@@ -131,6 +131,7 @@ export default function AccommodationReports() {
     });
     const channelRef = useRef(null);
     const isMountedRef = useRef(true);
+    const userId = user?.id;
 
     const isImagePreviewableUrl = (url) =>
         /\.(png|jpe?g|webp|gif|bmp|avif|svg)(\?.*)?$/i.test(String(url ?? ""));
@@ -153,7 +154,7 @@ export default function AccommodationReports() {
         try {
             const data = await loadAccommodationRequests({
                 role,
-                userId: user?.id,
+                userId,
             });
             if (isMountedRef.current) setRequests(data);
         } catch (error) {
@@ -162,22 +163,22 @@ export default function AccommodationReports() {
         } finally {
             if (isMountedRef.current) setLoading(false);
         }
-    }, [role, user?.id]);
+    }, [role, userId]);
 
     useEffect(() => {
         isMountedRef.current = true;
-        loadData();
+        queueMicrotask(loadData);
         return () => {
             isMountedRef.current = false;
         };
     }, [loadData]);
 
     useEffect(() => {
-        if (!user?.id) return undefined;
+        if (!userId) return undefined;
 
         const channelName = createUniqueChannelName(
             "accommodation-reports",
-            user.id,
+            userId,
         );
         channelRef.current = supabase
             .channel(`${channelName}-${Date.now()}`)
@@ -222,7 +223,7 @@ export default function AccommodationReports() {
                 channelRef.current = null;
             }
         };
-    }, [loadData, user?.id]);
+    }, [loadData, userId]);
 
     const periodValue = periodMode === "monthly" ? monthFilter : yearFilter;
 

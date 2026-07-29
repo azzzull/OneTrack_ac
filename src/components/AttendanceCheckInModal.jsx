@@ -65,7 +65,9 @@ const AttendanceCheckInModal = ({
 
     useEffect(() => {
         if (isOpen && !locationData && !gpsLoading) {
-            handleGetLocation();
+            queueMicrotask(() => {
+                handleGetLocation();
+            });
         }
     }, [isOpen, locationData, gpsLoading]);
 

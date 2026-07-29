@@ -112,7 +112,7 @@ export function useJobScope(customerId = null) {
 
     // Initialize: fetch available scopes on mount
     useEffect(() => {
-        getAvailableScopes();
+        queueMicrotask(getAvailableScopes);
     }, [getAvailableScopes]);
 
     return {

@@ -96,30 +96,32 @@ export default function OvertimeRequestModal({
 
     useEffect(() => {
         if (!isOpen) return;
-        setError("");
-        stopCamera();
-        setPhotoFile(null);
-        setPhotoTakenAt(null);
-        setPreviewImage(null);
-        setNotes("");
-        setLocationData(
-            isAttendanceMode
-                ? getCheckoutLocationFromAttendance(attendance)
-                : null,
-        );
-        setTechnicianId(
-            isAttendanceMode
-                ? attendance?.technician_id || currentUserId || ""
-                : currentUserId || "",
-        );
-        setDate(attendance?.attendance_date || toDateInputValue());
-        if (attendance?.check_out_time) {
-            setEndTime(toDateTimeLocalValue(attendance.check_out_time).slice(11));
-        }
-        if (attendance?.check_in_time) {
-            setStartTime("17:00");
-        }
-        setNextDay(false);
+        queueMicrotask(() => {
+            setError("");
+            stopCamera();
+            setPhotoFile(null);
+            setPhotoTakenAt(null);
+            setPreviewImage(null);
+            setNotes("");
+            setLocationData(
+                isAttendanceMode
+                    ? getCheckoutLocationFromAttendance(attendance)
+                    : null,
+            );
+            setTechnicianId(
+                isAttendanceMode
+                    ? attendance?.technician_id || currentUserId || ""
+                    : currentUserId || "",
+            );
+            setDate(attendance?.attendance_date || toDateInputValue());
+            if (attendance?.check_out_time) {
+                setEndTime(toDateTimeLocalValue(attendance.check_out_time).slice(11));
+            }
+            if (attendance?.check_in_time) {
+                setStartTime("17:00");
+            }
+            setNextDay(false);
+        });
     }, [attendance, currentUserId, isAttendanceMode, isOpen, stopCamera]);
 
     useEffect(() => () => stopCamera(), [stopCamera]);

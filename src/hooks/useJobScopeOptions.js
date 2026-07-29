@@ -64,7 +64,7 @@ export default function useJobScopeOptions() {
     }, []);
 
     useEffect(() => {
-        loadJobScopes();
+        queueMicrotask(loadJobScopes);
     }, [loadJobScopes]);
 
     const options = useMemo(() => buildJobScopeOptions(rows), [rows]);

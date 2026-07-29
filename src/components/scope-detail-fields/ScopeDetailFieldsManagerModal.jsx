@@ -89,27 +89,29 @@ export default function ScopeDetailFieldsManagerModal({
     );
 
     useEffect(() => {
-        if (!isOpen) {
-            setActiveTab("fields");
-            setEditingFieldId(null);
-            setEditingChecklistId(null);
-            setAutoGenerateKey(true);
-            setFieldForm(initialFieldForm);
-            setChecklistForm(initialChecklistForm);
-            return;
-        }
+        queueMicrotask(() => {
+            if (!isOpen) {
+                setActiveTab("fields");
+                setEditingFieldId(null);
+                setEditingChecklistId(null);
+                setAutoGenerateKey(true);
+                setFieldForm(initialFieldForm);
+                setChecklistForm(initialChecklistForm);
+                return;
+            }
 
-        const nextFieldOrder =
-            (sortedFields[sortedFields.length - 1]?.sort_order ?? -1) + 1;
-        const nextChecklistOrder =
-            (sortedChecklist[sortedChecklist.length - 1]?.sort_order ?? -1) + 1;
-        setFieldForm({
-            ...initialFieldForm,
-            sort_order: nextFieldOrder,
-        });
-        setChecklistForm({
-            ...initialChecklistForm,
-            sort_order: nextChecklistOrder,
+            const nextFieldOrder =
+                (sortedFields[sortedFields.length - 1]?.sort_order ?? -1) + 1;
+            const nextChecklistOrder =
+                (sortedChecklist[sortedChecklist.length - 1]?.sort_order ?? -1) + 1;
+            setFieldForm({
+                ...initialFieldForm,
+                sort_order: nextFieldOrder,
+            });
+            setChecklistForm({
+                ...initialChecklistForm,
+                sort_order: nextChecklistOrder,
+            });
         });
     }, [isOpen, sortedFields, sortedChecklist]);
 
