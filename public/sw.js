@@ -2,7 +2,7 @@
  * Service Worker for background sync and offline handling
  */
 
-const CACHE_NAME = "onetrack-v2";
+const CACHE_NAME = "onetrack-v3";
 const URLS_TO_CACHE = [
     "/",
     "/index.html",
