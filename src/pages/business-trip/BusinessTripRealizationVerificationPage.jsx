@@ -393,7 +393,7 @@ export default function BusinessTripRealizationVerificationPage() {
                         Tidak ada laporan realisasi sesuai filter.
                     </EmptyState>
                 ) : (
-                    <div className="grid gap-3 xl:grid-cols-2">
+                    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                         {items.map((trip) => (
                             <VerificationCard
                                 key={trip.id}
@@ -529,14 +529,14 @@ function VerificationFilters({
     return (
         <div className="space-y-3">
             <div className="max-w-full overflow-x-auto pb-2">
-                <div className="flex w-max min-w-full gap-2">
+                <div className="flex w-max min-w-full gap-2 xl:w-full">
                     {statusFilters.map((item) => (
                         <button
                             key={item.value}
                             type="button"
                             data-active={statusFilter === item.value}
                             onClick={() => onStatusChange(item.value)}
-                            className="min-w-[118px] shrink-0 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-left text-sky-800 shadow-sm transition data-[active=true]:border-sky-400 data-[active=true]:bg-sky-100"
+                            className="min-w-[118px] shrink-0 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-left text-sky-800 shadow-sm transition data-[active=true]:border-sky-400 data-[active=true]:bg-sky-100 xl:min-w-0 xl:flex-1"
                         >
                             <span className="block text-[11px] font-semibold">
                                 {item.label}

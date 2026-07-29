@@ -388,7 +388,7 @@ export default function BusinessTripApprovalPage() {
                         Tidak ada Business Trip yang sesuai filter approval saat ini.
                     </EmptyState>
                 ) : (
-                    <div className="grid gap-3 xl:grid-cols-2">
+                    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                         {items.map((trip) => (
                             <ApprovalCard
                                 key={trip.id}
@@ -443,14 +443,14 @@ export default function BusinessTripApprovalPage() {
 function ApprovalSummary({ activeStatus, counts, onChange }) {
     return (
         <div className="max-w-full overflow-x-auto pb-2">
-            <div className="flex w-max min-w-full gap-2">
+            <div className="flex w-max min-w-full gap-2 xl:w-full">
                 {statusFilters.map((item) => (
                     <button
                         key={item.value}
                         type="button"
                         data-active={activeStatus === item.value}
                         onClick={() => onChange(item.value)}
-                        className={`min-w-[132px] shrink-0 rounded-xl border px-3 py-2 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-100 ${item.className}`}
+                        className={`min-w-[132px] shrink-0 rounded-xl border px-3 py-2 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-100 xl:min-w-0 xl:flex-1 ${item.className}`}
                     >
                         <span className="block truncate text-[11px] font-semibold">
                             {item.label}
@@ -933,7 +933,7 @@ function RejectModal({
 
 function ApprovalSkeleton() {
     return (
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
             {[1, 2, 3].map((item) => (
                 <div
                     key={item}

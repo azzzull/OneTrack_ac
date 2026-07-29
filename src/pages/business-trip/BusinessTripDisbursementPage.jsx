@@ -270,7 +270,7 @@ export default function BusinessTripDisbursementPage() {
                         Business Trip yang disetujui dan memiliki uang muka akan tampil di sini.
                     </EmptyState>
                 ) : (
-                    <div className="grid gap-3 xl:grid-cols-2">
+                    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                         {items.map((trip) => (
                             <DisbursementCard
                                 key={trip.id}
@@ -732,7 +732,7 @@ function DisbursementSheet({
 
 function DisbursementSkeleton() {
     return (
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
             {[1, 2, 3].map((item) => (
                 <div
                     key={item}
