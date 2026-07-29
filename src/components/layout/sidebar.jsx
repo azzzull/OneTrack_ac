@@ -11,13 +11,17 @@ import {
     Menu,
     MoreHorizontal,
     X,
+    ChevronDown,
     CalendarDays,
     Clock3,
     Wallet,
     Receipt,
     HandCoins,
+    ClipboardCheck,
+    Plane,
+    ShieldCheck,
 } from "lucide-react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
 import useRequestStats from "../../hooks/useRequestStats";
@@ -44,6 +48,34 @@ const menuByRole = {
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
+        {
+            label: "Business Trip",
+            path: "/business-trip",
+            icon: Plane,
+            children: [
+                { label: "Pengajuan Trip", path: "/business-trip", icon: Plane },
+                {
+                    label: "Approval Trip",
+                    path: "/business-trip/approval",
+                    icon: ShieldCheck,
+                },
+                {
+                    label: "Pencairan Trip",
+                    path: "/business-trip/disbursement",
+                    icon: Wallet,
+                },
+                {
+                    label: "Verifikasi Realisasi",
+                    path: "/business-trip/realization-verification",
+                    icon: ClipboardCheck,
+                },
+                {
+                    label: "Laporan Business Trip",
+                    path: "/business-trip/reports",
+                    icon: List,
+                },
+            ],
+        },
     ],
     admin: [
         { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
@@ -55,6 +87,34 @@ const menuByRole = {
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
+        {
+            label: "Business Trip",
+            path: "/business-trip",
+            icon: Plane,
+            children: [
+                { label: "Pengajuan Trip", path: "/business-trip", icon: Plane },
+                {
+                    label: "Approval Trip",
+                    path: "/business-trip/approval",
+                    icon: ShieldCheck,
+                },
+                {
+                    label: "Pencairan Trip",
+                    path: "/business-trip/disbursement",
+                    icon: Wallet,
+                },
+                {
+                    label: "Verifikasi Realisasi",
+                    path: "/business-trip/realization-verification",
+                    icon: ClipboardCheck,
+                },
+                {
+                    label: "Laporan Business Trip",
+                    path: "/business-trip/reports",
+                    icon: List,
+                },
+            ],
+        },
     ],
     technician: [
         { label: "Dashboard", path: "/technician", icon: LayoutDashboard },
@@ -68,6 +128,7 @@ const menuByRole = {
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
+        { label: "Business Trip", path: "/business-trip", icon: Plane },
     ],
     customer: [
         { label: "Dashboard", path: "/customer", icon: LayoutDashboard },
@@ -305,9 +366,156 @@ const usePendingLoanCount = (role, userId, isOnline) => {
     return isOnline ? pendingCount : 0;
 };
 
+const usePendingBusinessTripApprovalCount = (role, userId, isOnline) => {
+    const [pendingCount, setPendingCount] = useState(0);
+
+    useEffect(() => {
+        if (!isOnline || !userId || !["admin", "management"].includes(role)) {
+            return undefined;
+        }
+
+        let mounted = true;
+        const loadPendingCount = async () => {
+            const { count, error } = await supabase
+                .from("business_trips")
+                .select("id", { count: "exact", head: true })
+                .in("status", ["submitted", "pending_approval"])
+                .neq("requester_id", userId);
+
+            if (error) {
+                console.warn(
+                    "[Sidebar] Business Trip approval count skipped:",
+                    error.message,
+                );
+                if (mounted) setPendingCount(0);
+                return;
+            }
+
+            if (mounted) setPendingCount(count ?? 0);
+        };
+
+        loadPendingCount();
+        const intervalId = setInterval(loadPendingCount, 8000);
+        const handleFocus = () => {
+            if (document.visibilityState === "visible") loadPendingCount();
+        };
+        document.addEventListener("visibilitychange", handleFocus);
+        window.addEventListener("focus", handleFocus);
+
+        return () => {
+            mounted = false;
+            clearInterval(intervalId);
+            document.removeEventListener("visibilitychange", handleFocus);
+            window.removeEventListener("focus", handleFocus);
+        };
+    }, [isOnline, role, userId]);
+
+    return isOnline ? pendingCount : 0;
+};
+
+const usePendingBusinessTripDisbursementCount = (role, userId, isOnline) => {
+    const [pendingCount, setPendingCount] = useState(0);
+
+    useEffect(() => {
+        if (!isOnline || !userId || !["admin", "management"].includes(role)) {
+            return undefined;
+        }
+
+        let mounted = true;
+        const loadPendingCount = async () => {
+            const { count, error } = await supabase
+                .from("business_trips")
+                .select("id", { count: "exact", head: true })
+                .eq("status", "approved")
+                .gt("requested_amount", 0)
+                .neq("requester_id", userId);
+
+            if (error) {
+                console.warn(
+                    "[Sidebar] Business Trip disbursement count skipped:",
+                    error.message,
+                );
+                if (mounted) setPendingCount(0);
+                return;
+            }
+
+            if (mounted) setPendingCount(count ?? 0);
+        };
+
+        loadPendingCount();
+        const intervalId = setInterval(loadPendingCount, 8000);
+        const handleFocus = () => {
+            if (document.visibilityState === "visible") loadPendingCount();
+        };
+        document.addEventListener("visibilitychange", handleFocus);
+        window.addEventListener("focus", handleFocus);
+
+        return () => {
+            mounted = false;
+            clearInterval(intervalId);
+            document.removeEventListener("visibilitychange", handleFocus);
+            window.removeEventListener("focus", handleFocus);
+        };
+    }, [isOnline, role, userId]);
+
+    return isOnline ? pendingCount : 0;
+};
+
+const usePendingBusinessTripRealizationVerificationCount = (
+    role,
+    userId,
+    isOnline,
+) => {
+    const [pendingCount, setPendingCount] = useState(0);
+
+    useEffect(() => {
+        if (!isOnline || !userId || !["admin", "management"].includes(role)) {
+            return undefined;
+        }
+
+        let mounted = true;
+        const loadPendingCount = async () => {
+            const { count, error } = await supabase
+                .from("business_trips")
+                .select("id", { count: "exact", head: true })
+                .eq("status", "realization_submitted")
+                .neq("requester_id", userId);
+
+            if (error) {
+                console.warn(
+                    "[Sidebar] Business Trip realization verification count skipped:",
+                    error.message,
+                );
+                if (mounted) setPendingCount(0);
+                return;
+            }
+
+            if (mounted) setPendingCount(count ?? 0);
+        };
+
+        loadPendingCount();
+        const intervalId = setInterval(loadPendingCount, 8000);
+        const handleFocus = () => {
+            if (document.visibilityState === "visible") loadPendingCount();
+        };
+        document.addEventListener("visibilitychange", handleFocus);
+        window.addEventListener("focus", handleFocus);
+
+        return () => {
+            mounted = false;
+            clearInterval(intervalId);
+            document.removeEventListener("visibilitychange", handleFocus);
+            window.removeEventListener("focus", handleFocus);
+        };
+    }, [isOnline, role, userId]);
+
+    return isOnline ? pendingCount : 0;
+};
+
 export default function Sidebar({ collapsed = false, onToggle }) {
     const { user, role, profile, loading, isOnline, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const stats = useRequestStats();
     const pendingAccommodationCount = usePendingAccommodationCount(
         role,
@@ -320,6 +528,19 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         isOnline,
     );
     const pendingLoanCount = usePendingLoanCount(role, user?.id, isOnline);
+    const pendingBusinessTripApprovalCount = usePendingBusinessTripApprovalCount(
+        role,
+        user?.id,
+        isOnline,
+    );
+    const pendingBusinessTripDisbursementCount =
+        usePendingBusinessTripDisbursementCount(role, user?.id, isOnline);
+    const pendingBusinessTripRealizationVerificationCount =
+        usePendingBusinessTripRealizationVerificationCount(
+            role,
+            user?.id,
+            isOnline,
+        );
     const [newRequestToast, setNewRequestToast] = useState("");
     const [accommodationToast, setAccommodationToast] = useState("");
     const toastTimerRef = useRef(null);
@@ -329,24 +550,35 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     const channelRef = useRef(null);
     const accommodationNotifyChannelRef = useRef(null);
     const isMountedRef = useRef(true);
-    const menus = getMenus(role, profile).map((menu) => {
-        const badgeByPath = {
-            "/requests": stats.pending,
-            "/technician/requests": stats.pending,
-            "/services": stats.active,
-            "/customer/request": null,
-            "/management/accommodation": pendingAccommodationCount,
-            "/admin/accommodation": pendingAccommodationCount,
-            "/reimburse": pendingReimbursementCount,
-            "/loans": pendingLoanCount,
-        };
-
-        const count = badgeByPath[menu.path] ?? 0;
+    const badgeByPath = {
+        "/requests": stats.pending,
+        "/technician/requests": stats.pending,
+        "/services": stats.active,
+        "/customer/request": null,
+        "/management/accommodation": pendingAccommodationCount,
+        "/admin/accommodation": pendingAccommodationCount,
+        "/reimburse": pendingReimbursementCount,
+        "/loans": pendingLoanCount,
+        "/business-trip/approval": pendingBusinessTripApprovalCount,
+        "/business-trip/disbursement": pendingBusinessTripDisbursementCount,
+        "/business-trip/realization-verification":
+            pendingBusinessTripRealizationVerificationCount,
+    };
+    const attachBadges = (menu) => {
+        const children = menu.children?.map(attachBadges);
+        const ownCount = badgeByPath[menu.path] ?? 0;
+        const childCount = children?.reduce(
+            (sum, child) => sum + Number(child.badge ?? 0),
+            0,
+        ) ?? 0;
+        const count = ownCount + childCount;
         return {
             ...menu,
+            children,
             badge: count > 0 ? count : null,
         };
-    });
+    };
+    const menus = getMenus(role, profile).map(attachBadges);
 
     const handleLogout = async () => {
         const stats = await getOfflineQueueStats({ userId: user?.id });
@@ -666,15 +898,20 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             collapsed ? "px-1" : "px-2"
                         }`}
                     >
-                        {menus.map(({ label, path, icon, badge }) => (
-                            <li key={label}>
-                                <NavLink
-                                    to={path}
-                                    end
-                                    className={({ isActive }) =>
-                                        `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
+                        {menus.map(({ label, path, icon, badge, children }) => {
+                            const hasChildren = Boolean(children?.length);
+                            const parentActive =
+                                hasChildren &&
+                                location.pathname.startsWith(path);
+                            return (
+                                <li key={label}>
+                                    <NavLink
+                                        to={path}
+                                        end={!hasChildren}
+                                        className={({ isActive }) =>
+                                            `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
                                     ${
-                                        isActive
+                                        isActive || parentActive
                                             ? "bg-sky-100 text-sky-500"
                                             : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                                     }
@@ -684,27 +921,63 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                             : "flex items-center gap-3 px-4 py-2.5 text-sm font-normal"
                                     }
                                 `
-                                    }
-                                    style={{ textDecoration: "none" }}
-                                >
-                                    <span className="relative inline-flex">
-                                        {createElement(icon, {
-                                            size: collapsed ? 18 : 20,
-                                        })}
+                                        }
+                                        style={{ textDecoration: "none" }}
+                                    >
+                                        <span className="relative inline-flex">
+                                            {createElement(icon, {
+                                                size: collapsed ? 18 : 20,
+                                            })}
 
-                                        {badge && (
-                                            <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
-                                                {badge}
-                                            </span>
+                                            {badge && (
+                                                <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                    {badge}
+                                                </span>
+                                            )}
+                                        </span>
+
+                                        <span className={collapsed ? "mt-1" : "flex-1"}>
+                                            {label}
+                                        </span>
+                                        {!collapsed && hasChildren && (
+                                            <ChevronDown size={15} />
                                         )}
-                                    </span>
-
-                                    <span className={collapsed ? "mt-1" : ""}>
-                                        {label}
-                                    </span>
-                                </NavLink>
-                            </li>
-                        ))}
+                                    </NavLink>
+                                    {!collapsed && hasChildren && parentActive && (
+                                        <ul className="mt-1 space-y-1 pl-8">
+                                            {children.map((child) => (
+                                                <li key={child.label}>
+                                                    <NavLink
+                                                        to={child.path}
+                                                        end
+                                                        className={({ isActive }) =>
+                                                            `no-underline! hover:no-underline! flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition ${
+                                                                isActive
+                                                                    ? "bg-sky-50 font-semibold text-sky-600"
+                                                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                            }`
+                                                        }
+                                                        style={{ textDecoration: "none" }}
+                                                    >
+                                                        {createElement(child.icon, {
+                                                            size: 16,
+                                                        })}
+                                                        <span className="min-w-0 flex-1 truncate">
+                                                            {child.label}
+                                                        </span>
+                                                        {child.badge && (
+                                                            <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                                {child.badge}
+                                                            </span>
+                                                        )}
+                                                    </NavLink>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </li>
+                            );
+                        })}
                     </ul>
 
                     {/* Footer */}
@@ -769,6 +1042,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
 export function MobileBottomNav() {
     const { role, profile, user, isOnline, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const stats = useRequestStats();
     const pendingAccommodationCount = usePendingAccommodationCount(
         role,
@@ -781,6 +1055,19 @@ export function MobileBottomNav() {
         isOnline,
     );
     const pendingLoanCount = usePendingLoanCount(role, user?.id, isOnline);
+    const pendingBusinessTripApprovalCount = usePendingBusinessTripApprovalCount(
+        role,
+        user?.id,
+        isOnline,
+    );
+    const pendingBusinessTripDisbursementCount =
+        usePendingBusinessTripDisbursementCount(role, user?.id, isOnline);
+    const pendingBusinessTripRealizationVerificationCount =
+        usePendingBusinessTripRealizationVerificationCount(
+            role,
+            user?.id,
+            isOnline,
+        );
     const navRef = useRef(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const [moreOpen, setMoreOpen] = useState(false);
@@ -788,24 +1075,34 @@ export function MobileBottomNav() {
     const [primaryCount, setPrimaryCount] = useState(4);
     const lastScrollRef = useRef(0);
     const MOBILE_TOP_NAV_HEIGHT = 72;
-    const menus = getMenus(role, profile).map((menu) => {
-        const badgeByPath = {
-            "/requests": stats.pending,
-            "/technician/requests": stats.pending,
-            "/services": stats.active,
-            "/customer/request": null,
-            "/management/accommodation": pendingAccommodationCount,
-            "/admin/accommodation": pendingAccommodationCount,
-            "/reimburse": pendingReimbursementCount,
-            "/loans": pendingLoanCount,
-        };
-
-        const count = badgeByPath[menu.path] ?? 0;
+    const badgeByPath = {
+        "/requests": stats.pending,
+        "/technician/requests": stats.pending,
+        "/services": stats.active,
+        "/customer/request": null,
+        "/management/accommodation": pendingAccommodationCount,
+        "/admin/accommodation": pendingAccommodationCount,
+        "/reimburse": pendingReimbursementCount,
+        "/loans": pendingLoanCount,
+        "/business-trip/approval": pendingBusinessTripApprovalCount,
+        "/business-trip/disbursement": pendingBusinessTripDisbursementCount,
+        "/business-trip/realization-verification":
+            pendingBusinessTripRealizationVerificationCount,
+    };
+    const attachBadges = (menu) => {
+        const children = menu.children?.map(attachBadges);
+        const ownCount = badgeByPath[menu.path] ?? 0;
+        const childCount =
+            children?.reduce((sum, child) => sum + Number(child.badge ?? 0), 0) ??
+            0;
+        const count = ownCount + childCount;
         return {
             ...menu,
+            children,
             badge: count > 0 ? count : null,
         };
-    });
+    };
+    const menus = getMenus(role, profile).map(attachBadges);
     const primaryMenus = menus.slice(0, primaryCount);
     const extraMenus = menus.slice(primaryCount);
     const canOpenProfile =
@@ -902,6 +1199,9 @@ export function MobileBottomNav() {
         pendingAccommodationCount,
         pendingReimbursementCount,
         pendingLoanCount,
+        pendingBusinessTripApprovalCount,
+        pendingBusinessTripDisbursementCount,
+        pendingBusinessTripRealizationVerificationCount,
         menus,
     ]);
 
@@ -985,36 +1285,41 @@ export function MobileBottomNav() {
                 className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-1 md:hidden"
             >
                 <ul className="flex items-stretch gap-1 overflow-hidden">
-                    {primaryMenus.map(({ label, path, icon, badge }) => (
-                        <li key={label} className="min-w-0 flex-1">
-                            <NavLink
-                                end
-                                to={path}
-                                className={({ isActive }) =>
-                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! relative flex h-full min-h-16 w-full items-center justify-center px-1 py-2 transition-colors duration-200 ${
-                                        isActive
-                                            ? "text-sky-500 border-b-2 border-sky-500 font-semibold"
-                                            : "text-slate-500 border-b-2 border-transparent hover:text-slate-700"
-                                    }`
-                                }
-                                style={{ textDecoration: "none" }}
-                            >
-                                <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
-                                    <span className="relative inline-flex">
-                                        {createElement(icon, { size: 20 })}
-                                        {badge && (
-                                            <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
-                                                {badge}
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal wrap-break-words">
-                                        {label}
-                                    </span>
-                                </div>
-                            </NavLink>
-                        </li>
-                    ))}
+                    {primaryMenus.map(({ label, path, icon, badge, children }) => {
+                        const hasChildren = Boolean(children?.length);
+                        const parentActive =
+                            hasChildren && location.pathname.startsWith(path);
+                        return (
+                            <li key={label} className="min-w-0 flex-1">
+                                <NavLink
+                                    end={!hasChildren}
+                                    to={path}
+                                    className={({ isActive }) =>
+                                        `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! relative flex h-full min-h-16 w-full items-center justify-center px-1 py-2 transition-colors duration-200 ${
+                                            isActive || parentActive
+                                                ? "text-sky-500 border-b-2 border-sky-500 font-semibold"
+                                                : "text-slate-500 border-b-2 border-transparent hover:text-slate-700"
+                                        }`
+                                    }
+                                    style={{ textDecoration: "none" }}
+                                >
+                                    <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
+                                        <span className="relative inline-flex">
+                                            {createElement(icon, { size: 20 })}
+                                            {badge && (
+                                                <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                    {badge}
+                                                </span>
+                                            )}
+                                        </span>
+                                        <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal wrap-break-words">
+                                            {label}
+                                        </span>
+                                    </div>
+                                </NavLink>
+                            </li>
+                        );
+                    })}
                     {extraMenus.length > 0 && (
                         <li className="min-w-0 flex-1">
                             <button
@@ -1056,32 +1361,75 @@ export function MobileBottomNav() {
                             </button>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            {extraMenus.map(({ label, path, icon, badge }) => (
-                                <NavLink
-                                    key={label}
-                                    end
-                                    to={path}
-                                    onClick={() => setMoreOpen(false)}
-                                    className={({ isActive }) =>
-                                        `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex items-center gap-2 rounded-2xl border px-3 py-3 text-sm font-medium transition ${
-                                            isActive
-                                                ? "border-sky-200 bg-sky-50 text-sky-600"
-                                                : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                                        }`
-                                    }
-                                    style={{ textDecoration: "none" }}
-                                >
-                                    <span className="relative inline-flex">
-                                        {createElement(icon, { size: 18 })}
-                                        {badge && (
-                                            <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
-                                                {badge}
+                            {extraMenus.map(({ label, path, icon, badge, children }) => {
+                                const hasChildren = Boolean(children?.length);
+                                const parentActive =
+                                    hasChildren && location.pathname.startsWith(path);
+                                return (
+                                    <div
+                                        key={label}
+                                        className={hasChildren ? "col-span-2" : ""}
+                                    >
+                                        <NavLink
+                                            end={!hasChildren}
+                                            to={path}
+                                            onClick={() => setMoreOpen(false)}
+                                            className={({ isActive }) =>
+                                                `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex items-center gap-2 rounded-2xl border px-3 py-3 text-sm font-medium transition ${
+                                                    isActive || parentActive
+                                                        ? "border-sky-200 bg-sky-50 text-sky-600"
+                                                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                }`
+                                            }
+                                            style={{ textDecoration: "none" }}
+                                        >
+                                            <span className="relative inline-flex">
+                                                {createElement(icon, { size: 18 })}
+                                                {badge && (
+                                                    <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                        {badge}
+                                                    </span>
+                                                )}
                                             </span>
+                                            <span className="flex-1">{label}</span>
+                                        </NavLink>
+                                        {hasChildren && (
+                                            <div className="mt-2 grid grid-cols-1 gap-2 pl-3">
+                                                {children.map((child) => (
+                                                    <NavLink
+                                                        key={child.label}
+                                                        end
+                                                        to={child.path}
+                                                        onClick={() =>
+                                                            setMoreOpen(false)
+                                                        }
+                                                        className={({ isActive }) =>
+                                                            `no-underline! hover:no-underline! flex items-center gap-2 rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
+                                                                isActive
+                                                                    ? "border-sky-200 bg-sky-50 text-sky-600"
+                                                                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                            }`
+                                                        }
+                                                        style={{ textDecoration: "none" }}
+                                                    >
+                                                        {createElement(child.icon, {
+                                                            size: 16,
+                                                        })}
+                                                        <span className="flex-1">
+                                                            {child.label}
+                                                        </span>
+                                                        {child.badge && (
+                                                            <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                                {child.badge}
+                                                            </span>
+                                                        )}
+                                                    </NavLink>
+                                                ))}
+                                            </div>
                                         )}
-                                    </span>
-                                    <span className="flex-1">{label}</span>
-                                </NavLink>
-                            ))}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

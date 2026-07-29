@@ -228,23 +228,20 @@ export const loadAccommodationLookups = async () => {
 };
 
 export const createAccommodationRequest = async (payload) => {
-    const { data, error } = await supabase
-        .from("accommodation_requests")
-        .insert({
-            technician_id: payload.technician_id,
-            customer_id: payload.customer_id || null,
-            project_id: payload.project_id || null,
-            customer_name: payload.customer_name || null,
-            project_name: payload.project_name || null,
-            request_title: payload.request_title,
-            purpose: payload.purpose,
-            job_scope: payload.job_scope || null,
-            requested_amount: Number(payload.requested_amount),
-            notes: payload.notes || null,
-            status: "pending",
-        })
-        .select()
-        .single();
+    const { data, error } = await supabase.rpc(
+        "create_accommodation_request_for_internal_technician",
+        {
+            p_customer_id: payload.customer_id || null,
+            p_project_id: payload.project_id || null,
+            p_customer_name: payload.customer_name || null,
+            p_project_name: payload.project_name || null,
+            p_request_title: payload.request_title,
+            p_purpose: payload.purpose,
+            p_job_scope: payload.job_scope || null,
+            p_requested_amount: Number(payload.requested_amount),
+            p_notes: payload.notes || null,
+        },
+    );
 
     if (error) throw error;
     await sendAccommodationNotification("request_created", data);

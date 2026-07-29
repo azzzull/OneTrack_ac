@@ -1477,6 +1477,7 @@ export default function AdminRequestsPage() {
         selectedRequest,
         selectedRequestTechnicians,
         technicianDirectory,
+        user?.email,
     ]);
     const canManageTechnicians =
         role === "admin" ||

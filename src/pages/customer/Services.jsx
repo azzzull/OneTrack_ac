@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
     CalendarDays,
     ChevronLeft,
@@ -319,9 +319,7 @@ function CustomerServicesPage() {
 
     const [searchParams, setSearchParams] = useSearchParams();
     const [search, setSearch] = useState("");
-    const [activeFilter, setActiveFilter] = useState(
-        getValidFilter(searchParams.get("status") ?? "all"),
-    );
+    const activeFilter = getValidFilter(searchParams.get("status") ?? "all");
     const [periodFilter, setPeriodFilter] = useState("all");
     const [customStartDate, setCustomStartDate] = useState("");
     const [customEndDate, setCustomEndDate] = useState("");
@@ -340,20 +338,6 @@ function CustomerServicesPage() {
         () => requests.find((item) => item.id === selectedRequestId) ?? null,
         [requests, selectedRequestId],
     );
-
-    // Check if selected request still exists (not deleted by admin elsewhere)
-    useEffect(() => {
-        if (!selectedRequest || !requests) return;
-        const requestExists = requests.some(
-            (req) => req.id === selectedRequest.id,
-        );
-
-        if (!requestExists) {
-            // Request was deleted, close modal and clear selection
-            setSelectedRequestId(null);
-            setPhotoPreview({ open: false, url: "", label: "" });
-        }
-    }, [requests, selectedRequest]);
 
     const technicianOptions = useMemo(() => {
         const map = new Map();
@@ -484,36 +468,29 @@ function CustomerServicesPage() {
         selectedTechnicianLabel,
     ]);
 
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [
-        activeFilter,
-        customEndDate,
-        customStartDate,
-        periodFilter,
-        search,
-        selectedTechnicianKey,
-    ]);
-
-    useEffect(() => {
-        const nextFilter = getValidFilter(searchParams.get("status") ?? "all");
-        if (nextFilter !== activeFilter) {
-            setActiveFilter(nextFilter);
-        }
-    }, [activeFilter, searchParams]);
-
     const openPhotoPreview = (url, label) => {
         if (!url) return;
         setPhotoPreview({ open: true, url, label });
     };
 
+    const resetPage = () => setCurrentPage(1);
+
+    const updateStatusFilter = (filterKey) => {
+        resetPage();
+        if (filterKey === "all") {
+            setSearchParams({});
+            return;
+        }
+        setSearchParams({ status: filterKey });
+    };
+
     const resetFilters = () => {
         setSearch("");
-        setActiveFilter("all");
         setPeriodFilter("all");
         setCustomStartDate("");
         setCustomEndDate("");
         setSelectedTechnicianKey("all");
+        setCurrentPage(1);
         setSearchParams({});
     };
 
@@ -657,9 +634,10 @@ function CustomerServicesPage() {
                                 <input
                                     type="text"
                                     value={search}
-                                    onChange={(event) =>
-                                        setSearch(event.target.value)
-                                    }
+                                    onChange={(event) => {
+                                        setSearch(event.target.value);
+                                        resetPage();
+                                    }}
                                     placeholder="Cari teknisi, customer, alamat, lokasi, atau nomor pekerjaan..."
                                     className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 md:text-base"
                                 />
@@ -675,16 +653,9 @@ function CustomerServicesPage() {
                                             <button
                                                 key={filter.key}
                                                 type="button"
-                                                onClick={() => {
-                                                    setActiveFilter(filter.key);
-                                                    if (filter.key === "all") {
-                                                        setSearchParams({});
-                                                        return;
-                                                    }
-                                                    setSearchParams({
-                                                        status: filter.key,
-                                                    });
-                                                }}
+                                                onClick={() =>
+                                                    updateStatusFilter(filter.key)
+                                                }
                                                 className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition md:rounded-full md:px-5 md:text-sm ${
                                                     activeFilter === filter.key
                                                         ? "bg-sky-500 font-semibold text-white"
@@ -717,7 +688,10 @@ function CustomerServicesPage() {
                                     </span>
                                     <CustomSelect
                                         value={periodFilter}
-                                        onChange={setPeriodFilter}
+                                        onChange={(value) => {
+                                            setPeriodFilter(value);
+                                            resetPage();
+                                        }}
                                         options={PERIOD_OPTIONS}
                                     />
                                 </label>
@@ -728,7 +702,10 @@ function CustomerServicesPage() {
                                     </span>
                                     <CustomSelect
                                         value={selectedTechnicianKey}
-                                        onChange={setSelectedTechnicianKey}
+                                        onChange={(value) => {
+                                            setSelectedTechnicianKey(value);
+                                            resetPage();
+                                        }}
                                         options={technicianOptions}
                                     />
                                 </label>
@@ -743,11 +720,12 @@ function CustomerServicesPage() {
                                         <input
                                             type="date"
                                             value={customStartDate}
-                                            onChange={(event) =>
+                                            onChange={(event) => {
                                                 setCustomStartDate(
                                                     event.target.value,
-                                                )
-                                            }
+                                                );
+                                                resetPage();
+                                            }}
                                             className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300 focus:bg-white"
                                         />
                                     </label>
@@ -758,11 +736,12 @@ function CustomerServicesPage() {
                                         <input
                                             type="date"
                                             value={customEndDate}
-                                            onChange={(event) =>
+                                            onChange={(event) => {
                                                 setCustomEndDate(
                                                     event.target.value,
-                                                )
-                                            }
+                                                );
+                                                resetPage();
+                                            }}
                                             className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300 focus:bg-white"
                                         />
                                     </label>

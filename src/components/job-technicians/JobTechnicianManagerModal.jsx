@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, Users, X } from "lucide-react";
 
 const inputClass =
@@ -20,6 +20,21 @@ const getTechnicianKey = (tech) => String(tech?.id ?? "");
 
 export default function JobTechnicianManagerModal({
     isOpen,
+    selectedTechnicianIds = [],
+    ...props
+}) {
+    if (!isOpen) return null;
+
+    return (
+        <JobTechnicianManagerModalContent
+            key={selectedTechnicianIds.filter(Boolean).join("|")}
+            selectedTechnicianIds={selectedTechnicianIds}
+            {...props}
+        />
+    );
+}
+
+function JobTechnicianManagerModalContent({
     title = "Kelola Teknisi",
     technicians = [],
     selectedTechnicianIds = [],
@@ -30,13 +45,9 @@ export default function JobTechnicianManagerModal({
     saving = false,
 }) {
     const [search, setSearch] = useState("");
-    const [draftIds, setDraftIds] = useState([]);
-
-    useEffect(() => {
-        if (!isOpen) return;
-        setSearch("");
-        setDraftIds([...new Set((selectedTechnicianIds ?? []).filter(Boolean))]);
-    }, [isOpen, selectedTechnicianIds]);
+    const [draftIds, setDraftIds] = useState(() => [
+        ...new Set((selectedTechnicianIds ?? []).filter(Boolean)),
+    ]);
 
     const filteredTechnicians = useMemo(() => {
         const keyword = search.trim().toLowerCase();
@@ -47,8 +58,6 @@ export default function JobTechnicianManagerModal({
             return haystack.includes(keyword);
         });
     }, [search, technicians]);
-
-    if (!isOpen) return null;
 
     const toggleTechnician = (technicianId) => {
         if (!technicianId) return;

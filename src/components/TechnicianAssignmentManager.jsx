@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTechnicianAssignments } from '../hooks/useTechnicianAssignments';
 import supabase from '../supabaseClient';
 import '../styles/TechnicianAssignmentManager.css';
@@ -10,7 +10,6 @@ import '../styles/TechnicianAssignmentManager.css';
 const TechnicianAssignmentManager = ({ customerId, onAssignmentChange }) => {
   const [technicians, setTechnicians] = useState([]);
   const [currentAssignments, setCurrentAssignments] = useState([]);
-  const [unassignedTechs, setUnassignedTechs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
   const {
@@ -20,7 +19,7 @@ const TechnicianAssignmentManager = ({ customerId, onAssignmentChange }) => {
   } = useTechnicianAssignments();
 
   // Fetch all technicians
-  const fetchAllTechnicians = async () => {
+  const fetchAllTechnicians = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -34,10 +33,10 @@ const TechnicianAssignmentManager = ({ customerId, onAssignmentChange }) => {
       console.error('Error fetching technicians:', err);
       setMessage({ type: 'error', text: 'Failed to load technicians' });
     }
-  };
+  }, []);
 
   // Fetch current assignments for customer
-  const fetchAssignments = async () => {
+  const fetchAssignments = useCallback(async () => {
     if (!customerId) return;
     try {
       setLoading(true);
@@ -49,29 +48,23 @@ const TechnicianAssignmentManager = ({ customerId, onAssignmentChange }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [customerId, getTechniciansForCustomer]);
 
   // Calculate unassigned technicians
-  const calculateUnassigned = () => {
+  const unassignedTechs = useMemo(() => {
     const assignedTechIds = new Set(currentAssignments.map((a) => a.technician_id));
-    const unassigned = technicians.filter(
+    return technicians.filter(
       (tech) =>
         !assignedTechIds.has(tech.id) &&
         (tech.technician_type === 'internal' || tech.customer_id !== customerId)
     );
-    setUnassignedTechs(unassigned);
-  };
+  }, [currentAssignments, customerId, technicians]);
 
   // Initialize on mount or when customerId changes
   useEffect(() => {
     fetchAllTechnicians();
     fetchAssignments();
-  }, [customerId]);
-
-  // Update unassigned techs when data changes
-  useEffect(() => {
-    calculateUnassigned();
-  }, [technicians, currentAssignments]);
+  }, [fetchAllTechnicians, fetchAssignments]);
 
   // Handle assigning technician
   const handleAssign = async (technicianId) => {

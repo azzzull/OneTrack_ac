@@ -177,6 +177,46 @@ function KPISummary({ items, title = "Ringkasan Pekerjaan" }) {
     );
 }
 
+function CompactSummarySection({ items = [], title }) {
+    if (!items.length) return null;
+    return (
+        <section className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
+            <div className="bg-linear-to-r from-sky-50 via-white to-blue-50 p-5 md:p-6">
+                <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
+                    {title}
+                </h2>
+            </div>
+            <div className="grid auto-cols-[minmax(170px,68vw)] grid-flow-col gap-3 overflow-x-auto p-4 md:grid-flow-row md:grid-cols-4 md:overflow-visible md:p-5">
+                {items.map(({ label, value, meta, to, icon: Icon }) => (
+                    <Link
+                        key={label}
+                        to={to}
+                        className="group rounded-2xl border border-slate-200 bg-white p-4 text-slate-700 no-underline transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md"
+                        style={{ textDecoration: "none" }}
+                    >
+                        <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-medium text-slate-500">
+                                {label}
+                            </p>
+                            <span className="rounded-xl bg-sky-100 p-2 text-sky-600">
+                                {Icon ? <Icon size={18} /> : null}
+                            </span>
+                        </div>
+                        <p className="mt-3 text-2xl font-semibold text-slate-900">
+                            {value}
+                        </p>
+                        {meta ? (
+                            <p className="mt-1 text-xs font-medium text-slate-400">
+                                {meta}
+                            </p>
+                        ) : null}
+                    </Link>
+                ))}
+            </div>
+        </section>
+    );
+}
+
 function QuickActions({ actions }) {
     return (
         <section className="rounded-2xl bg-white p-5 shadow-sm">
@@ -531,6 +571,7 @@ export default function OperationalDashboard({
     kpiTitle,
     quickActions,
     paymentRequests,
+    businessTripSummaryItems,
     completedCount,
     totalCount,
     statusSegments,
@@ -564,6 +605,10 @@ export default function OperationalDashboard({
             {paymentRequests?.length ? (
                 <PaymentRequestSection items={paymentRequests} />
             ) : null}
+            <CompactSummarySection
+                items={businessTripSummaryItems}
+                title="Business Trip"
+            />
             <KPISummary items={kpis} title={kpiTitle} />
             <QuickActions actions={quickActions} />
             <CompletionSummaryCard
