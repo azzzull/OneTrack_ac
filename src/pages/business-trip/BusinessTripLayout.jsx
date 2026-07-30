@@ -16,47 +16,53 @@ export default function BusinessTripLayout({
     const navigate = useNavigate();
 
     return (
-        <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 md:flex">
-            <Sidebar collapsed={collapsed} onToggle={toggle} />
-            <div className="min-w-0 flex-1 transition-all duration-300">
-                <header className="sticky top-0 z-30 bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 md:static">
-                    <div className="flex w-full items-center gap-2.5 px-3.5 py-2.5 md:px-6 xl:px-8">
-                        {showBack && (
-                            <button
-                                type="button"
-                                onClick={() => navigate(-1)}
-                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 active:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-sky-100"
-                                aria-label="Kembali"
-                                title="Kembali"
-                            >
-                                <ArrowLeft size={18} />
-                            </button>
-                        )}
-                        <div className="min-w-0 flex-1">
+        <div className="min-h-screen bg-slate-50 text-slate-900">
+            <div className="flex min-h-screen">
+                <Sidebar collapsed={collapsed} onToggle={toggle} />
+                <div className="min-w-0 flex-1 transition-all duration-300">
+                    <header className="sticky top-0 z-30 bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 md:static">
+                        <div className="flex w-full items-center gap-2.5 px-3.5 py-2.5 md:px-6 xl:px-8">
                             {showBack && (
-                                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-sky-500">
-                                    <Plane size={15} />
-                                    Business Trip
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(-1)}
+                                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 active:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-sky-100"
+                                    aria-label="Kembali"
+                                    title="Kembali"
+                                >
+                                    <ArrowLeft size={18} />
+                                </button>
                             )}
-                            <h1 className="mt-0.5 truncate text-[15px] font-bold md:text-lg">
-                                {title}
-                            </h1>
+                            <div className="min-w-0 flex-1">
+                                {showBack && (
+                                    <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-sky-500">
+                                        <Plane size={15} />
+                                        Business Trip
+                                    </div>
+                                )}
+                                <h1 className="mt-0.5 truncate text-[15px] font-bold md:text-lg">
+                                    {title}
+                                </h1>
+                            </div>
+                            {action}
                         </div>
-                        {action}
-                    </div>
-                </header>
+                    </header>
 
-                <main className="min-h-screen w-full px-3 pb-28 pt-2.5 md:px-6 md:pb-10 md:pt-4 xl:px-8">
-                    {children}
-                </main>
+                    <main className="min-h-screen w-full px-3 pb-28 pt-2.5 md:px-6 md:pb-10 md:pt-4 xl:px-8">
+                        {children}
+                    </main>
+                </div>
             </div>
             <MobileBottomNav />
         </div>
     );
 }
 
-export function PlaceholderCard({ icon: Icon = ClipboardList, title, children }) {
+export function PlaceholderCard({
+    icon: Icon = ClipboardList,
+    title,
+    children,
+}) {
     return (
         <section className={businessTripUi.section}>
             <div className="flex items-start gap-3">

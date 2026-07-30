@@ -103,8 +103,10 @@ const matchesPeriod = (row, filters) => {
 
     if (filters.period === "today") return dateKey === todayKey();
     if (filters.period === "week") return dateKey >= getWeekStart(now);
-    if (filters.period === "month") return dateKey.startsWith(todayKey().slice(0, 7));
-    if (filters.period === "year") return dateKey.startsWith(String(now.getFullYear()));
+    if (filters.period === "month")
+        return dateKey.startsWith(todayKey().slice(0, 7));
+    if (filters.period === "year")
+        return dateKey.startsWith(String(now.getFullYear()));
     if (filters.period === "custom") {
         if (filters.dateFrom && dateKey < filters.dateFrom) return false;
         if (filters.dateTo && dateKey > filters.dateTo) return false;
@@ -403,8 +405,7 @@ export default function LoanPage() {
             console.error("Loan load failed:", loadError);
             const message = loadError.message || "Gagal memuat data pinjaman.";
             setError(
-                message.includes("schema cache") ||
-                    message.includes("loans")
+                message.includes("schema cache") || message.includes("loans")
                     ? "Tabel loans belum tersedia di database Supabase. Jalankan migrasi Pinjaman, lalu refresh schema cache/project."
                     : message,
             );
@@ -456,8 +457,10 @@ export default function LoanPage() {
     const filteredRows = useMemo(() => {
         const search = filters.search.trim().toLowerCase();
         return rows.filter((row) => {
-            if (filters.status !== "all" && row.status !== filters.status) return false;
-            if (filters.requesterId && row.requester_id !== filters.requesterId) return false;
+            if (filters.status !== "all" && row.status !== filters.status)
+                return false;
+            if (filters.requesterId && row.requester_id !== filters.requesterId)
+                return false;
             if (!matchesPeriod(row, filters)) return false;
             if (search) {
                 const text = [
@@ -483,9 +486,12 @@ export default function LoanPage() {
                 if (row.status !== "approved") return summary;
                 summary.approvedAmount += Number(row.approved_amount ?? 0);
                 summary.paidAmount += Number(row.paid_amount ?? 0);
-                summary.pendingRepaymentAmount += Number(row.pending_repayment_amount ?? 0);
+                summary.pendingRepaymentAmount += Number(
+                    row.pending_repayment_amount ?? 0,
+                );
                 summary.remainingAmount += Number(row.remaining_amount ?? 0);
-                summary.activeLoans += Number(row.remaining_amount ?? 0) > 0 ? 1 : 0;
+                summary.activeLoans +=
+                    Number(row.remaining_amount ?? 0) > 0 ? 1 : 0;
                 return summary;
             },
             {
@@ -513,22 +519,21 @@ export default function LoanPage() {
     }, [rows]);
 
     const pendingRepayments = useMemo(() => {
-        const pendingItems = rows
-            .flatMap((row) =>
-                (row.repayments ?? [])
-                    .filter((repayment) => repayment.status === "pending")
-                    .map((repayment) => ({
-                        ...repayment,
-                        loan: {
-                            ...(repayment.loan ?? {}),
-                            id: row.id,
-                            requester_id: row.requester_id,
-                            description: row.description,
-                            needed_date: row.needed_date,
-                            requester: row.requester,
-                        },
-                    })),
-            );
+        const pendingItems = rows.flatMap((row) =>
+            (row.repayments ?? [])
+                .filter((repayment) => repayment.status === "pending")
+                .map((repayment) => ({
+                    ...repayment,
+                    loan: {
+                        ...(repayment.loan ?? {}),
+                        id: row.id,
+                        requester_id: row.requester_id,
+                        description: row.description,
+                        needed_date: row.needed_date,
+                        requester: row.requester,
+                    },
+                })),
+        );
         const groups = new Map();
 
         for (const repayment of pendingItems) {
@@ -716,8 +721,12 @@ export default function LoanPage() {
                           Number(row.remaining_amount ?? 0) > 0,
                   )
                   .sort((a, b) => {
-                      const aDate = new Date(a.approved_at ?? a.created_at ?? 0);
-                      const bDate = new Date(b.approved_at ?? b.created_at ?? 0);
+                      const aDate = new Date(
+                          a.approved_at ?? a.created_at ?? 0,
+                      );
+                      const bDate = new Date(
+                          b.approved_at ?? b.created_at ?? 0,
+                      );
                       return aDate - bDate;
                   })
             : repaymentTarget.loans ?? [repaymentTarget];
@@ -742,7 +751,11 @@ export default function LoanPage() {
             alert("Nominal pembayaran melebihi sisa hutang.");
             return;
         }
-        if (!canReview && repaymentForm.method === "transfer" && !repaymentForm.proofFile) {
+        if (
+            !canReview &&
+            repaymentForm.method === "transfer" &&
+            !repaymentForm.proofFile
+        ) {
             alert("Bukti transfer wajib diupload.");
             return;
         }
@@ -754,7 +767,8 @@ export default function LoanPage() {
                 const uploaded = await uploadLoanFile({
                     file: repaymentForm.proofFile,
                     loanId:
-                        repaymentTarget.isUniversal || repaymentTarget.isAdminUniversal
+                        repaymentTarget.isUniversal ||
+                        repaymentTarget.isAdminUniversal
                             ? targetLoans[0]?.id
                             : repaymentTarget.id,
                     kind: "repayment",
@@ -762,7 +776,10 @@ export default function LoanPage() {
                 proofUrl = uploaded.url;
             }
 
-            if (repaymentTarget.isUniversal || repaymentTarget.isAdminUniversal) {
+            if (
+                repaymentTarget.isUniversal ||
+                repaymentTarget.isAdminUniversal
+            ) {
                 await addUniversalLoanRepayment({
                     loans: targetLoans,
                     amount,
@@ -789,7 +806,9 @@ export default function LoanPage() {
             setSelected(null);
             await loadData();
         } catch (repaymentError) {
-            alert(repaymentError.message || "Gagal mencatat pembayaran pinjaman.");
+            alert(
+                repaymentError.message || "Gagal mencatat pembayaran pinjaman.",
+            );
         } finally {
             setSaving(false);
         }
@@ -886,14 +905,17 @@ export default function LoanPage() {
                                 Pinjaman
                             </h1>
                             <p className="mt-1 text-sm text-slate-600">
-                                Pengajuan pinjaman, approval, dan laporan pinjaman.
+                                Pengajuan pinjaman, approval, dan laporan
+                                pinjaman.
                             </p>
                         </div>
                         {canReview && (
                             <div className="flex flex-wrap gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setReviewRepaymentsOpen(true)}
+                                    onClick={() =>
+                                        setReviewRepaymentsOpen(true)
+                                    }
                                     className="relative inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700"
                                 >
                                     <Receipt size={16} />
@@ -925,27 +947,39 @@ export default function LoanPage() {
                     {role === "technician" && (
                         <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                                <p className="text-xs font-medium text-slate-500">Total Disetujui</p>
-                                <p className="mt-2 break-words text-xl font-bold text-slate-900">
+                                <p className="text-xs font-medium text-slate-500">
+                                    Total Disetujui
+                                </p>
+                                <p className="mt-2 wrap-break-word text-xl font-bold text-slate-900">
                                     {formatCurrency(loanSummary.approvedAmount)}
                                 </p>
                             </div>
                             <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                                <p className="text-xs font-medium text-blue-700">Sudah Dibayar</p>
-                                <p className="mt-2 break-words text-xl font-bold text-blue-900">
+                                <p className="text-xs font-medium text-blue-700">
+                                    Sudah Dibayar
+                                </p>
+                                <p className="mt-2 wrap-break-word text-xl font-bold text-blue-900">
                                     {formatCurrency(loanSummary.paidAmount)}
                                 </p>
                             </div>
                             <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
-                                <p className="text-xs font-medium text-cyan-700">Menunggu Review</p>
-                                <p className="mt-2 break-words text-xl font-bold text-cyan-900">
-                                    {formatCurrency(loanSummary.pendingRepaymentAmount)}
+                                <p className="text-xs font-medium text-cyan-700">
+                                    Menunggu Review
+                                </p>
+                                <p className="mt-2 wrap-break-word text-xl font-bold text-cyan-900">
+                                    {formatCurrency(
+                                        loanSummary.pendingRepaymentAmount,
+                                    )}
                                 </p>
                             </div>
                             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                                <p className="text-xs font-medium text-amber-700">Sisa Pinjaman</p>
-                                <p className="mt-2 break-words text-xl font-bold text-amber-900">
-                                    {formatCurrency(loanSummary.remainingAmount)}
+                                <p className="text-xs font-medium text-amber-700">
+                                    Sisa Pinjaman
+                                </p>
+                                <p className="mt-2 wrap-break-word text-xl font-bold text-amber-900">
+                                    {formatCurrency(
+                                        loanSummary.remainingAmount,
+                                    )}
                                 </p>
                             </div>
                         </div>
@@ -959,7 +993,12 @@ export default function LoanPage() {
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
                             <CustomSelect
                                 value={filters.period}
-                                onChange={(value) => setFilters((prev) => ({ ...prev, period: value }))}
+                                onChange={(value) =>
+                                    setFilters((prev) => ({
+                                        ...prev,
+                                        period: value,
+                                    }))
+                                }
                                 options={[
                                     { value: "all", label: "Semua periode" },
                                     { value: "today", label: "Hari ini" },
@@ -974,13 +1013,23 @@ export default function LoanPage() {
                                     <input
                                         type="date"
                                         value={filters.dateFrom}
-                                        onChange={(event) => setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
+                                        onChange={(event) =>
+                                            setFilters((prev) => ({
+                                                ...prev,
+                                                dateFrom: event.target.value,
+                                            }))
+                                        }
                                         className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
                                     />
                                     <input
                                         type="date"
                                         value={filters.dateTo}
-                                        onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+                                        onChange={(event) =>
+                                            setFilters((prev) => ({
+                                                ...prev,
+                                                dateTo: event.target.value,
+                                            }))
+                                        }
                                         className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
                                     />
                                 </>
@@ -988,7 +1037,12 @@ export default function LoanPage() {
                             {canReview && (
                                 <CustomSelect
                                     value={filters.requesterId}
-                                    onChange={(value) => setFilters((prev) => ({ ...prev, requesterId: value }))}
+                                    onChange={(value) =>
+                                        setFilters((prev) => ({
+                                            ...prev,
+                                            requesterId: value,
+                                        }))
+                                    }
                                     options={[
                                         { value: "", label: "Semua pengaju" },
                                         ...requesters.map((item) => ({
@@ -1000,7 +1054,12 @@ export default function LoanPage() {
                             )}
                             <CustomSelect
                                 value={filters.status}
-                                onChange={(value) => setFilters((prev) => ({ ...prev, status: value }))}
+                                onChange={(value) =>
+                                    setFilters((prev) => ({
+                                        ...prev,
+                                        status: value,
+                                    }))
+                                }
                                 options={[
                                     { value: "all", label: "Semua status" },
                                     { value: "pending", label: "Pending" },
@@ -1009,11 +1068,19 @@ export default function LoanPage() {
                                 ]}
                             />
                             <label className="relative block">
-                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <Search
+                                    size={15}
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                                />
                                 <input
                                     type="search"
                                     value={filters.search}
-                                    onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
+                                    onChange={(event) =>
+                                        setFilters((prev) => ({
+                                            ...prev,
+                                            search: event.target.value,
+                                        }))
+                                    }
                                     placeholder="Search"
                                     className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
                                 />
@@ -1042,42 +1109,77 @@ export default function LoanPage() {
                                             <div className="min-w-0">
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">
-                                                        {getDisplayName(row.requester)}
+                                                        {getDisplayName(
+                                                            row.requester,
+                                                        )}
                                                     </h2>
-                                                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${LOAN_STATUS_STYLES[row.status]}`}>
-                                                        {LOAN_STATUS_LABELS[row.status]}
+                                                    <span
+                                                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                                            LOAN_STATUS_STYLES[
+                                                                row.status
+                                                            ]
+                                                        }`}
+                                                    >
+                                                        {
+                                                            LOAN_STATUS_LABELS[
+                                                                row.status
+                                                            ]
+                                                        }
                                                     </span>
                                                 </div>
                                                 <p className="mt-2 line-clamp-2 text-sm text-slate-600">
                                                     {row.description}
                                                 </p>
                                                 <p className="mt-2 text-xs font-medium text-slate-500">
-                                                    Kebutuhan {formatDate(row.needed_date)}
+                                                    Kebutuhan{" "}
+                                                    {formatDate(
+                                                        row.needed_date,
+                                                    )}
                                                 </p>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2 text-sm lg:w-96">
                                                 <div className="rounded-xl bg-slate-50 px-3 py-2">
-                                                    <p className="text-xs font-medium text-slate-500">Nominal</p>
-                                                    <p className="mt-1 break-words font-semibold text-slate-900">
-                                                        {formatCurrency(row.loan_amount)}
+                                                    <p className="text-xs font-medium text-slate-500">
+                                                        Nominal
+                                                    </p>
+                                                    <p className="mt-1 wrap-break-word font-semibold text-slate-900">
+                                                        {formatCurrency(
+                                                            row.loan_amount,
+                                                        )}
                                                     </p>
                                                 </div>
                                                 <div className="rounded-xl bg-emerald-50 px-3 py-2">
-                                                    <p className="text-xs font-medium text-emerald-700">Disetujui</p>
-                                                    <p className="mt-1 break-words font-semibold text-emerald-900">
-                                                        {row.approved_amount ? formatCurrency(row.approved_amount) : "-"}
+                                                    <p className="text-xs font-medium text-emerald-700">
+                                                        Disetujui
+                                                    </p>
+                                                    <p className="mt-1 wrap-break-word font-semibold text-emerald-900">
+                                                        {row.approved_amount
+                                                            ? formatCurrency(
+                                                                  row.approved_amount,
+                                                              )
+                                                            : "-"}
                                                     </p>
                                                 </div>
                                                 <div className="rounded-xl bg-blue-50 px-3 py-2">
-                                                    <p className="text-xs font-medium text-blue-700">Dibayar</p>
-                                                    <p className="mt-1 break-words font-semibold text-blue-900">
-                                                        {formatCurrency(row.paid_amount)}
+                                                    <p className="text-xs font-medium text-blue-700">
+                                                        Dibayar
+                                                    </p>
+                                                    <p className="mt-1 wrap-break-word font-semibold text-blue-900">
+                                                        {formatCurrency(
+                                                            row.paid_amount,
+                                                        )}
                                                     </p>
                                                 </div>
                                                 <div className="rounded-xl bg-amber-50 px-3 py-2">
-                                                    <p className="text-xs font-medium text-amber-700">Sisa Hutang</p>
-                                                    <p className="mt-1 break-words font-semibold text-amber-900">
-                                                        {row.approved_amount ? formatCurrency(row.remaining_amount) : "-"}
+                                                    <p className="text-xs font-medium text-amber-700">
+                                                        Sisa Hutang
+                                                    </p>
+                                                    <p className="mt-1 wrap-break-word font-semibold text-amber-900">
+                                                        {row.approved_amount
+                                                            ? formatCurrency(
+                                                                  row.remaining_amount,
+                                                              )
+                                                            : "-"}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1092,26 +1194,37 @@ export default function LoanPage() {
                                                 <Eye size={15} />
                                                 Detail
                                             </button>
-                                            {canReview && row.status === "pending" && (
-                                                <>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openReview(row, "approve")}
-                                                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                                                    >
-                                                        <Check size={15} />
-                                                        Approve
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openReview(row, "reject")}
-                                                        className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
-                                                    >
-                                                        <X size={15} />
-                                                        Tolak
-                                                    </button>
-                                                </>
-                                            )}
+                                            {canReview &&
+                                                row.status === "pending" && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                openReview(
+                                                                    row,
+                                                                    "approve",
+                                                                )
+                                                            }
+                                                            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                                                        >
+                                                            <Check size={15} />
+                                                            Approve
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                openReview(
+                                                                    row,
+                                                                    "reject",
+                                                                )
+                                                            }
+                                                            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                                                        >
+                                                            <X size={15} />
+                                                            Tolak
+                                                        </button>
+                                                    </>
+                                                )}
                                             {canDelete && (
                                                 <button
                                                     type="button"
@@ -1139,16 +1252,19 @@ export default function LoanPage() {
                 <div className="fixed bottom-24 right-5 z-40 flex flex-col items-end gap-2 md:bottom-6">
                     {fabOpen && (
                         <div className="flex flex-col items-end gap-2">
-                            {canUseUniversalRepayment && hasOutstandingLoans && (
-                                <button
-                                    type="button"
-                                    onClick={openUniversalRepayment}
-                                    className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-xl shadow-blue-900/20 hover:bg-blue-700"
-                                >
-                                    <Banknote size={17} />
-                                    {canReview ? "Kurangi Pinjaman" : "Bayar Pinjaman"}
-                                </button>
-                            )}
+                            {canUseUniversalRepayment &&
+                                hasOutstandingLoans && (
+                                    <button
+                                        type="button"
+                                        onClick={openUniversalRepayment}
+                                        className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-xl shadow-blue-900/20 hover:bg-blue-700"
+                                    >
+                                        <Banknote size={17} />
+                                        {canReview
+                                            ? "Kurangi Pinjaman"
+                                            : "Bayar Pinjaman"}
+                                    </button>
+                                )}
                             <button
                                 type="button"
                                 onClick={() => {
@@ -1253,13 +1369,7 @@ export default function LoanPage() {
     );
 }
 
-function RequestModal({
-    form,
-    saving,
-    onChange,
-    onSubmit,
-    onClose,
-}) {
+function RequestModal({ form, saving, onChange, onSubmit, onClose }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
             <form
@@ -1367,10 +1477,16 @@ function DetailModal({
         ["Tanggal Pengajuan", formatDateTime(row.created_at)],
         ["Tanggal Kebutuhan", formatDate(row.needed_date)],
         ["Nominal Pinjaman", formatCurrency(row.loan_amount)],
-        ["Nominal Disetujui", row.approved_amount ? formatCurrency(row.approved_amount) : "-"],
-                        ["Sudah Dibayar", formatCurrency(row.paid_amount)],
+        [
+            "Nominal Disetujui",
+            row.approved_amount ? formatCurrency(row.approved_amount) : "-",
+        ],
+        ["Sudah Dibayar", formatCurrency(row.paid_amount)],
         ["Menunggu Review", formatCurrency(row.pending_repayment_amount)],
-        ["Sisa Hutang", row.approved_amount ? formatCurrency(row.remaining_amount) : "-"],
+        [
+            "Sisa Hutang",
+            row.approved_amount ? formatCurrency(row.remaining_amount) : "-",
+        ],
         ["Status", LOAN_STATUS_LABELS[row.status]],
         ["Approved By", getDisplayName(row.approver)],
         ["Tanggal Approval", formatDateTime(row.approved_at)],
@@ -1384,8 +1500,14 @@ function DetailModal({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
             <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
                 <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
-                    <h2 className="text-lg font-semibold text-slate-900">Detail Pinjaman</h2>
-                    <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                    <h2 className="text-lg font-semibold text-slate-900">
+                        Detail Pinjaman
+                    </h2>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                    >
                         <X size={18} />
                     </button>
                 </div>
@@ -1395,16 +1517,28 @@ function DetailModal({
                     </p>
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         {detailRows.map(([label, value]) => (
-                            <div key={label} className="rounded-xl border border-slate-200 p-3">
-                                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-                                <p className="mt-1 break-words text-sm font-semibold text-slate-900">{value}</p>
+                            <div
+                                key={label}
+                                className="rounded-xl border border-slate-200 p-3"
+                            >
+                                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                    {label}
+                                </p>
+                                <p className="mt-1 wrap-break-word text-sm font-semibold text-slate-900">
+                                    {value}
+                                </p>
                             </div>
                         ))}
                     </div>
                     {row.transfer_proof_url && (
                         <button
                             type="button"
-                            onClick={() => onOpenFile(row.transfer_proof_url, "Bukti transfer")}
+                            onClick={() =>
+                                onOpenFile(
+                                    row.transfer_proof_url,
+                                    "Bukti transfer",
+                                )
+                            }
                             className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
                         >
                             <FileImage size={16} />
@@ -1412,7 +1546,9 @@ function DetailModal({
                         </button>
                     )}
                     <div>
-                        <p className="mb-2 text-sm font-semibold text-slate-800">Riwayat Pembayaran</p>
+                        <p className="mb-2 text-sm font-semibold text-slate-800">
+                            Riwayat Pembayaran
+                        </p>
                         {(row.repayments ?? []).length === 0 ? (
                             <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
                                 Belum ada pembayaran.
@@ -1427,39 +1563,61 @@ function DetailModal({
                                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                             <div>
                                                 <p className="font-semibold text-slate-900">
-                                                    {formatCurrency(repayment.amount)}
+                                                    {formatCurrency(
+                                                        repayment.amount,
+                                                    )}
                                                 </p>
                                                 <div className="mt-1 flex flex-wrap items-center gap-2">
                                                     <span className="text-xs text-slate-500">
-                                                        {LOAN_REPAYMENT_METHOD_LABELS[repayment.method] ?? repayment.method} oleh {getDisplayName(repayment.creator)}
+                                                        {LOAN_REPAYMENT_METHOD_LABELS[
+                                                            repayment.method
+                                                        ] ??
+                                                            repayment.method}{" "}
+                                                        oleh{" "}
+                                                        {getDisplayName(
+                                                            repayment.creator,
+                                                        )}
                                                     </span>
                                                     <span
                                                         className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                                            repayment.status === "approved"
+                                                            repayment.status ===
+                                                            "approved"
                                                                 ? "bg-emerald-100 text-emerald-700"
-                                                                : repayment.status === "rejected"
-                                                                  ? "bg-red-100 text-red-700"
-                                                                  : "bg-amber-100 text-amber-700"
+                                                                : repayment.status ===
+                                                                  "rejected"
+                                                                ? "bg-red-100 text-red-700"
+                                                                : "bg-amber-100 text-amber-700"
                                                         }`}
                                                     >
-                                                        {repayment.status === "approved"
+                                                        {repayment.status ===
+                                                        "approved"
                                                             ? "Approved"
-                                                            : repayment.status === "rejected"
-                                                              ? "Rejected"
-                                                              : "Pending Review"}
+                                                            : repayment.status ===
+                                                              "rejected"
+                                                            ? "Rejected"
+                                                            : "Pending Review"}
                                                     </span>
                                                 </div>
                                                 <p className="text-xs text-slate-500">
-                                                    {formatDateTime(repayment.created_at)}
+                                                    {formatDateTime(
+                                                        repayment.created_at,
+                                                    )}
                                                 </p>
                                                 {repayment.note && (
-                                                    <p className="mt-2 text-slate-700">{repayment.note}</p>
+                                                    <p className="mt-2 text-slate-700">
+                                                        {repayment.note}
+                                                    </p>
                                                 )}
                                             </div>
                                             {repayment.proof_url && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => onOpenFile(repayment.proof_url, "Bukti pembayaran")}
+                                                    onClick={() =>
+                                                        onOpenFile(
+                                                            repayment.proof_url,
+                                                            "Bukti pembayaran",
+                                                        )
+                                                    }
                                                     className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                                                 >
                                                     <FileImage size={14} />
@@ -1525,7 +1683,8 @@ function RepaymentReviewModal({
                             Review Pembayaran Pinjaman
                         </h2>
                         <p className="mt-1 text-sm text-slate-500">
-                            Pembayaran teknisi yang menunggu pengecekan admin/management.
+                            Pembayaran teknisi yang menunggu pengecekan
+                            admin/management.
                         </p>
                     </div>
                     <button
@@ -1552,41 +1711,61 @@ function RepaymentReviewModal({
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <h3 className="text-base font-semibold text-slate-900">
-                                                {getDisplayName(repaymentGroup.requester)}
+                                                {getDisplayName(
+                                                    repaymentGroup.requester,
+                                                )}
                                             </h3>
                                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                                                 Pending Review
                                             </span>
                                         </div>
                                         <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                                            Pembayaran universal, otomatis mengurangi pinjaman paling lama terlebih dulu.
+                                            Pembayaran universal, otomatis
+                                            mengurangi pinjaman paling lama
+                                            terlebih dulu.
                                         </p>
                                         <p className="mt-1 text-xs text-slate-500">
-                                            Dibayar {formatDateTime(repaymentGroup.created_at)}
-                                            {repaymentGroup.repayments.length > 1
+                                            Dibayar{" "}
+                                            {formatDateTime(
+                                                repaymentGroup.created_at,
+                                            )}
+                                            {repaymentGroup.repayments.length >
+                                            1
                                                 ? ` - dialokasikan ke ${repaymentGroup.repayments.length} pinjaman`
                                                 : ""}
                                         </p>
                                     </div>
                                     <div className="rounded-xl bg-slate-50 px-3 py-2 md:min-w-48">
-                                        <p className="text-xs font-medium text-slate-500">Nominal Bayar</p>
-                                        <p className="mt-1 break-words text-lg font-bold text-slate-900">
-                                            {formatCurrency(repaymentGroup.amount)}
+                                        <p className="text-xs font-medium text-slate-500">
+                                            Nominal Bayar
+                                        </p>
+                                        <p className="mt-1 wrap-break-word text-lg font-bold text-slate-900">
+                                            {formatCurrency(
+                                                repaymentGroup.amount,
+                                            )}
                                         </p>
                                     </div>
                                 </div>
 
                                 <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                                     <div className="rounded-xl bg-blue-50 px-3 py-2">
-                                        <p className="text-xs font-medium text-blue-700">Metode</p>
+                                        <p className="text-xs font-medium text-blue-700">
+                                            Metode
+                                        </p>
                                         <p className="mt-1 font-semibold text-blue-900">
-                                            {LOAN_REPAYMENT_METHOD_LABELS[repaymentGroup.method] ?? repaymentGroup.method}
+                                            {LOAN_REPAYMENT_METHOD_LABELS[
+                                                repaymentGroup.method
+                                            ] ?? repaymentGroup.method}
                                         </p>
                                     </div>
                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
-                                        <p className="text-xs font-medium text-slate-500">Dibuat Oleh</p>
+                                        <p className="text-xs font-medium text-slate-500">
+                                            Dibuat Oleh
+                                        </p>
                                         <p className="mt-1 font-semibold text-slate-900">
-                                            {getDisplayName(repaymentGroup.creator)}
+                                            {getDisplayName(
+                                                repaymentGroup.creator,
+                                            )}
                                         </p>
                                     </div>
                                 </div>
@@ -1601,7 +1780,12 @@ function RepaymentReviewModal({
                                     {repaymentGroup.proof_url && (
                                         <button
                                             type="button"
-                                            onClick={() => onOpenFile(repaymentGroup.proof_url, "Bukti pembayaran")}
+                                            onClick={() =>
+                                                onOpenFile(
+                                                    repaymentGroup.proof_url,
+                                                    "Bukti pembayaran",
+                                                )
+                                            }
                                             className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
                                         >
                                             <FileImage size={15} />
@@ -1618,11 +1802,18 @@ function RepaymentReviewModal({
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => onApprove(repaymentGroup)}
+                                        onClick={() =>
+                                            onApprove(repaymentGroup)
+                                        }
                                         disabled={saving}
                                         className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
                                     >
-                                        {saving && <Loader size={15} className="animate-spin" />}
+                                        {saving && (
+                                            <Loader
+                                                size={15}
+                                                className="animate-spin"
+                                            />
+                                        )}
                                         Approve
                                     </button>
                                 </div>
@@ -1687,12 +1878,19 @@ function RepaymentModal({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-            <form onSubmit={onSubmit} className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+            <form
+                onSubmit={onSubmit}
+                className="w-full max-w-xl rounded-2xl bg-white shadow-2xl"
+            >
                 <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
                     <h2 className="text-lg font-semibold text-slate-900">
                         Bayar / Kurangi Hutang
                     </h2>
-                    <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                    >
                         <X size={18} />
                     </button>
                 </div>
@@ -1718,25 +1916,37 @@ function RepaymentModal({
                     )}
                     <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
                         <p className="font-semibold text-slate-900">
-                            {selectedRequester ? getDisplayName(selectedRequester) : "Pilih user terlebih dahulu"}
+                            {selectedRequester
+                                ? getDisplayName(selectedRequester)
+                                : "Pilih user terlebih dahulu"}
                         </p>
                         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                             <div className="rounded-xl bg-white p-3">
-                                <p className="text-xs text-slate-500">Disetujui</p>
+                                <p className="text-xs text-slate-500">
+                                    Disetujui
+                                </p>
                                 <p className="font-semibold text-slate-900">
-                                    {formatCurrency(repaymentSummary.approvedAmount)}
+                                    {formatCurrency(
+                                        repaymentSummary.approvedAmount,
+                                    )}
                                 </p>
                             </div>
                             <div className="rounded-xl bg-blue-50 p-3">
                                 <p className="text-xs text-blue-700">Dibayar</p>
                                 <p className="font-semibold text-blue-900">
-                                    {formatCurrency(repaymentSummary.paidAmount)}
+                                    {formatCurrency(
+                                        repaymentSummary.paidAmount,
+                                    )}
                                 </p>
                             </div>
                             <div className="rounded-xl bg-amber-50 p-3">
-                                <p className="text-xs text-amber-700">Sisa Hutang</p>
+                                <p className="text-xs text-amber-700">
+                                    Sisa Hutang
+                                </p>
                                 <p className="font-semibold text-amber-900">
-                                    {formatCurrency(repaymentSummary.remainingAmount)}
+                                    {formatCurrency(
+                                        repaymentSummary.remainingAmount,
+                                    )}
                                 </p>
                             </div>
                         </div>
@@ -1760,7 +1970,10 @@ function RepaymentModal({
                             onChange((prev) => ({
                                 ...prev,
                                 method: value,
-                                proofFile: value === "transfer" ? prev.proofFile : null,
+                                proofFile:
+                                    value === "transfer"
+                                        ? prev.proofFile
+                                        : null,
                             }))
                         }
                         options={methodOptions}
@@ -1779,7 +1992,8 @@ function RepaymentModal({
                                 onChange={(event) =>
                                     onChange((prev) => ({
                                         ...prev,
-                                        proofFile: event.target.files?.[0] ?? null,
+                                        proofFile:
+                                            event.target.files?.[0] ?? null,
                                     }))
                                 }
                             />
@@ -1788,7 +2002,10 @@ function RepaymentModal({
                     <textarea
                         value={form.note}
                         onChange={(event) =>
-                            onChange((prev) => ({ ...prev, note: event.target.value }))
+                            onChange((prev) => ({
+                                ...prev,
+                                note: event.target.value,
+                            }))
                         }
                         placeholder={
                             form.method === "salary_deduction"
@@ -1799,7 +2016,11 @@ function RepaymentModal({
                     />
                 </div>
                 <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
-                    <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
                         Batal
                     </button>
                     <button
@@ -1807,7 +2028,9 @@ function RepaymentModal({
                         disabled={saving}
                         className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-slate-300"
                     >
-                        {saving && <Loader size={15} className="animate-spin" />}
+                        {saving && (
+                            <Loader size={15} className="animate-spin" />
+                        )}
                         Simpan Pembayaran
                     </button>
                 </div>
@@ -1821,20 +2044,31 @@ function ReviewModal({ mode, row, form, saving, onChange, onSubmit, onClose }) {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-            <form onSubmit={onSubmit} className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+            <form
+                onSubmit={onSubmit}
+                className="w-full max-w-xl rounded-2xl bg-white shadow-2xl"
+            >
                 <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
                     <h2 className="text-lg font-semibold text-slate-900">
                         {isApprove ? "Approve Pinjaman" : "Tolak Pinjaman"}
                     </h2>
-                    <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                    >
                         <X size={18} />
                     </button>
                 </div>
                 <div className="space-y-4 p-5">
                     <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-                        <p className="font-semibold text-slate-900">{getDisplayName(row.requester)}</p>
+                        <p className="font-semibold text-slate-900">
+                            {getDisplayName(row.requester)}
+                        </p>
                         <p className="mt-1">{row.description}</p>
-                        <p className="mt-2 font-semibold">Pinjaman: {formatCurrency(row.loan_amount)}</p>
+                        <p className="mt-2 font-semibold">
+                            Pinjaman: {formatCurrency(row.loan_amount)}
+                        </p>
                     </div>
                     {isApprove ? (
                         <>
@@ -1855,42 +2089,67 @@ function ReviewModal({ mode, row, form, saving, onChange, onSubmit, onClose }) {
                             />
                             <textarea
                                 value={form.approvalNote}
-                                onChange={(event) => onChange((prev) => ({ ...prev, approvalNote: event.target.value }))}
+                                onChange={(event) =>
+                                    onChange((prev) => ({
+                                        ...prev,
+                                        approvalNote: event.target.value,
+                                    }))
+                                }
                                 placeholder="Catatan approval"
                                 className="min-h-24 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
                             />
                             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
                                 <Upload size={16} />
-                                {form.transferFile?.name || "Upload bukti transfer"}
+                                {form.transferFile?.name ||
+                                    "Upload bukti transfer"}
                                 <input
                                     type="file"
                                     accept="image/*,.pdf"
                                     className="hidden"
-                                    onChange={(event) => onChange((prev) => ({ ...prev, transferFile: event.target.files?.[0] ?? null }))}
+                                    onChange={(event) =>
+                                        onChange((prev) => ({
+                                            ...prev,
+                                            transferFile:
+                                                event.target.files?.[0] ?? null,
+                                        }))
+                                    }
                                 />
                             </label>
                         </>
                     ) : (
                         <textarea
                             value={form.rejectionReason}
-                            onChange={(event) => onChange((prev) => ({ ...prev, rejectionReason: event.target.value }))}
+                            onChange={(event) =>
+                                onChange((prev) => ({
+                                    ...prev,
+                                    rejectionReason: event.target.value,
+                                }))
+                            }
                             placeholder="Alasan penolakan"
                             className="min-h-28 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
                         />
                     )}
                 </div>
                 <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
-                    <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
                         Batal
                     </button>
                     <button
                         type="submit"
                         disabled={saving}
                         className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300 ${
-                            isApprove ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
+                            isApprove
+                                ? "bg-emerald-600 hover:bg-emerald-700"
+                                : "bg-red-600 hover:bg-red-700"
                         }`}
                     >
-                        {saving && <Loader size={15} className="animate-spin" />}
+                        {saving && (
+                            <Loader size={15} className="animate-spin" />
+                        )}
                         {isApprove ? "Approve" : "Tolak"}
                     </button>
                 </div>
