@@ -42,8 +42,8 @@ import { startBusinessTrip } from "../../services/businessTripService";
 const STATUS_FILTERS = [
     { value: BUSINESS_TRIP_STATUS.DRAFT, label: "Draft" },
     { value: BUSINESS_TRIP_STATUS.PENDING_APPROVAL, label: "Menunggu Approval" },
+    { value: "needs-realization", label: "Realisasi" },
     { value: BUSINESS_TRIP_STATUS.REJECTED, label: "Ditolak" },
-    { value: "needs-realization", label: "Perlu Realisasi" },
     { value: BUSINESS_TRIP_STATUS.REALIZATION_SUBMITTED, label: "Verifikasi" },
     { value: "Settlement", label: "Settlement" },
     { value: BUSINESS_TRIP_STATUS.COMPLETED, label: "Selesai" },

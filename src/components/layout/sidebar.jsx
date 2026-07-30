@@ -529,6 +529,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         );
     const [newRequestToast, setNewRequestToast] = useState("");
     const [accommodationToast, setAccommodationToast] = useState("");
+    const [menuOpenByPath, setMenuOpenByPath] = useState({});
     const toastTimerRef = useRef(null);
     const accommodationToastTimerRef = useRef(null);
     const notifiedRequestIdsRef = useRef(new Set());
@@ -888,11 +889,29 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                             const parentActive =
                                 hasChildren &&
                                 location.pathname.startsWith(path);
+                            const submenuOpen =
+                                hasChildren &&
+                                (menuOpenByPath[path] ?? parentActive);
                             return (
                                 <li key={label}>
                                     <NavLink
                                         to={path}
                                         end={!hasChildren}
+                                        onClick={(event) => {
+                                            if (!hasChildren || collapsed) return;
+
+                                            const isOpen =
+                                                menuOpenByPath[path] ??
+                                                parentActive;
+                                            setMenuOpenByPath((current) => ({
+                                                ...current,
+                                                [path]: !isOpen,
+                                            }));
+
+                                            if (parentActive) {
+                                                event.preventDefault();
+                                            }
+                                        }}
                                         className={({ isActive }) =>
                                             `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! w-full rounded-xl transition relative
                                     ${
@@ -925,10 +944,15 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                             {label}
                                         </span>
                                         {!collapsed && hasChildren && (
-                                            <ChevronDown size={15} />
+                                            <ChevronDown
+                                                size={15}
+                                                className={`transition-transform ${
+                                                    submenuOpen ? "rotate-180" : ""
+                                                }`}
+                                            />
                                         )}
                                     </NavLink>
-                                    {!collapsed && hasChildren && parentActive && (
+                                    {!collapsed && hasChildren && submenuOpen && (
                                         <ul className="mt-1 space-y-1 pl-8">
                                             {children.map((child) => (
                                                 <li key={child.label}>
