@@ -8,7 +8,6 @@ import {
 } from "react";
 import { useAuth } from "../../context/useAuth";
 import {
-    createBusinessTripDraft,
     deleteBusinessTripDraft,
     getBusinessTripById,
     getBusinessTripStatusCounts,
@@ -43,6 +42,7 @@ export const normalizeAccommodationRequest = (value) => ({
 
 export const createEmptyBusinessTrip = (requesterName = "") => ({
     id: createLocalId("business-trip-local"),
+    isLocalDraft: true,
     businessTripNo: "BT-DRAFT",
     createdAt: new Date().toISOString(),
     dateMode: "single",
@@ -174,9 +174,7 @@ export function BusinessTripDraftProvider({ children }) {
 
     const createTrip = useCallback(async () => {
         if (!userId) throw new Error("User belum siap.");
-        const nextTrip = await createBusinessTripDraft({ requesterId: userId });
-        nextTrip.initiatorName = nextTrip.initiatorName || requesterName;
-        return upsertTrip(nextTrip).id;
+        return upsertTrip(createEmptyBusinessTrip(requesterName)).id;
     }, [requesterName, upsertTrip, userId]);
 
     const updateTrip = useCallback(
@@ -218,10 +216,18 @@ export function BusinessTripDraftProvider({ children }) {
         [upsertTrip],
     );
 
-    const deleteTrip = useCallback(async (tripId) => {
-        await deleteBusinessTripDraft(tripId);
-        setBusinessTrips((current) => current.filter((trip) => trip.id !== tripId));
-    }, []);
+    const deleteTrip = useCallback(
+        async (tripId) => {
+            const existingTrip = businessTrips.find((trip) => trip.id === tripId);
+            if (!existingTrip?.isLocalDraft) {
+                await deleteBusinessTripDraft(tripId);
+            }
+            setBusinessTrips((current) =>
+                current.filter((trip) => trip.id !== tripId),
+            );
+        },
+        [businessTrips],
+    );
 
     const setDraft = useCallback((updater) => {
         setDraftState((current) =>

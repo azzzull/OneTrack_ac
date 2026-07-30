@@ -18,7 +18,6 @@ export default function BusinessTripAccommodationSection({
         <SectionCard icon={Hotel} title="Pengajuan Akomodasi">
             <FormField
                 icon={Banknote}
-                label="Requested Amount"
                 error={showError ? error : ""}
             >
                 <input

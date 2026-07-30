@@ -51,6 +51,18 @@ const inputClass = (hasError = false) =>
 
 const hasText = (value) => String(value ?? "").trim().length > 0;
 
+const todayInputValue = () => {
+    const date = new Date();
+    const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return offsetDate.toISOString().slice(0, 10);
+};
+
+const findDefaultOpportunityProject = (projects = []) =>
+    projects.find((project) => {
+        const projectName = String(project.project_name ?? "").trim().toUpperCase();
+        return project.status !== "inactive" && projectName === "OPPORTUNITY";
+    }) ?? null;
+
 export default function BusinessTripRequestPage() {
     const { tripId } = useParams();
     const navigate = useNavigate();
@@ -98,6 +110,21 @@ export default function BusinessTripRequestPage() {
             requesterName: trip.requesterName || currentUserName,
         });
     }, [currentUserName, trip, updateTrip]);
+
+    useEffect(() => {
+        if (!trip) return;
+        const defaultProject = !trip.projectId
+            ? findDefaultOpportunityProject(projects)
+            : null;
+        const nextTripDate =
+            trip.dateMode === "single" && !trip.tripDate ? todayInputValue() : "";
+        if (!defaultProject && !nextTripDate) return;
+
+        updateTrip(trip.id, {
+            ...(defaultProject ? { projectId: defaultProject.id } : {}),
+            ...(nextTripDate ? { tripDate: nextTripDate } : {}),
+        });
+    }, [projects, trip, updateTrip]);
 
     if (!trip && loading) {
         return (

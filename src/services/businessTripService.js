@@ -327,6 +327,7 @@ export const mapBusinessTripFromDb = (row, projectMap = {}) => {
 
     return {
         id: row.id,
+        isLocalDraft: false,
         businessTripNo: row.business_trip_no,
         createdAt: row.created_at,
         dateMode: row.date_mode,
@@ -1378,10 +1379,22 @@ const buildDraftRpcPayload = (trip) => ({
     p_trip_start_date: trip.dateMode === "range" ? trip.startDate || null : null,
 });
 
+const ensurePersistedBusinessTripDraft = async (trip) => {
+    if (!trip.isLocalDraft) return trip;
+    const persistedDraft = await createBusinessTripDraft();
+    return {
+        ...trip,
+        businessTripNo: persistedDraft.businessTripNo,
+        id: persistedDraft.id,
+        isLocalDraft: false,
+    };
+};
+
 export const updateBusinessTripDraft = async ({ trip }) => {
+    const persistedTrip = await ensurePersistedBusinessTripDraft(trip);
     const { data, error } = await supabase.rpc(
         "save_business_trip_draft",
-        buildDraftRpcPayload(trip),
+        buildDraftRpcPayload(persistedTrip),
     );
     if (error) throw error;
     const result = await getBusinessTripById(data.id);
@@ -1389,11 +1402,22 @@ export const updateBusinessTripDraft = async ({ trip }) => {
 };
 
 export const submitBusinessTrip = async ({ trip }) => {
+    const persistedTrip = await ensurePersistedBusinessTripDraft(trip);
     const { data, error } = await supabase.rpc(
         "submit_business_trip_request",
-        buildDraftRpcPayload(trip),
+        buildDraftRpcPayload(persistedTrip),
     );
-    if (error) throw error;
+    if (error) {
+        if (trip.isLocalDraft) {
+            await deleteBusinessTripDraft(persistedTrip.id).catch((deleteError) => {
+                console.warn(
+                    "[BusinessTrip] failed to remove unsent local draft",
+                    deleteError,
+                );
+            });
+        }
+        throw error;
+    }
     const result = await getBusinessTripById(data.id);
     await notifyBusinessTripEvent(
         NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_SUBMITTED,
