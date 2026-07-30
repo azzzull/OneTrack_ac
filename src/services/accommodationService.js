@@ -1,9 +1,6 @@
 import supabase from "../supabaseClient";
 import { compressJobPhotoFile } from "./jobPhotoService";
-import {
-    NOTIFICATION_EVENT_TYPES,
-    notifyEvent,
-} from "./notificationEvents";
+import { NOTIFICATION_EVENT_TYPES, notifyEvent } from "./notificationEvents";
 
 export const ACCOMMODATION_BUCKET = "accommodation-proofs";
 
@@ -51,8 +48,9 @@ export const normalizeAccommodationStatus = (value) => {
 };
 
 export const getDisplayName = (profile) => {
-    const composed =
-        `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+    const composed = `${profile?.first_name ?? ""} ${
+        profile?.last_name ?? ""
+    }`.trim();
     return composed || profile?.name || profile?.email || "-";
 };
 
@@ -60,7 +58,9 @@ const getNotificationTechnicianName = (profile, fallback) => {
     const rawFallbackName = String(fallback ?? "").trim();
     const fallbackName = rawFallbackName === "-" ? "" : rawFallbackName;
     const profileName = getDisplayName(profile);
-    return profileName && profileName !== "-" ? profileName : fallbackName || "Teknisi";
+    return profileName && profileName !== "-"
+        ? profileName
+        : fallbackName || "Teknisi";
 };
 
 export const summarizeAccommodation = (request) => {
@@ -180,7 +180,9 @@ export const loadAccommodationRequests = async ({ role, userId } = {}) => {
         ...rows.map((row) => row.technician_id),
         ...rows.map((row) => row.reviewed_by),
     ]);
-    const customerMap = await loadCustomerMap(rows.map((row) => row.customer_id));
+    const customerMap = await loadCustomerMap(
+        rows.map((row) => row.customer_id),
+    );
     const projectMap = await loadProjectMap(rows.map((row) => row.project_id));
 
     return rows.map((row) => {
@@ -189,7 +191,8 @@ export const loadAccommodationRequests = async ({ role, userId } = {}) => {
             ...row,
             status: normalizeAccommodationStatus(row.status),
             realizations: realizations.sort(
-                (a, b) => new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0),
+                (a, b) =>
+                    new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0),
             ),
             technician: profileMap[row.technician_id] ?? null,
             reviewer: profileMap[row.reviewed_by] ?? null,
@@ -228,20 +231,43 @@ export const loadAccommodationLookups = async () => {
 };
 
 export const createAccommodationRequest = async (payload) => {
-    const { data, error } = await supabase.rpc(
-        "create_accommodation_request_for_internal_technician",
-        {
-            p_customer_id: payload.customer_id || null,
-            p_project_id: payload.project_id || null,
-            p_customer_name: payload.customer_name || null,
-            p_project_name: payload.project_name || null,
-            p_request_title: payload.request_title,
-            p_purpose: payload.purpose,
-            p_job_scope: payload.job_scope || null,
-            p_requested_amount: Number(payload.requested_amount),
-            p_notes: payload.notes || null,
-        },
-    );
+    const params = {
+        p_customer_id: payload.customer_id || null,
+        p_project_id: payload.project_id || null,
+        p_customer_name: payload.customer_name || null,
+        p_project_name: payload.project_name || null,
+        p_request_title: payload.request_title,
+        p_purpose: payload.purpose,
+        p_job_scope: payload.job_scope || null,
+        p_requested_amount: Number(payload.requested_amount),
+        p_notes: payload.notes || null,
+    };
+
+    let data;
+    let error;
+
+    ({ data, error } = await supabase.rpc(
+        "create_accommodation_request",
+        params,
+    ));
+
+    const shouldFallback =
+        error &&
+        typeof error.message === "string" &&
+        (error.message.includes(
+            "function public.create_accommodation_request(",
+        ) ||
+            error.message.includes(
+                'RPC "create_accommodation_request" does not exist',
+            ) ||
+            error.code === "42883");
+
+    if (shouldFallback) {
+        ({ data, error } = await supabase.rpc(
+            "create_accommodation_request_for_internal_technician",
+            params,
+        ));
+    }
 
     if (error) throw error;
     await sendAccommodationNotification("request_created", data);
@@ -267,10 +293,9 @@ export const uploadAccommodationFile = async ({ file, folder, requestId }) => {
               minQuality: 0.45,
           })
         : file;
-    const extension =
-        String(fileToUpload?.type ?? "").startsWith("image/")
-            ? "jpg"
-            : fileToUpload.name?.split(".").pop() || "bin";
+    const extension = String(fileToUpload?.type ?? "").startsWith("image/")
+        ? "jpg"
+        : fileToUpload.name?.split(".").pop() || "bin";
     const fileName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
     const path = `${folder}/${requestId}/${fileName}`;
 
