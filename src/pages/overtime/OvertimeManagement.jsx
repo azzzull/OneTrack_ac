@@ -8,6 +8,7 @@ import {
 import {
     Check,
     Clock3,
+    Download,
     Eye,
     Filter,
     Loader,
@@ -33,6 +34,11 @@ import {
     notifyEvent,
 } from "../../services/notificationEvents";
 import {
+    exportStyledExcel,
+    makeExcelFileName,
+    parseExcelDate,
+} from "../../utils/excelExport";
+import {
     formatOvertimeDuration,
     getOvertimeStatusClass,
     getOvertimeStatusLabel,
@@ -43,6 +49,8 @@ const getProfileName = (profile) =>
     profile?.name ||
     profile?.email ||
     "-";
+
+const todayKey = () => new Date().toISOString().slice(0, 10);
 
 const formatDateTime = (value) =>
     value
@@ -103,8 +111,7 @@ export default function OvertimeManagement() {
                             item.technician ?? profileMap[item.technician_id],
                         requester:
                             item.requester ?? profileMap[item.requested_by],
-                        reviewer:
-                            item.reviewer ?? profileMap[item.reviewed_by],
+                        reviewer: item.reviewer ?? profileMap[item.reviewed_by],
                     })),
                 );
                 setTechnicians(
@@ -198,6 +205,64 @@ export default function OvertimeManagement() {
         return counts;
     }, [filteredRequests]);
 
+    const handleExportExcel = async () => {
+        const rowsForExcel = filteredRequests.map((row, index) => ({
+            no: index + 1,
+            technician: getProfileName(row.technician),
+            date: parseExcelDate(row.date),
+            type: row.overtime_type,
+            duration: formatOvertimeDuration(row.duration_minutes),
+            locationAddress: row.location_address || "-",
+            status: row.status,
+            notes: row.notes || "-",
+            reviewNotes: row.review_notes || "-",
+        }));
+
+        await exportStyledExcel({
+            fileName: makeExcelFileName(["overtime-management", todayKey()]),
+            sheetName: "Overtime",
+            title: "Laporan Overtime Management",
+            filterRows: [
+                ["Status", filters.status],
+                ["Periode", filters.period],
+                [
+                    "Teknisi",
+                    filters.technicianId
+                        ? getProfileName(
+                              technicians.find(
+                                  (tech) => tech.id === filters.technicianId,
+                              ),
+                          )
+                        : "Semua",
+                ],
+            ],
+            columns: [
+                { key: "no", header: "No" },
+                { key: "technician", header: "Teknisi" },
+                { key: "date", header: "Tanggal" },
+                { key: "type", header: "Jenis" },
+                { key: "duration", header: "Durasi" },
+                { key: "locationAddress", header: "Lokasi" },
+                { key: "status", header: "Status" },
+                { key: "notes", header: "Catatan" },
+                { key: "reviewNotes", header: "Catatan Review" },
+            ],
+            rows: rowsForExcel,
+            dateKeys: ["date"],
+            wrapKeys: ["locationAddress", "notes", "reviewNotes"],
+            summaryRows: [
+                ["Total Pengajuan", summary.total],
+                ["Total Pending", summary.pending],
+                ["Total Disetujui", summary.approved],
+                ["Total Ditolak", summary.rejected],
+                [
+                    "Total Durasi",
+                    formatOvertimeDuration(summary.durationMinutes),
+                ],
+            ],
+        });
+    };
+
     const handleManualSubmit = async (payload) => {
         setSaving(true);
         try {
@@ -284,7 +349,7 @@ export default function OvertimeManagement() {
             <div className="flex min-h-screen">
                 <Sidebar collapsed={collapsed} onToggle={toggle} />
                 <main className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
-                    <div className="mb-6">
+                    <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                             <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
                                 Overtime Management
@@ -293,6 +358,15 @@ export default function OvertimeManagement() {
                                 Pengajuan, approval, dan laporan lembur.
                             </p>
                         </div>
+                        <button
+                            type="button"
+                            onClick={handleExportExcel}
+                            disabled={filteredRequests.length === 0}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
+                        >
+                            <Download size={16} />
+                            Export Excel
+                        </button>
                     </div>
 
                     {loadError && (
