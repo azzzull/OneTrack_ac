@@ -110,7 +110,9 @@ const getMonthKey = (date = new Date()) =>
 const getYearKey = (date = new Date()) => `${date.getFullYear()}`;
 
 const getRequestDateKey = (request) =>
-    toDateKey(request.requested_at || request.created_at || request.reviewed_at);
+    toDateKey(
+        request.requested_at || request.created_at || request.reviewed_at,
+    );
 
 const matchesPeriod = (request, period) => {
     const dateKey = getRequestDateKey(request);
@@ -191,17 +193,15 @@ const SummaryCard = ({
                 active
                     ? "ring-2 ring-sky-400"
                     : onClick
-                      ? "hover:-translate-y-0.5 hover:shadow-md"
-                      : ""
+                    ? "hover:-translate-y-0.5 hover:shadow-md"
+                    : ""
             }`}
         >
             <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                     <p
                         className={`${
-                            compact
-                                ? "line-clamp-2 min-h-8 text-xs"
-                                : "text-sm"
+                            compact ? "line-clamp-2 min-h-8 text-xs" : "text-sm"
                         } text-slate-500`}
                     >
                         {title}
@@ -216,7 +216,9 @@ const SummaryCard = ({
                 </div>
                 <span
                     className={`rounded-2xl ${
-                        active ? "bg-sky-500 text-white" : "bg-sky-50 text-sky-500"
+                        active
+                            ? "bg-sky-500 text-white"
+                            : "bg-sky-50 text-sky-500"
                     } ${compact ? "p-2" : "p-3"}`}
                 >
                     {createElement(Icon, { size: compact ? 18 : 22 })}
@@ -281,10 +283,12 @@ export default function AccommodationPage({ mode = "technician" }) {
         (isAdmin && mode === "admin");
     const canCreate =
         (mode === "technician" && isInternalTechnician) ||
-        (mode === "admin" && isAdmin);
+        (mode === "admin" && isAdmin) ||
+        (mode === "management" && isManagement);
     const canAddRealization =
         (mode === "technician" && isInternalTechnician) ||
-        (mode === "admin" && isAdmin);
+        (mode === "admin" && isAdmin) ||
+        (mode === "management" && isManagement);
     const canViewAccommodationReport =
         ["admin", "management"].includes(role) &&
         ["admin", "management"].includes(mode);
@@ -721,9 +725,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                                             type="date"
                                             value={weekStart}
                                             onChange={(event) =>
-                                                setWeekStart(
-                                                    event.target.value,
-                                                )
+                                                setWeekStart(event.target.value)
                                             }
                                             className={`${periodInputClass} w-40`}
                                         />

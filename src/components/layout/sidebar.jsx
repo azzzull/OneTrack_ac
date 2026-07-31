@@ -53,7 +53,11 @@ const menuByRole = {
             path: "/business-trip",
             icon: Plane,
             children: [
-                { label: "Pengajuan Trip", path: "/business-trip", icon: Plane },
+                {
+                    label: "Pengajuan Trip",
+                    path: "/business-trip",
+                    icon: Plane,
+                },
                 {
                     label: "Approval Trip",
                     path: "/business-trip/approval",
@@ -87,7 +91,11 @@ const menuByRole = {
             path: "/business-trip",
             icon: Plane,
             children: [
-                { label: "Pengajuan Trip", path: "/business-trip", icon: Plane },
+                {
+                    label: "Pengajuan Trip",
+                    path: "/business-trip",
+                    icon: Plane,
+                },
                 {
                     label: "Approval Trip",
                     path: "/business-trip/approval",
@@ -516,11 +524,8 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         isOnline,
     );
     const pendingLoanCount = usePendingLoanCount(role, user?.id, isOnline);
-    const pendingBusinessTripApprovalCount = usePendingBusinessTripApprovalCount(
-        role,
-        user?.id,
-        isOnline,
-    );
+    const pendingBusinessTripApprovalCount =
+        usePendingBusinessTripApprovalCount(role, user?.id, isOnline);
     const pendingBusinessTripRealizationVerificationCount =
         usePendingBusinessTripRealizationVerificationCount(
             role,
@@ -553,10 +558,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     const attachBadges = (menu) => {
         const children = menu.children?.map(attachBadges);
         const ownCount = badgeByPath[menu.path] ?? 0;
-        const childCount = children?.reduce(
-            (sum, child) => sum + Number(child.badge ?? 0),
-            0,
-        ) ?? 0;
+        const childCount =
+            children?.reduce(
+                (sum, child) => sum + Number(child.badge ?? 0),
+                0,
+            ) ?? 0;
         const count = ownCount + childCount;
         return {
             ...menu,
@@ -820,7 +826,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     return (
         <>
             <aside
-                className={`hidden h-screen shrink-0 border-r shadow-lg border-gray-100 bg-white px-3 py-4 transition-all duration-200 md:sticky md:top-0 md:block ${
+                className={`hidden h-screen shrink-0 border-r shadow-lg border-gray-100 bg-white px-3 py-4 transition-all duration-200 md:sticky md:self-start md:top-0 md:block ${
                     collapsed ? "w-28" : "w-75"
                 }`}
             >
@@ -898,7 +904,8 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                         to={path}
                                         end={!hasChildren}
                                         onClick={(event) => {
-                                            if (!hasChildren || collapsed) return;
+                                            if (!hasChildren || collapsed)
+                                                return;
 
                                             const isOpen =
                                                 menuOpenByPath[path] ??
@@ -940,50 +947,68 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                                             )}
                                         </span>
 
-                                        <span className={collapsed ? "mt-1" : "flex-1"}>
+                                        <span
+                                            className={
+                                                collapsed ? "mt-1" : "flex-1"
+                                            }
+                                        >
                                             {label}
                                         </span>
                                         {!collapsed && hasChildren && (
                                             <ChevronDown
                                                 size={15}
                                                 className={`transition-transform ${
-                                                    submenuOpen ? "rotate-180" : ""
+                                                    submenuOpen
+                                                        ? "rotate-180"
+                                                        : ""
                                                 }`}
                                             />
                                         )}
                                     </NavLink>
-                                    {!collapsed && hasChildren && submenuOpen && (
-                                        <ul className="mt-1 space-y-1 pl-8">
-                                            {children.map((child) => (
-                                                <li key={child.label}>
-                                                    <NavLink
-                                                        to={child.path}
-                                                        end
-                                                        className={({ isActive }) =>
-                                                            `no-underline! hover:no-underline! flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition ${
-                                                                isActive
-                                                                    ? "bg-sky-50 font-semibold text-sky-600"
-                                                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-                                                            }`
-                                                        }
-                                                        style={{ textDecoration: "none" }}
-                                                    >
-                                                        {createElement(child.icon, {
-                                                            size: 16,
-                                                        })}
-                                                        <span className="min-w-0 flex-1 truncate">
-                                                            {child.label}
-                                                        </span>
-                                                        {child.badge && (
-                                                            <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
-                                                                {child.badge}
+                                    {!collapsed &&
+                                        hasChildren &&
+                                        submenuOpen && (
+                                            <ul className="mt-1 space-y-1 pl-8">
+                                                {children.map((child) => (
+                                                    <li key={child.label}>
+                                                        <NavLink
+                                                            to={child.path}
+                                                            end
+                                                            className={({
+                                                                isActive,
+                                                            }) =>
+                                                                `no-underline! hover:no-underline! flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition ${
+                                                                    isActive
+                                                                        ? "bg-sky-50 font-semibold text-sky-600"
+                                                                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                                }`
+                                                            }
+                                                            style={{
+                                                                textDecoration:
+                                                                    "none",
+                                                            }}
+                                                        >
+                                                            {createElement(
+                                                                child.icon,
+                                                                {
+                                                                    size: 16,
+                                                                },
+                                                            )}
+                                                            <span className="min-w-0 flex-1 truncate">
+                                                                {child.label}
                                                             </span>
-                                                        )}
-                                                    </NavLink>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
+                                                            {child.badge && (
+                                                                <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                                    {
+                                                                        child.badge
+                                                                    }
+                                                                </span>
+                                                            )}
+                                                        </NavLink>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
                                 </li>
                             );
                         })}
@@ -1035,14 +1060,10 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 </nav>
             </aside>
             {newRequestToast && (
-                <AppToast tone="sky">
-                    {newRequestToast}
-                </AppToast>
+                <AppToast tone="sky">{newRequestToast}</AppToast>
             )}
             {accommodationToast && (
-                <AppToast tone="red">
-                    {accommodationToast}
-                </AppToast>
+                <AppToast tone="red">{accommodationToast}</AppToast>
             )}
         </>
     );
@@ -1064,11 +1085,8 @@ export function MobileBottomNav() {
         isOnline,
     );
     const pendingLoanCount = usePendingLoanCount(role, user?.id, isOnline);
-    const pendingBusinessTripApprovalCount = usePendingBusinessTripApprovalCount(
-        role,
-        user?.id,
-        isOnline,
-    );
+    const pendingBusinessTripApprovalCount =
+        usePendingBusinessTripApprovalCount(role, user?.id, isOnline);
     const pendingBusinessTripRealizationVerificationCount =
         usePendingBusinessTripRealizationVerificationCount(
             role,
@@ -1099,8 +1117,10 @@ export function MobileBottomNav() {
         const children = menu.children?.map(attachBadges);
         const ownCount = badgeByPath[menu.path] ?? 0;
         const childCount =
-            children?.reduce((sum, child) => sum + Number(child.badge ?? 0), 0) ??
-            0;
+            children?.reduce(
+                (sum, child) => sum + Number(child.badge ?? 0),
+                0,
+            ) ?? 0;
         const count = ownCount + childCount;
         return {
             ...menu,
@@ -1290,41 +1310,46 @@ export function MobileBottomNav() {
                 className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-1 md:hidden"
             >
                 <ul className="flex items-stretch gap-1 overflow-hidden">
-                    {primaryMenus.map(({ label, path, icon, badge, children }) => {
-                        const hasChildren = Boolean(children?.length);
-                        const parentActive =
-                            hasChildren && location.pathname.startsWith(path);
-                        return (
-                            <li key={label} className="min-w-0 flex-1">
-                                <NavLink
-                                    end={!hasChildren}
-                                    to={path}
-                                    className={({ isActive }) =>
-                                        `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! relative flex h-full min-h-16 w-full items-center justify-center px-1 py-2 transition-colors duration-200 ${
-                                            isActive || parentActive
-                                                ? "text-sky-500 border-b-2 border-sky-500 font-semibold"
-                                                : "text-slate-500 border-b-2 border-transparent hover:text-slate-700"
-                                        }`
-                                    }
-                                    style={{ textDecoration: "none" }}
-                                >
-                                    <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
-                                        <span className="relative inline-flex">
-                                            {createElement(icon, { size: 20 })}
-                                            {badge && (
-                                                <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
-                                                    {badge}
-                                                </span>
-                                            )}
-                                        </span>
-                                        <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal wrap-break-words">
-                                            {label}
-                                        </span>
-                                    </div>
-                                </NavLink>
-                            </li>
-                        );
-                    })}
+                    {primaryMenus.map(
+                        ({ label, path, icon, badge, children }) => {
+                            const hasChildren = Boolean(children?.length);
+                            const parentActive =
+                                hasChildren &&
+                                location.pathname.startsWith(path);
+                            return (
+                                <li key={label} className="min-w-0 flex-1">
+                                    <NavLink
+                                        end={!hasChildren}
+                                        to={path}
+                                        className={({ isActive }) =>
+                                            `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! relative flex h-full min-h-16 w-full items-center justify-center px-1 py-2 transition-colors duration-200 ${
+                                                isActive || parentActive
+                                                    ? "text-sky-500 border-b-2 border-sky-500 font-semibold"
+                                                    : "text-slate-500 border-b-2 border-transparent hover:text-slate-700"
+                                            }`
+                                        }
+                                        style={{ textDecoration: "none" }}
+                                    >
+                                        <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
+                                            <span className="relative inline-flex">
+                                                {createElement(icon, {
+                                                    size: 20,
+                                                })}
+                                                {badge && (
+                                                    <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                        {badge}
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <span className="line-clamp-2 max-w-full text-center text-[11px] font-medium leading-tight whitespace-normal wrap-break-words">
+                                                {label}
+                                            </span>
+                                        </div>
+                                    </NavLink>
+                                </li>
+                            );
+                        },
+                    )}
                     {extraMenus.length > 0 && (
                         <li className="min-w-0 flex-1">
                             <button
@@ -1366,75 +1391,102 @@ export function MobileBottomNav() {
                             </button>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            {extraMenus.map(({ label, path, icon, badge, children }) => {
-                                const hasChildren = Boolean(children?.length);
-                                const parentActive =
-                                    hasChildren && location.pathname.startsWith(path);
-                                return (
-                                    <div
-                                        key={label}
-                                        className={hasChildren ? "col-span-2" : ""}
-                                    >
-                                        <NavLink
-                                            end={!hasChildren}
-                                            to={path}
-                                            onClick={() => setMoreOpen(false)}
-                                            className={({ isActive }) =>
-                                                `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex items-center gap-2 rounded-2xl border px-3 py-3 text-sm font-medium transition ${
-                                                    isActive || parentActive
-                                                        ? "border-sky-200 bg-sky-50 text-sky-600"
-                                                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                                                }`
+                            {extraMenus.map(
+                                ({ label, path, icon, badge, children }) => {
+                                    const hasChildren = Boolean(
+                                        children?.length,
+                                    );
+                                    const parentActive =
+                                        hasChildren &&
+                                        location.pathname.startsWith(path);
+                                    return (
+                                        <div
+                                            key={label}
+                                            className={
+                                                hasChildren ? "col-span-2" : ""
                                             }
-                                            style={{ textDecoration: "none" }}
                                         >
-                                            <span className="relative inline-flex">
-                                                {createElement(icon, { size: 18 })}
-                                                {badge && (
-                                                    <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
-                                                        {badge}
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <span className="flex-1">{label}</span>
-                                        </NavLink>
-                                        {hasChildren && (
-                                            <div className="mt-2 grid grid-cols-1 gap-2 pl-3">
-                                                {children.map((child) => (
-                                                    <NavLink
-                                                        key={child.label}
-                                                        end
-                                                        to={child.path}
-                                                        onClick={() =>
-                                                            setMoreOpen(false)
-                                                        }
-                                                        className={({ isActive }) =>
-                                                            `no-underline! hover:no-underline! flex items-center gap-2 rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
-                                                                isActive
-                                                                    ? "border-sky-200 bg-sky-50 text-sky-600"
-                                                                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                                                            }`
-                                                        }
-                                                        style={{ textDecoration: "none" }}
-                                                    >
-                                                        {createElement(child.icon, {
-                                                            size: 16,
-                                                        })}
-                                                        <span className="flex-1">
-                                                            {child.label}
+                                            <NavLink
+                                                end={!hasChildren}
+                                                to={path}
+                                                onClick={() =>
+                                                    setMoreOpen(false)
+                                                }
+                                                className={({ isActive }) =>
+                                                    `no-underline! hover:no-underline! focus:no-underline! active:no-underline! visited:no-underline! flex items-center gap-2 rounded-2xl border px-3 py-3 text-sm font-medium transition ${
+                                                        isActive || parentActive
+                                                            ? "border-sky-200 bg-sky-50 text-sky-600"
+                                                            : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                    }`
+                                                }
+                                                style={{
+                                                    textDecoration: "none",
+                                                }}
+                                            >
+                                                <span className="relative inline-flex">
+                                                    {createElement(icon, {
+                                                        size: 18,
+                                                    })}
+                                                    {badge && (
+                                                        <span className="absolute -right-2 -top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                            {badge}
                                                         </span>
-                                                        {child.badge && (
-                                                            <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
-                                                                {child.badge}
+                                                    )}
+                                                </span>
+                                                <span className="flex-1">
+                                                    {label}
+                                                </span>
+                                            </NavLink>
+                                            {hasChildren && (
+                                                <div className="mt-2 grid grid-cols-1 gap-2 pl-3">
+                                                    {children.map((child) => (
+                                                        <NavLink
+                                                            key={child.label}
+                                                            end
+                                                            to={child.path}
+                                                            onClick={() =>
+                                                                setMoreOpen(
+                                                                    false,
+                                                                )
+                                                            }
+                                                            className={({
+                                                                isActive,
+                                                            }) =>
+                                                                `no-underline! hover:no-underline! flex items-center gap-2 rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
+                                                                    isActive
+                                                                        ? "border-sky-200 bg-sky-50 text-sky-600"
+                                                                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                                }`
+                                                            }
+                                                            style={{
+                                                                textDecoration:
+                                                                    "none",
+                                                            }}
+                                                        >
+                                                            {createElement(
+                                                                child.icon,
+                                                                {
+                                                                    size: 16,
+                                                                },
+                                                            )}
+                                                            <span className="flex-1">
+                                                                {child.label}
                                                             </span>
-                                                        )}
-                                                    </NavLink>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                                                            {child.badge && (
+                                                                <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white">
+                                                                    {
+                                                                        child.badge
+                                                                    }
+                                                                </span>
+                                                            )}
+                                                        </NavLink>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                },
+                            )}
                         </div>
                     </div>
                 </div>

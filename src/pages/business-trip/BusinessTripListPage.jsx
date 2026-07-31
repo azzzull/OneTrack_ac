@@ -41,7 +41,10 @@ import { startBusinessTrip } from "../../services/businessTripService";
 
 const STATUS_FILTERS = [
     { value: BUSINESS_TRIP_STATUS.DRAFT, label: "Draft" },
-    { value: BUSINESS_TRIP_STATUS.PENDING_APPROVAL, label: "Menunggu Approval" },
+    {
+        value: BUSINESS_TRIP_STATUS.PENDING_APPROVAL,
+        label: "Menunggu Approval",
+    },
     { value: "needs-realization", label: "Realisasi" },
     { value: BUSINESS_TRIP_STATUS.REJECTED, label: "Ditolak" },
     { value: BUSINESS_TRIP_STATUS.REALIZATION_SUBMITTED, label: "Verifikasi" },
@@ -168,7 +171,9 @@ const getTripDateLabel = (trip) =>
         : formatDate(trip.tripDate, { short: true });
 
 const getProjectLabel = (project) =>
-    project ? `${project.project_name} - ${project.customer_name}` : "Belum dipilih";
+    project
+        ? `${project.project_name} - ${project.customer_name}`
+        : "Belum dipilih";
 
 const getCardInfo = (trip, fallbackInfo) => {
     const accommodationState = getBusinessTripAccommodationState(
@@ -182,7 +187,9 @@ const getCardInfo = (trip, fallbackInfo) => {
     }
 
     if (trip.status !== BUSINESS_TRIP_STATUS.ADVANCE_DISBURSED) {
-        if (trip.status === BUSINESS_TRIP_STATUS.REALIZATION_REVISION_REQUIRED) {
+        if (
+            trip.status === BUSINESS_TRIP_STATUS.REALIZATION_REVISION_REQUIRED
+        ) {
             return trip.realizationRevisionNote
                 ? `Revisi: ${trip.realizationRevisionNote}`
                 : "Laporan realisasi perlu diperbaiki.";
@@ -257,17 +264,20 @@ export default function BusinessTripListPage() {
     useEffect(() => {
         if (!user?.id) return undefined;
 
-        const timeoutId = window.setTimeout(() => {
-            loadBusinessTrips({
-                endDate: filters.endDate,
-                page,
-                pageSize: PAGE_SIZE,
-                search: query,
-                sortMode,
-                startDate: filters.startDate,
-                statusFilter,
-            }).catch(() => {});
-        }, query.trim() ? 350 : 0);
+        const timeoutId = window.setTimeout(
+            () => {
+                loadBusinessTrips({
+                    endDate: filters.endDate,
+                    page,
+                    pageSize: PAGE_SIZE,
+                    search: query,
+                    sortMode,
+                    startDate: filters.startDate,
+                    statusFilter,
+                }).catch(() => {});
+            },
+            query.trim() ? 350 : 0,
+        );
 
         return () => window.clearTimeout(timeoutId);
     }, [
@@ -348,11 +358,15 @@ export default function BusinessTripListPage() {
         if (actionType === "summary") {
             setSummaryTripId(trip.id);
             loadBusinessTripById(trip.id).catch((summaryError) => {
-                console.warn("[BusinessTrip] summary detail skipped:", summaryError);
+                console.warn(
+                    "[BusinessTrip] summary detail skipped:",
+                    summaryError,
+                );
             });
         }
         if (actionType === "edit") navigate(`/business-trip/form/${trip.id}`);
-        if (actionType === "resubmit") navigate(`/business-trip/form/${trip.id}`);
+        if (actionType === "resubmit")
+            navigate(`/business-trip/form/${trip.id}`);
         if (actionType === "realization") {
             navigate(`/business-trip/realization/${trip.id}`);
         }
@@ -372,7 +386,10 @@ export default function BusinessTripListPage() {
                     statusFilter,
                 }).catch(() => {});
             } catch (deleteError) {
-                console.error("[BusinessTrip] delete draft failed", deleteError);
+                console.error(
+                    "[BusinessTrip] delete draft failed",
+                    deleteError,
+                );
                 showToast("Draft gagal dihapus.");
             }
         }
@@ -461,7 +478,10 @@ export default function BusinessTripListPage() {
                 ) : isLoading ? (
                     <BusinessTripCardSkeleton />
                 ) : businessTrips.length === 0 && hasNarrowFilter ? (
-                    <EmptyState icon={Search} title="Tidak ada pengajuan ditemukan">
+                    <EmptyState
+                        icon={Search}
+                        title="Tidak ada pengajuan ditemukan"
+                    >
                         Coba ubah kata pencarian atau status filter.
                         <span className="mt-3 block">
                             <Button
@@ -478,7 +498,8 @@ export default function BusinessTripListPage() {
                         icon={ClipboardList}
                         title="Belum ada pengajuan Business Trip"
                     >
-                        Buat pengajuan pertama untuk memulai proses Business Trip.
+                        Buat pengajuan pertama untuk memulai proses Business
+                        Trip.
                         <span className="mt-3 block">
                             <Button icon={Plus} onClick={createNewTrip}>
                                 Buat Pengajuan
@@ -493,7 +514,9 @@ export default function BusinessTripListPage() {
                                 trip={trip}
                                 project={getProjectById(trip.projectId)}
                                 overflowOpen={overflowTripId === trip.id}
-                                onAction={(actionType) => runAction(trip, actionType)}
+                                onAction={(actionType) =>
+                                    runAction(trip, actionType)
+                                }
                                 onToggleOverflow={() =>
                                     setOverflowTripId((current) =>
                                         current === trip.id ? "" : trip.id,
@@ -576,7 +599,7 @@ function BusinessTripStatusSummary({ activeStatus, counts, onChange }) {
                             type="button"
                             data-active={selected}
                             onClick={() => onChange(item.value)}
-                            className={`min-w-[118px] shrink-0 rounded-xl border px-3 py-2 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-100 xl:min-w-0 xl:flex-1 ${
+                            className={`min-w-29.5 shrink-0 rounded-xl border px-3 py-2 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-100 xl:min-w-0 xl:flex-1 ${
                                 STATUS_FILTER_STYLES[item.value]
                             }`}
                         >
@@ -703,7 +726,14 @@ function BusinessTripHistoryFilter({
     );
 }
 
-function ResultToolbar({ count, onPageChange, onSortChange, page, pageSize, sortMode }) {
+function ResultToolbar({
+    count,
+    onPageChange,
+    onSortChange,
+    page,
+    pageSize,
+    sortMode,
+}) {
     const totalPages = Math.max(1, Math.ceil(count / pageSize));
     return (
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -714,7 +744,9 @@ function ResultToolbar({ count, onPageChange, onSortChange, page, pageSize, sort
                 <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
                     <button
                         type="button"
-                        onClick={() => onPageChange((current) => Math.max(1, current - 1))}
+                        onClick={() =>
+                            onPageChange((current) => Math.max(1, current - 1))
+                        }
                         disabled={page <= 1}
                         className="h-8 rounded-md px-2 text-[12px] font-bold text-slate-600 transition hover:bg-slate-50 disabled:text-slate-300"
                     >
@@ -726,7 +758,9 @@ function ResultToolbar({ count, onPageChange, onSortChange, page, pageSize, sort
                     <button
                         type="button"
                         onClick={() =>
-                            onPageChange((current) => Math.min(totalPages, current + 1))
+                            onPageChange((current) =>
+                                Math.min(totalPages, current + 1),
+                            )
                         }
                         disabled={page >= totalPages}
                         className="h-8 rounded-md px-2 text-[12px] font-bold text-slate-600 transition hover:bg-slate-50 disabled:text-slate-300"
@@ -778,11 +812,11 @@ function BusinessTripCard({
                       : "Pengajuan disetujui. Perjalanan dapat dimulai.",
               }
             : trip.status === BUSINESS_TRIP_STATUS.APPROVED
-              ? {
-                    ...baseConfig,
-                    info: accommodationState.label,
-                }
-              : baseConfig;
+            ? {
+                  ...baseConfig,
+                  info: accommodationState.label,
+              }
+            : baseConfig;
     const agendaCount = trip.agendas.length;
     const cardStyle = getBusinessTripCardStyle(trip.status);
 
@@ -827,7 +861,9 @@ function BusinessTripCard({
                 <TripMeta label="Agenda" value={`${agendaCount} agenda`} />
             </div>
 
-            {config.info && <InfoStrip>{getCardInfo(trip, config.info)}</InfoStrip>}
+            {config.info && (
+                <InfoStrip>{getCardInfo(trip, config.info)}</InfoStrip>
+            )}
 
             {trip.status === BUSINESS_TRIP_STATUS.REJECTED && (
                 <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
@@ -959,10 +995,16 @@ function BusinessTripSummarySheet({ onClose, project, trip }) {
                             label="Tanggal Pengajuan"
                             value={formatDate(trip.createdAt, { short: true })}
                         />
-                        <SummaryItem label="Inisiator" value={trip.initiatorName} />
+                        <SummaryItem
+                            label="Inisiator"
+                            value={trip.initiatorName}
+                        />
                         <SummaryItem
                             label="Status"
-                            value={BUSINESS_TRIP_STATUS_LABELS[trip.status] ?? trip.status}
+                            value={
+                                BUSINESS_TRIP_STATUS_LABELS[trip.status] ??
+                                trip.status
+                            }
                         />
                     </div>
 
@@ -1002,7 +1044,8 @@ function BusinessTripSummarySheet({ onClose, project, trip }) {
                                                 </p>
                                                 <PhotoPreviewGrid
                                                     photos={
-                                                        agenda.realization?.photos ?? []
+                                                        agenda.realization
+                                                            ?.photos ?? []
                                                     }
                                                     readOnly
                                                 />
@@ -1142,7 +1185,7 @@ function SummaryItem({ label, value, wide = false }) {
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                 {label}
             </p>
-            <p className="mt-1 break-words text-[12px] font-semibold text-slate-800">
+            <p className="mt-1 wrap-break-word text-[12px] font-semibold text-slate-800">
                 {value || "-"}
             </p>
         </div>
@@ -1162,7 +1205,10 @@ function BusinessTripCardSkeleton() {
                     <div className="mt-2 h-3 w-1/2 rounded bg-slate-100" />
                     <div className="mt-4 grid grid-cols-2 gap-2">
                         {[1, 2, 3, 4].map((meta) => (
-                            <div key={meta} className="h-10 rounded bg-slate-100" />
+                            <div
+                                key={meta}
+                                className="h-10 rounded bg-slate-100"
+                            />
                         ))}
                     </div>
                 </div>

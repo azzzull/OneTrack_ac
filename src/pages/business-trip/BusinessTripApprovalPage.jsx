@@ -103,7 +103,9 @@ const getTripDateLabel = (trip) =>
 
 const getProjectLabel = (project, trip) =>
     trip.projectLabel ||
-    [project?.project_name, project?.customer_name].filter(Boolean).join(" - ") ||
+    [project?.project_name, project?.customer_name]
+        .filter(Boolean)
+        .join(" - ") ||
     "Belum dipilih";
 
 const getStatusCount = (counts, status) => Number(counts[status] ?? 0);
@@ -127,7 +129,9 @@ export default function BusinessTripApprovalPage() {
     const [query, setQuery] = useState("");
     const [requester, setRequester] = useState("");
     const [projectId, setProjectId] = useState("");
-    const [statusFilter, setStatusFilter] = useState(APPROVAL_STATUS_FILTERS.PENDING);
+    const [statusFilter, setStatusFilter] = useState(
+        APPROVAL_STATUS_FILTERS.PENDING,
+    );
     const [sortMode, setSortMode] = useState("oldest");
     const [page, setPage] = useState(1);
     const [filterOpen, setFilterOpen] = useState(false);
@@ -147,7 +151,8 @@ export default function BusinessTripApprovalPage() {
 
     const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
     const selectedProject = useMemo(
-        () => projects.find((project) => project.id === selectedTrip?.projectId),
+        () =>
+            projects.find((project) => project.id === selectedTrip?.projectId),
         [projects, selectedTrip?.projectId],
     );
     const rejectError =
@@ -252,7 +257,10 @@ export default function BusinessTripApprovalPage() {
             showToast("Pengajuan Business Trip disetujui.");
             await loadData();
         } catch (approveError) {
-            console.error("[BusinessTripApproval] approve failed", approveError);
+            console.error(
+                "[BusinessTripApproval] approve failed",
+                approveError,
+            );
             showToast(
                 getActionErrorMessage(
                     approveError,
@@ -267,7 +275,8 @@ export default function BusinessTripApprovalPage() {
 
     const rejectSelectedTrip = async () => {
         setRejectTouched(true);
-        if (!selectedTrip || rejectReason.trim().length < 10 || actionLoading) return;
+        if (!selectedTrip || rejectReason.trim().length < 10 || actionLoading)
+            return;
         setActionLoading("reject");
         try {
             await rejectBusinessTrip({
@@ -281,7 +290,10 @@ export default function BusinessTripApprovalPage() {
             showToast("Pengajuan Business Trip ditolak.");
             await loadData();
         } catch (rejectErrorResult) {
-            console.error("[BusinessTripApproval] reject failed", rejectErrorResult);
+            console.error(
+                "[BusinessTripApproval] reject failed",
+                rejectErrorResult,
+            );
             showToast(
                 getActionErrorMessage(
                     rejectErrorResult,
@@ -296,7 +308,10 @@ export default function BusinessTripApprovalPage() {
 
     if (!canApprove) {
         return (
-            <BusinessTripLayout title="Approval Business Trip" activeIcon={ShieldCheck}>
+            <BusinessTripLayout
+                title="Approval Business Trip"
+                activeIcon={ShieldCheck}
+            >
                 <EmptyState icon={ShieldCheck} title="Akses tidak tersedia">
                     Menu approval hanya tersedia untuk Admin dan Management.
                 </EmptyState>
@@ -371,7 +386,9 @@ export default function BusinessTripApprovalPage() {
 
                 {error ? (
                     <section className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
-                        <p className="text-sm font-bold text-red-700">{error}</p>
+                        <p className="text-sm font-bold text-red-700">
+                            {error}
+                        </p>
                         <Button
                             tone="secondary"
                             icon={RotateCcw}
@@ -384,8 +401,12 @@ export default function BusinessTripApprovalPage() {
                 ) : loading ? (
                     <ApprovalSkeleton />
                 ) : items.length === 0 ? (
-                    <EmptyState icon={ClipboardList} title="Tidak ada pengajuan">
-                        Tidak ada Business Trip yang sesuai filter approval saat ini.
+                    <EmptyState
+                        icon={ClipboardList}
+                        title="Tidak ada pengajuan"
+                    >
+                        Tidak ada Business Trip yang sesuai filter approval saat
+                        ini.
                     </EmptyState>
                 ) : (
                     <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
@@ -450,7 +471,7 @@ function ApprovalSummary({ activeStatus, counts, onChange }) {
                         type="button"
                         data-active={activeStatus === item.value}
                         onClick={() => onChange(item.value)}
-                        className={`min-w-[132px] shrink-0 rounded-xl border px-3 py-2 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-100 xl:min-w-0 xl:flex-1 ${item.className}`}
+                        className={`min-w-33 shrink-0 rounded-xl border px-3 py-2 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-sky-100 xl:min-w-0 xl:flex-1 ${item.className}`}
                     >
                         <span className="block truncate text-[11px] font-semibold">
                             {item.label}
@@ -516,7 +537,8 @@ function ApprovalFilters({
             >
                 <span className="inline-flex items-center gap-2 text-[13px] font-bold text-slate-800">
                     <CalendarDays size={16} className="text-sky-500" />
-                    {formatDate(filters.startDate)} - {formatDate(filters.endDate)}
+                    {formatDate(filters.startDate)} -{" "}
+                    {formatDate(filters.endDate)}
                 </span>
                 <ChevronDown
                     size={17}
@@ -569,7 +591,9 @@ function ApprovalFilters({
                             </span>
                             <select
                                 value={projectId}
-                                onChange={(event) => setProjectId(event.target.value)}
+                                onChange={(event) =>
+                                    setProjectId(event.target.value)
+                                }
                                 className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[13px] outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
                             >
                                 <option value="">Semua project</option>
@@ -586,7 +610,9 @@ function ApprovalFilters({
                             </span>
                             <input
                                 value={requester}
-                                onChange={(event) => setRequester(event.target.value)}
+                                onChange={(event) =>
+                                    setRequester(event.target.value)
+                                }
                                 placeholder="Nama pemohon"
                                 className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[13px] outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
                             />
@@ -621,7 +647,9 @@ function ResultToolbar({
                 <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
                     <button
                         type="button"
-                        onClick={() => onPageChange((current) => Math.max(1, current - 1))}
+                        onClick={() =>
+                            onPageChange((current) => Math.max(1, current - 1))
+                        }
                         disabled={page <= 1}
                         className="h-8 rounded-md px-2 text-[12px] font-bold text-slate-600 disabled:text-slate-300"
                     >
@@ -633,7 +661,9 @@ function ResultToolbar({
                     <button
                         type="button"
                         onClick={() =>
-                            onPageChange((current) => Math.min(totalPages, current + 1))
+                            onPageChange((current) =>
+                                Math.min(totalPages, current + 1),
+                            )
                         }
                         disabled={page >= totalPages}
                         className="h-8 rounded-md px-2 text-[12px] font-bold text-slate-600 disabled:text-slate-300"
@@ -678,7 +708,10 @@ function ApprovalCard({ onOpen, project, trip }) {
             <div className="mt-3 grid grid-cols-2 gap-2 border-y border-slate-100 py-3">
                 <Meta label="Pemohon" value={trip.requesterName} />
                 <Meta label="Tanggal Trip" value={getTripDateLabel(trip)} />
-                <Meta label="Diajukan" value={formatDate(trip.submittedAt || trip.createdAt)} />
+                <Meta
+                    label="Diajukan"
+                    value={formatDate(trip.submittedAt || trip.createdAt)}
+                />
                 <Meta label="Agenda" value={`${trip.agendas.length} agenda`} />
                 <Meta
                     label="Requested Amount"
@@ -760,26 +793,43 @@ function ApprovalDetailSheet({
                             trailing={<StatusBadge status={trip.status} />}
                         >
                             <div className="grid gap-2 sm:grid-cols-2">
-                                <DetailRow label="Business Trip No" value={trip.businessTripNo} />
-                                <DetailRow label="Pemohon" value={trip.requesterName} />
+                                <DetailRow
+                                    label="Business Trip No"
+                                    value={trip.businessTripNo}
+                                />
+                                <DetailRow
+                                    label="Pemohon"
+                                    value={trip.requesterName}
+                                />
                                 <DetailRow
                                     label="Tanggal Pengajuan"
-                                    value={formatDateTime(trip.submittedAt || trip.createdAt)}
+                                    value={formatDateTime(
+                                        trip.submittedAt || trip.createdAt,
+                                    )}
                                 />
-                                <DetailRow label="Tanggal Trip" value={getTripDateLabel(trip)} />
+                                <DetailRow
+                                    label="Tanggal Trip"
+                                    value={getTripDateLabel(trip)}
+                                />
                                 <DetailRow label="Judul" value={trip.title} />
                                 <DetailRow
                                     label="Project"
                                     value={getProjectLabel(project, trip)}
                                 />
-                                <DetailRow label="Inisiator" value={trip.initiatorName} />
+                                <DetailRow
+                                    label="Inisiator"
+                                    value={trip.initiatorName}
+                                />
                                 <DetailRow label="Status" value={trip.status} />
                             </div>
                         </SectionCard>
 
                         <SectionCard icon={ClipboardList} title="Agenda">
                             {trip.agendas.length === 0 ? (
-                                <EmptyState icon={ClipboardList} title="Belum ada agenda" />
+                                <EmptyState
+                                    icon={ClipboardList}
+                                    title="Belum ada agenda"
+                                />
                             ) : (
                                 <div className="space-y-2">
                                     {trip.agendas.map((agenda, index) => (
@@ -794,7 +844,8 @@ function ApprovalDetailSheet({
                                                 {getAgendaTitle(agenda) || "-"}
                                             </p>
                                             <p className="mt-1 text-xs leading-5 text-slate-600">
-                                                {getAgendaObjective(agenda) || "-"}
+                                                {getAgendaObjective(agenda) ||
+                                                    "-"}
                                             </p>
                                         </article>
                                     ))}
@@ -802,11 +853,15 @@ function ApprovalDetailSheet({
                             )}
                         </SectionCard>
 
-                        <SectionCard icon={FolderKanban} title="Pengajuan Akomodasi">
+                        <SectionCard
+                            icon={FolderKanban}
+                            title="Pengajuan Akomodasi"
+                        >
                             <p className="rounded-lg bg-slate-50 px-3 py-3 text-[13px] font-semibold text-slate-700">
                                 {trip.accommodationRequest.requestedAmount > 0
                                     ? formatAccommodationAmount(
-                                          trip.accommodationRequest.requestedAmount,
+                                          trip.accommodationRequest
+                                              .requestedAmount,
                                       )
                                     : "Tidak mengajukan dana akomodasi"}
                             </p>
@@ -834,7 +889,9 @@ function ApprovalDetailSheet({
                             onClick={onApprove}
                             disabled={!actionVisible || Boolean(actionLoading)}
                         >
-                            {actionLoading === "approve" ? "Memproses..." : "Setujui"}
+                            {actionLoading === "approve"
+                                ? "Memproses..."
+                                : "Setujui"}
                         </Button>
                     </ActionFooter>
                 )}
@@ -916,13 +973,26 @@ function RejectModal({
                 </label>
                 <div className="mt-1 flex items-center justify-between gap-2 text-xs">
                     <span className="text-slate-400">{reason.length}/1000</span>
-                    {error && <span className="font-semibold text-red-600">{error}</span>}
+                    {error && (
+                        <span className="font-semibold text-red-600">
+                            {error}
+                        </span>
+                    )}
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2.5">
-                    <Button tone="secondary" onClick={onCancel} disabled={loading}>
+                    <Button
+                        tone="secondary"
+                        onClick={onCancel}
+                        disabled={loading}
+                    >
                         Batal
                     </Button>
-                    <Button tone="danger" icon={XCircle} onClick={onSubmit} disabled={loading}>
+                    <Button
+                        tone="danger"
+                        icon={XCircle}
+                        onClick={onSubmit}
+                        disabled={loading}
+                    >
                         {loading ? "Memproses..." : "Tolak Pengajuan"}
                     </Button>
                 </div>
@@ -943,7 +1013,10 @@ function ApprovalSkeleton() {
                     <div className="mt-3 h-4 w-3/4 rounded bg-slate-200" />
                     <div className="mt-4 grid grid-cols-2 gap-2">
                         {[1, 2, 3, 4].map((meta) => (
-                            <div key={meta} className="h-10 rounded bg-slate-100" />
+                            <div
+                                key={meta}
+                                className="h-10 rounded bg-slate-100"
+                            />
                         ))}
                     </div>
                 </div>
