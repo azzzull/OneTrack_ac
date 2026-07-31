@@ -6,6 +6,7 @@ import {
 } from "./notificationEvents";
 
 export const ACCOMMODATION_BUCKET = "accommodation-proofs";
+const BUSINESS_TRIP_PHOTO_BUCKET = "business-trip-evidence";
 
 export const ACCOMMODATION_STATUSES = [
     "pending",
@@ -162,6 +163,125 @@ const loadProjectMap = async (ids) => {
     }, {});
 };
 
+const loadBusinessTripRealizationAmountMap = async (tripIds) => {
+    const uniqueIds = [...new Set(tripIds.filter(Boolean))];
+    if (!uniqueIds.length) return {};
+
+    const [{ data: realizations, error: realizationError }, { data: photos, error: photoError }] =
+        await Promise.all([
+            supabase
+                .from("business_trip_agenda_realizations")
+                .select(
+                    "id, business_trip_id, agenda_id, realized_amount, result, submitted_at, created_at",
+                )
+                .in("business_trip_id", uniqueIds),
+            supabase
+                .from("business_trip_agenda_photos")
+                .select(
+                    "id, business_trip_id, agenda_id, storage_path, original_file_name, file_name, created_at",
+                )
+                .in("business_trip_id", uniqueIds),
+        ]);
+
+    if (realizationError || photoError) {
+        console.warn(
+            "Business Trip realization lookup skipped:",
+            realizationError?.message ?? photoError?.message,
+        );
+        return {};
+    }
+
+    const photoMap = await (async () => {
+        const entries = await Promise.all(
+            (photos ?? []).map(async (photo) => {
+                const url = await getBusinessTripPhotoSignedUrl(photo.storage_path);
+                return {
+                    ...photo,
+                    receipt_photo_url: url,
+                    label:
+                        photo.original_file_name ??
+                        photo.file_name ??
+                        "Bukti Business Trip",
+                };
+            }),
+        );
+
+        return entries.reduce((acc, photo) => {
+            if (!photo.agenda_id || !photo.receipt_photo_url) return acc;
+            acc[photo.agenda_id] = [...(acc[photo.agenda_id] ?? []), photo];
+            return acc;
+        }, {});
+    })();
+
+    return (realizations ?? []).reduce((acc, item) => {
+        const tripId = item.business_trip_id;
+        const agendaPhotos = photoMap[item.agenda_id] ?? [];
+        const current = acc[tripId] ?? { receipts: [], totalRealized: 0 };
+        current.totalRealized += Number(item.realized_amount ?? 0);
+        current.receipts.push({
+            id: `business-trip-${item.id}`,
+            amount: Number(item.realized_amount ?? 0),
+            transaction_date: item.submitted_at ?? item.created_at,
+            description: item.result || "Bukti realisasi Business Trip",
+            receipt_photo_url: agendaPhotos[0]?.receipt_photo_url ?? "",
+            receipt_photo_urls: agendaPhotos.map((photo) => ({
+                id: photo.id,
+                label: photo.label,
+                url: photo.receipt_photo_url,
+            })),
+            source: "business_trip",
+        });
+        acc[tripId] = current;
+        return acc;
+    }, {});
+};
+
+const normalizeBusinessTripPhotoPath = (value = "") => {
+    const rawValue = String(value ?? "").trim();
+    if (!rawValue) return "";
+
+    try {
+        const url = new URL(rawValue);
+        const objectMarker = `/storage/v1/object/${BUSINESS_TRIP_PHOTO_BUCKET}/`;
+        const signedMarker = `/storage/v1/object/sign/${BUSINESS_TRIP_PHOTO_BUCKET}/`;
+        const markerIndex = url.pathname.indexOf(objectMarker);
+        const signedMarkerIndex = url.pathname.indexOf(signedMarker);
+
+        if (markerIndex >= 0) {
+            return decodeURIComponent(
+                url.pathname.slice(markerIndex + objectMarker.length),
+            ).replace(/^\/+/, "");
+        }
+        if (signedMarkerIndex >= 0) {
+            return decodeURIComponent(
+                url.pathname.slice(signedMarkerIndex + signedMarker.length),
+            ).replace(/^\/+/, "");
+        }
+    } catch {
+        // Business Trip photos normally store relative storage paths.
+    }
+
+    return rawValue
+        .replace(new RegExp(`^${BUSINESS_TRIP_PHOTO_BUCKET}/`), "")
+        .replace(/^\/+/, "");
+};
+
+const getBusinessTripPhotoSignedUrl = async (storagePath) => {
+    const path = normalizeBusinessTripPhotoPath(storagePath);
+    if (!path) return "";
+
+    const { data, error } = await supabase.storage
+        .from(BUSINESS_TRIP_PHOTO_BUCKET)
+        .createSignedUrl(path, 60 * 60);
+
+    if (error) {
+        console.warn("Business Trip photo preview skipped:", error.message);
+        return "";
+    }
+
+    return data?.signedUrl ?? "";
+};
+
 export const loadAccommodationRequests = async ({ role, userId } = {}) => {
     let query = supabase
         .from("accommodation_requests")
@@ -182,6 +302,9 @@ export const loadAccommodationRequests = async ({ role, userId } = {}) => {
     ]);
     const customerMap = await loadCustomerMap(rows.map((row) => row.customer_id));
     const projectMap = await loadProjectMap(rows.map((row) => row.project_id));
+    const businessTripRealizationMap = await loadBusinessTripRealizationAmountMap(
+        rows.map((row) => row.business_trip_id),
+    );
 
     return rows.map((row) => {
         const realizations = row.accommodation_realizations ?? [];
@@ -198,10 +321,24 @@ export const loadAccommodationRequests = async ({ role, userId } = {}) => {
             customer: customerMap[row.customer_id] ?? null,
             project: projectMap[row.project_id] ?? null,
         };
+        const accommodationSummary = summarizeAccommodation(request);
+        const businessTripRealization = businessTripRealizationMap[row.business_trip_id];
+        const hasBusinessTripRealization = Object.hasOwn(
+            businessTripRealizationMap,
+            row.business_trip_id,
+        );
+        const totalRealized = hasBusinessTripRealization
+            ? businessTripRealization.totalRealized
+            : accommodationSummary.totalRealized;
+        const approvedAmount = Number(request.approved_amount ?? 0);
 
         return {
             ...request,
-            ...summarizeAccommodation(request),
+            realizations: hasBusinessTripRealization
+                ? businessTripRealization.receipts
+                : request.realizations,
+            totalRealized,
+            remainingAmount: Math.max(approvedAmount - totalRealized, 0),
         };
     });
 };

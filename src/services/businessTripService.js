@@ -488,6 +488,25 @@ const loadAgendaPhotoCountMapByTripIds = async (tripIds) => {
     }, {});
 };
 
+const loadAgendaRealizationAmountMapByTripIds = async (tripIds) => {
+    const ids = [...new Set(tripIds.filter(Boolean))];
+    if (ids.length === 0) return {};
+
+    const { data, error } = await supabase
+        .from("business_trip_agenda_realizations")
+        .select("business_trip_id, realized_amount")
+        .in("business_trip_id", ids);
+
+    if (error) throw error;
+
+    return (data ?? []).reduce((acc, item) => {
+        acc[item.business_trip_id] =
+            (acc[item.business_trip_id] ?? 0) +
+            Number(item.realized_amount ?? 0);
+        return acc;
+    }, {});
+};
+
 const mapAccommodationForBusinessTrip = (item, fallbackRequestedAmount = 0) => {
     if (!item) {
         return {
@@ -528,10 +547,16 @@ const getAccommodationPaidAmount = (accommodation) => {
 
 const attachAccommodationAndDisbursement = async (trips) => {
     const tripIds = trips.map((trip) => trip.id);
-    const [accommodationMap, disbursementMap, settlementMap] = await Promise.all([
+    const [
+        accommodationMap,
+        disbursementMap,
+        settlementMap,
+        realizationAmountMap,
+    ] = await Promise.all([
         loadAccommodationMapByTripIds(tripIds),
         loadAdvanceDisbursementMapByTripIds(tripIds),
         loadSettlementMapByTripIds(tripIds),
+        loadAgendaRealizationAmountMapByTripIds(tripIds),
     ]);
 
     return trips.map((trip) => {
@@ -543,7 +568,12 @@ const attachAccommodationAndDisbursement = async (trips) => {
         const legacyDisbursement = disbursementMap[trip.id] ?? null;
         const paidAmount = getAccommodationPaidAmount(accommodation);
         const disbursedAmount = paidAmount || Number(legacyDisbursement?.amount ?? 0);
-        const totalRealizationAmount = Number(trip.totalRealizationAmount ?? 0);
+        const totalRealizationAmount = Object.hasOwn(
+            realizationAmountMap,
+            trip.id,
+        )
+            ? realizationAmountMap[trip.id]
+            : Number(trip.totalRealizationAmount ?? 0);
         const settlementDifference = disbursedAmount - totalRealizationAmount;
         const computedSettlementStatus =
             settlementDifference > 0

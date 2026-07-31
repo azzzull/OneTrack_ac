@@ -98,6 +98,19 @@ const getProjectLabel = (project, trip) =>
 const getDisbursedAmount = (trip) =>
     Number(trip.disbursedAmount ?? trip.advanceDisbursement?.amount ?? 0);
 
+const getTotalRealizationAmount = (trip) => {
+    const total = Number(trip.totalRealizationAmount ?? 0);
+    if (Number.isFinite(total) && total > 0) return total;
+
+    const disbursedAmount = getDisbursedAmount(trip);
+    const settlementDifference = Number(trip.settlementDifference ?? 0);
+    const computedTotal = disbursedAmount - settlementDifference;
+
+    return Number.isFinite(computedTotal) && computedTotal > 0
+        ? computedTotal
+        : 0;
+};
+
 const getSettlementLabel = (difference) => {
     if (difference > 0) return "Sisa yang harus dikembalikan";
     if (difference < 0) return "Kekurangan yang harus dibayarkan";
@@ -657,7 +670,9 @@ function VerificationCard({ onOpen, project, trip }) {
                 />
                 <DetailRow
                     label="Total Realisasi"
-                    value={formatAccommodationAmount(trip.totalRealizationAmount)}
+                    value={formatAccommodationAmount(
+                        getTotalRealizationAmount(trip),
+                    )}
                 />
                 <DetailRow
                     label="Selisih"
@@ -848,7 +863,9 @@ function FinancialSummary({ trip }) {
                 />
                 <DetailRow
                     label="Total Realisasi"
-                    value={formatAccommodationAmount(trip.totalRealizationAmount)}
+                    value={formatAccommodationAmount(
+                        getTotalRealizationAmount(trip),
+                    )}
                 />
                 <DetailRow
                     label={getSettlementLabel(trip.settlementDifference)}

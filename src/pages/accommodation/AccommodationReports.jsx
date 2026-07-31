@@ -959,19 +959,36 @@ function ReportDetailDrawer({ request, onClose, onPreview }) {
                                                 )}
                                             </p>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                onPreview(
-                                                    item.receipt_photo_url,
-                                                    "Receipt",
-                                                )
-                                            }
-                                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 no-underline hover:bg-slate-50"
-                                        >
-                                            <FileImage size={16} />
-                                            Preview Receipt
-                                        </button>
+                                        <div className="flex flex-wrap gap-2">
+                                            {(item.receipt_photo_urls?.length
+                                                ? item.receipt_photo_urls
+                                                : item.receipt_photo_url
+                                                  ? [
+                                                        {
+                                                            id: item.id,
+                                                            label: "Receipt",
+                                                            url: item.receipt_photo_url,
+                                                        },
+                                                    ]
+                                                  : []
+                                            ).map((photo, photoIndex) => (
+                                                <button
+                                                    key={photo.id ?? photo.url}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        onPreview(
+                                                            photo.url,
+                                                            photo.label ??
+                                                                `Receipt ${photoIndex + 1}`,
+                                                        )
+                                                    }
+                                                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 no-underline hover:bg-slate-50"
+                                                >
+                                                    <FileImage size={16} />
+                                                    Foto {photoIndex + 1}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                     <p className="mt-2 text-sm text-slate-600">
                                         {item.description ?? "-"}
