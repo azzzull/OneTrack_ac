@@ -167,10 +167,19 @@ const groupReimbursementsByRequester = (items) => {
                 (summary, item) => {
                     summary.claim += Number(item.claim_amount ?? 0);
                     summary.approved += Number(item.approved_amount ?? 0);
+                    if (item.status === "pending") {
+                        summary.unpaid += Number(item.claim_amount ?? 0);
+                    }
                     summary[item.status] += 1;
                     return summary;
                 },
-                { claim: 0, approved: 0, pending: 0, rejected: 0 },
+                {
+                    claim: 0,
+                    approved: 0,
+                    unpaid: 0,
+                    pending: 0,
+                    rejected: 0,
+                },
             );
             const status = deriveGroupStatus(itemsByNewest);
 
@@ -1087,7 +1096,13 @@ export default function ReimbursementPage() {
                                                     Pengajuan terbaru {formatDate(group.latestAt)}
                                                 </p>
                                             </div>
-                                            <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 md:min-w-80">
+                                            <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3 md:min-w-[27.5rem]">
+                                                <div className="rounded-xl bg-amber-50 p-3">
+                                                    <p className="text-xs font-medium text-amber-700">Belum Dibayar</p>
+                                                    <p className="mt-1 break-words font-semibold text-amber-900">
+                                                        {formatCurrency(group.unpaid)}
+                                                    </p>
+                                                </div>
                                                 <div className="rounded-xl bg-slate-50 p-3">
                                                     <p className="text-xs font-medium text-slate-500">Total Reimburse</p>
                                                     <p className="mt-1 break-words font-semibold text-slate-900">
