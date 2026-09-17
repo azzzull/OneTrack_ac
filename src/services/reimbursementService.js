@@ -230,6 +230,7 @@ export const approveReimbursement = async ({
             status: "approved",
         })
         .eq("id", reimbursement.id)
+        .eq("status", "pending")
         .select()
         .single();
 
@@ -262,6 +263,7 @@ export const rejectReimbursement = async ({
             transfer_proof_url: null,
         })
         .eq("id", reimbursement.id)
+        .eq("status", "pending")
         .select()
         .single();
 
