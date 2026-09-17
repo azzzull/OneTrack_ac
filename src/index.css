@@ -34,3 +34,16 @@ button {
 button:disabled {
   cursor: not-allowed;
 }
+
+/*
+ * Mobile Safari zooms the viewport when a text control has a font smaller
+ * than 16px. Keep the desktop sizing intact while using its no-zoom threshold
+ * for editable controls in the installed PWA.
+ */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
