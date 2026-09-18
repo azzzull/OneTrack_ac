@@ -39,6 +39,10 @@ import {
     loadReimbursementRequesters,
     loadReimbursements,
 } from "../../services/reimbursementService";
+import {
+    summarizeReimbursements,
+    validateReimbursementItem,
+} from "../../services/reimbursementAggregation";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -224,19 +228,15 @@ export default function ReimbursementReports() {
     }, [filters, rows]);
 
     const summary = useMemo(() => {
+        const aggregate = summarizeReimbursements(filteredRows);
         const result = {
             total: filteredRows.length,
-            pending: 0,
-            approved: 0,
-            rejected: 0,
-            claimAmount: 0,
-            approvedAmount: 0,
+            pending: aggregate.pending,
+            approved: aggregate.approved,
+            rejected: aggregate.rejected,
+            claimAmount: aggregate.totalReimburse,
+            approvedAmount: aggregate.approvedAmount,
         };
-        for (const row of filteredRows) {
-            if (result[row.status] !== undefined) result[row.status] += 1;
-            result.claimAmount += Number(row.claim_amount ?? 0);
-            result.approvedAmount += Number(row.approved_amount ?? 0);
-        }
         return {
             ...result,
             difference: result.claimAmount - result.approvedAmount,
@@ -246,7 +246,7 @@ export default function ReimbursementReports() {
     const exportExcel = async () => {
         const rowsForExcel = filteredRows.map((row, index) => {
             const claim = Number(row.claim_amount ?? 0);
-            const approved = Number(row.approved_amount ?? 0);
+            const { approvedAmount: approved } = validateReimbursementItem(row);
             return {
                 no: index + 1,
                 id: row.id,

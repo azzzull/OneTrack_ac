@@ -8,10 +8,16 @@ import {
     NOTIFICATION_EVENT_TYPES,
     notifyEvent,
 } from "./notificationEvents";
+import {
+    REIMBURSEMENT_PAYMENT_STATUSES,
+    normalizePaymentStatus,
+    validateApprovedAmount,
+} from "./reimbursementAggregation";
 
 export const REIMBURSEMENT_BUCKET = "reimbursements";
 
 export const REIMBURSEMENT_STATUSES = ["pending", "approved", "rejected"];
+export { REIMBURSEMENT_PAYMENT_STATUSES };
 
 export const REIMBURSEMENT_STATUS_LABELS = {
     pending: "Pending",
@@ -95,6 +101,7 @@ export const loadReimbursements = async ({ role, userId } = {}) => {
     return rows.map((row) => ({
         ...row,
         status: normalizeReimbursementStatus(row.status),
+        payment_status: normalizePaymentStatus(row.payment_status),
         attachments: (row.reimbursement_attachments ?? []).sort(
             (a, b) => new Date(a.created_at ?? 0) - new Date(b.created_at ?? 0),
         ),
@@ -127,6 +134,7 @@ export const createReimbursement = async ({
         claim_amount: Number(claimAmount),
         description,
         status: "pending",
+        payment_status: "unpaid",
     };
 
     const { error } = await supabase
@@ -212,22 +220,27 @@ export const uploadReimbursementFile = async ({
 export const approveReimbursement = async ({
     reimbursement,
     approvedAmount,
-    transferProofUrl,
     approvalNote,
     approvedBy,
 }) => {
-    if (!transferProofUrl) throw new Error("Bukti transfer wajib diupload.");
+    const normalizedApprovedAmount = validateApprovedAmount({
+        claimAmount: reimbursement?.claim_amount,
+        approvedAmount,
+    });
 
     const { data, error } = await supabase
         .from("reimbursements")
         .update({
-            approved_amount: Number(approvedAmount),
-            transfer_proof_url: transferProofUrl,
+            approved_amount: normalizedApprovedAmount,
             approval_note: approvalNote || null,
             approved_by: approvedBy,
             approved_at: new Date().toISOString(),
             rejection_reason: null,
             status: "approved",
+            payment_status: "unpaid",
+            transfer_proof_url: null,
+            paid_by: null,
+            paid_at: null,
         })
         .eq("id", reimbursement.id)
         .eq("status", "pending")
@@ -246,6 +259,37 @@ export const approveReimbursement = async ({
     return data;
 };
 
+export const markReimbursementPaid = async ({
+    reimbursement,
+    transferProofUrl,
+    paidBy,
+}) => {
+    if (reimbursement?.status !== "approved") {
+        throw new Error("Hanya reimbursement yang sudah disetujui dapat dibayar.");
+    }
+    if (normalizePaymentStatus(reimbursement.payment_status) === "paid") {
+        throw new Error("Reimbursement ini sudah ditandai sebagai dibayar.");
+    }
+    if (!transferProofUrl) throw new Error("Bukti transfer wajib diupload.");
+
+    const { data, error } = await supabase
+        .from("reimbursements")
+        .update({
+            payment_status: "paid",
+            transfer_proof_url: transferProofUrl,
+            paid_by: paidBy,
+            paid_at: new Date().toISOString(),
+        })
+        .eq("id", reimbursement.id)
+        .eq("status", "approved")
+        .eq("payment_status", "unpaid")
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+};
+
 export const rejectReimbursement = async ({
     reimbursement,
     rejectionReason,
@@ -261,6 +305,9 @@ export const rejectReimbursement = async ({
             approved_amount: null,
             approval_note: null,
             transfer_proof_url: null,
+            payment_status: "unpaid",
+            paid_by: null,
+            paid_at: null,
         })
         .eq("id", reimbursement.id)
         .eq("status", "pending")

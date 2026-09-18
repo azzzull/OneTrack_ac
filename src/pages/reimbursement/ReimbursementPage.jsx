@@ -35,9 +35,15 @@ import {
     getDisplayName,
     loadReimbursementRequesters,
     loadReimbursements,
+    markReimbursementPaid,
     rejectReimbursement,
     uploadReimbursementFile,
 } from "../../services/reimbursementService";
+import {
+    groupReimbursementsByRequester,
+    normalizePaymentStatus,
+    validateApprovedAmount,
+} from "../../services/reimbursementAggregation";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -120,90 +126,6 @@ const groupStatusStyle = (status) =>
     REIMBURSEMENT_STATUS_STYLES[
         status.startsWith("partial_") ? "pending" : status
     ] ?? REIMBURSEMENT_STATUS_STYLES.pending;
-
-const deriveGroupStatus = (items) => {
-    const statuses = new Set(items.map((item) => item.status));
-    if (statuses.size === 1) return items[0]?.status ?? "pending";
-    if (statuses.has("pending") && statuses.has("approved")) {
-        return "partial_approved";
-    }
-    if (statuses.has("approved") && statuses.has("rejected")) {
-        return "partial_processed";
-    }
-    return "partial_reviewed";
-};
-
-const groupReimbursementsByRequester = (items) => {
-    const groups = new Map();
-
-    for (const item of items) {
-        const id = item.requester_id || "unknown";
-        const group = groups.get(id) ?? {
-            id,
-            requester: item.requester,
-            items: [],
-        };
-        group.items.push(item);
-        groups.set(id, group);
-    }
-
-    const sortPriority = {
-        pending: 0,
-        partial_approved: 1,
-        partial_reviewed: 1,
-        partial_processed: 1,
-        approved: 2,
-        rejected: 3,
-    };
-
-    return [...groups.values()]
-        .map((group) => {
-            const itemsByNewest = [...group.items].sort(
-                (a, b) =>
-                    new Date(b.created_at ?? b.transaction_date ?? 0) -
-                    new Date(a.created_at ?? a.transaction_date ?? 0),
-            );
-            const totals = itemsByNewest.reduce(
-                (summary, item) => {
-                    summary.claim += Number(item.claim_amount ?? 0);
-                    summary.approved += Number(item.approved_amount ?? 0);
-                    if (item.status === "pending") {
-                        summary.unpaid += Number(item.claim_amount ?? 0);
-                    }
-                    summary[item.status] += 1;
-                    return summary;
-                },
-                {
-                    claim: 0,
-                    approved: 0,
-                    unpaid: 0,
-                    pending: 0,
-                    rejected: 0,
-                },
-            );
-            const status = deriveGroupStatus(itemsByNewest);
-
-            return {
-                ...group,
-                items: itemsByNewest,
-                status,
-                filterStatus: status.startsWith("partial_")
-                    ? "partial"
-                    : status,
-                latestAt:
-                    itemsByNewest[0]?.created_at ??
-                    itemsByNewest[0]?.transaction_date ??
-                    null,
-                ...totals,
-                priority: sortPriority[status] ?? sortPriority.pending,
-            };
-        })
-        .sort(
-            (a, b) =>
-                a.priority - b.priority ||
-                new Date(b.latestAt ?? 0) - new Date(a.latestAt ?? 0),
-        );
-};
 
 const FilePicker = ({ files, onAddFiles, onRemoveFile }) => {
     const [cameraOpen, setCameraOpen] = useState(false);
@@ -449,6 +371,7 @@ export default function ReimbursementPage() {
     const [reviewTarget, setReviewTarget] = useState(null);
     const [reviewMode, setReviewMode] = useState("approve");
     const [bulkReview, setBulkReview] = useState(null);
+    const [paymentTarget, setPaymentTarget] = useState(null);
     const [preview, setPreview] = useState({ src: "", title: "" });
     const [form, setForm] = useState({
         transactionDate: todayKey(),
@@ -460,11 +383,12 @@ export default function ReimbursementPage() {
         approvedAmount: "",
         approvalNote: "",
         rejectionReason: "",
-        transferFile: null,
     });
     const [bulkReviewForm, setBulkReviewForm] = useState({
         approvalNote: "",
         rejectionReason: "",
+    });
+    const [paymentForm, setPaymentForm] = useState({
         transferFile: null,
     });
     const [filters, setFilters] = useState({
@@ -596,12 +520,8 @@ export default function ReimbursementPage() {
 
     const claimantDetail = useMemo(() => {
         if (!claimantDetailId) return null;
-        return (
-            groupReimbursementsByRequester(rows).find(
-                (group) => group.id === claimantDetailId,
-            ) ?? null
-        );
-    }, [claimantDetailId, rows]);
+        return claimantGroups.find((group) => group.id === claimantDetailId) ?? null;
+    }, [claimantDetailId, claimantGroups]);
 
     const eligibleDetailItems = useMemo(
         () =>
@@ -722,7 +642,6 @@ export default function ReimbursementPage() {
             approvedAmount: row.claim_amount ? String(Number(row.claim_amount)) : "",
             approvalNote: "",
             rejectionReason: "",
-            transferFile: null,
         });
     };
 
@@ -731,14 +650,13 @@ export default function ReimbursementPage() {
         if (!reviewTarget || !user?.id) return;
 
         if (reviewMode === "approve") {
-            if (Number(reviewForm.approvedAmount) <= 0) {
-                await showAlert("Nominal disetujui wajib lebih dari 0.", {
-                    title: "Approve Reimburse",
+            try {
+                validateApprovedAmount({
+                    claimAmount: reviewTarget.claim_amount,
+                    approvedAmount: reviewForm.approvedAmount,
                 });
-                return;
-            }
-            if (!reviewForm.transferFile) {
-                await showAlert("Bukti transfer wajib diupload.", {
+            } catch (validationError) {
+                await showAlert(validationError.message, {
                     title: "Approve Reimburse",
                 });
                 return;
@@ -753,15 +671,9 @@ export default function ReimbursementPage() {
         setSaving(true);
         try {
             if (reviewMode === "approve") {
-                const uploaded = await uploadReimbursementFile({
-                    file: reviewForm.transferFile,
-                    reimbursementId: reviewTarget.id,
-                    kind: "transfer",
-                });
                 await approveReimbursement({
                     reimbursement: reviewTarget,
                     approvedAmount: reviewForm.approvedAmount,
-                    transferProofUrl: uploaded.url,
                     approvalNote: reviewForm.approvalNote.trim(),
                     approvedBy: user.id,
                 });
@@ -839,7 +751,6 @@ export default function ReimbursementPage() {
         setBulkReviewForm({
             approvalNote: "",
             rejectionReason: "",
-            transferFile: null,
         });
     };
 
@@ -860,12 +771,6 @@ export default function ReimbursementPage() {
         }
 
         const isApprove = bulkReview.mode === "approve";
-        if (isApprove && !bulkReviewForm.transferFile) {
-            await showAlert("Bukti transfer wajib diupload.", {
-                title: "Approve Reimburse",
-            });
-            return;
-        }
         if (!isApprove && !bulkReviewForm.rejectionReason.trim()) {
             await showAlert("Alasan penolakan wajib diisi.", {
                 title: "Tolak Reimburse",
@@ -894,15 +799,9 @@ export default function ReimbursementPage() {
             const results = await Promise.allSettled(
                 items.map(async (item) => {
                     if (isApprove) {
-                        const uploaded = await uploadReimbursementFile({
-                            file: bulkReviewForm.transferFile,
-                            reimbursementId: item.id,
-                            kind: "transfer",
-                        });
                         return approveReimbursement({
                             reimbursement: item,
                             approvedAmount: item.claim_amount,
-                            transferProofUrl: uploaded.url,
                             approvalNote: bulkReviewForm.approvalNote.trim(),
                             approvedBy: user.id,
                         });
@@ -931,6 +830,45 @@ export default function ReimbursementPage() {
                 {
                     title: failed ? "Review Sebagian Berhasil" : "Review Berhasil",
                 },
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const openPayment = (row) => {
+        setPaymentTarget(row);
+        setPaymentForm({ transferFile: null });
+    };
+
+    const handlePaymentSubmit = async (event) => {
+        event.preventDefault();
+        if (!paymentTarget || !user?.id) return;
+        if (!paymentForm.transferFile) {
+            await showAlert("Bukti transfer wajib diupload.", {
+                title: "Tandai Reimburse Dibayar",
+            });
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const uploaded = await uploadReimbursementFile({
+                file: paymentForm.transferFile,
+                reimbursementId: paymentTarget.id,
+                kind: "transfer",
+            });
+            await markReimbursementPaid({
+                reimbursement: paymentTarget,
+                transferProofUrl: uploaded.url,
+                paidBy: user.id,
+            });
+            setPaymentTarget(null);
+            await loadData();
+        } catch (paymentError) {
+            await showAlert(
+                paymentError.message || "Gagal menandai reimbursement sebagai dibayar.",
+                { title: "Tandai Reimburse Dibayar" },
             );
         } finally {
             setSaving(false);
@@ -1100,19 +1038,19 @@ export default function ReimbursementPage() {
                                                 <div className="rounded-xl bg-amber-50 p-3">
                                                     <p className="text-xs font-medium text-amber-700">Belum Dibayar</p>
                                                     <p className="mt-1 break-words font-semibold text-amber-900">
-                                                        {formatCurrency(group.unpaid)}
+                                                        {formatCurrency(group.unpaidAmount)}
                                                     </p>
                                                 </div>
                                                 <div className="rounded-xl bg-slate-50 p-3">
                                                     <p className="text-xs font-medium text-slate-500">Total Reimburse</p>
                                                     <p className="mt-1 break-words font-semibold text-slate-900">
-                                                        {formatCurrency(group.claim)}
+                                                        {formatCurrency(group.totalReimburse)}
                                                     </p>
                                                 </div>
                                                 <div className="rounded-xl bg-emerald-50 p-3">
                                                     <p className="text-xs font-medium text-emerald-700">Disetujui</p>
                                                     <p className="mt-1 break-words font-semibold text-emerald-900">
-                                                        {group.approved ? formatCurrency(group.approved) : "-"}
+                                                        {group.approvedAmount ? formatCurrency(group.approvedAmount) : "-"}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1167,7 +1105,7 @@ export default function ReimbursementPage() {
                                                 <div className="rounded-xl bg-emerald-50 p-3">
                                                     <p className="text-xs font-medium text-emerald-700">Disetujui</p>
                                                     <p className="mt-1 break-words font-semibold text-emerald-900">
-                                                        {row.approved_amount ? formatCurrency(row.approved_amount) : "-"}
+                                                        {row.status === "approved" ? formatCurrency(row.approved_amount) : "-"}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1261,6 +1199,7 @@ export default function ReimbursementPage() {
                     onClose={() => setSelected(null)}
                     onOpenFile={openFile}
                     onReview={openReview}
+                    onMarkPaid={openPayment}
                     onDelete={handleDelete}
                 />
             )}
@@ -1307,6 +1246,19 @@ export default function ReimbursementPage() {
                     onSubmit={handleBulkReviewSubmit}
                     onClose={() => {
                         if (!saving) setBulkReview(null);
+                    }}
+                />
+            )}
+
+            {paymentTarget && (
+                <PaymentModal
+                    row={paymentTarget}
+                    form={paymentForm}
+                    saving={saving}
+                    onChange={setPaymentForm}
+                    onSubmit={handlePaymentSubmit}
+                    onClose={() => {
+                        if (!saving) setPaymentTarget(null);
                     }}
                 />
             )}
@@ -1441,6 +1393,7 @@ function ClaimantReviewModal({
     onClose,
     onOpenFile,
     onReview,
+    onMarkPaid,
     onDelete,
     onToggleSelection,
     onToggleAll,
@@ -1466,9 +1419,15 @@ function ClaimantReviewModal({
         },
         {
             label: "Disetujui",
-            itemCount: claimant.approved ? claimant.items.filter((item) => item.status === "approved").length : 0,
-            amount: claimant.approved,
+            itemCount: claimant.approved,
+            amount: claimant.approvedAmount,
             className: "bg-emerald-50 text-emerald-800",
+        },
+        {
+            label: "Belum Dibayar",
+            itemCount: claimant.unpaid,
+            amount: claimant.unpaidAmount,
+            className: "bg-orange-50 text-orange-800",
         },
         {
             label: "Ditolak",
@@ -1528,6 +1487,18 @@ function ClaimantReviewModal({
                     </button>
                 </>
             )}
+            {item.status === "approved" &&
+                normalizePaymentStatus(item.payment_status) === "unpaid" && (
+                    <button
+                        type="button"
+                        onClick={() => onMarkPaid(item)}
+                        disabled={saving}
+                        className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:bg-slate-300"
+                    >
+                        <Banknote size={13} />
+                        Tandai Dibayar
+                    </button>
+                )}
             {canDelete && (
                 <button
                     type="button"
@@ -1551,7 +1522,7 @@ function ClaimantReviewModal({
                             {getDisplayName(claimant.requester)}
                         </h2>
                         <p className="mt-1 text-sm text-slate-600">
-                            {claimant.items.length} reimbursement · Total pengajuan {formatCurrency(claimant.claim)}
+                            {claimant.items.length} reimbursement · Total pengajuan {formatCurrency(claimant.totalReimburse)}
                         </p>
                     </div>
                     <button
@@ -1566,7 +1537,7 @@ function ClaimantReviewModal({
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         {summary.map((item) => (
                             <div key={item.label} className={`rounded-xl p-3 ${item.className}`}>
                                 <p className="text-xs font-medium">{item.label}</p>
@@ -1658,7 +1629,7 @@ function ClaimantReviewModal({
                                             </td>
                                             <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-900">
                                                 {formatCurrency(item.claim_amount)}
-                                                {item.approved_amount && (
+                                                {item.status === "approved" && (
                                                     <p className="mt-1 text-xs font-medium text-emerald-700">Disetujui {formatCurrency(item.approved_amount)}</p>
                                                 )}
                                             </td>
@@ -1679,6 +1650,11 @@ function ClaimantReviewModal({
                                                 <span className={`rounded-full px-2 py-1 text-xs font-semibold ${REIMBURSEMENT_STATUS_STYLES[item.status]}`}>
                                                     {REIMBURSEMENT_STATUS_LABELS[item.status]}
                                                 </span>
+                                                {item.status === "approved" && (
+                                                    <p className={`mt-1 text-xs font-medium ${normalizePaymentStatus(item.payment_status) === "paid" ? "text-emerald-700" : "text-amber-700"}`}>
+                                                        {normalizePaymentStatus(item.payment_status) === "paid" ? "Dibayar" : "Belum dibayar"}
+                                                    </p>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3">{itemActions(item)}</td>
                                         </tr>
@@ -1713,8 +1689,13 @@ function ClaimantReviewModal({
                                             {REIMBURSEMENT_STATUS_LABELS[item.status]}
                                         </span>
                                     </div>
-                                    {item.approved_amount && (
+                                    {item.status === "approved" && (
                                         <p className="mt-2 text-xs font-medium text-emerald-700">Disetujui {formatCurrency(item.approved_amount)}</p>
+                                    )}
+                                    {item.status === "approved" && (
+                                        <p className={`mt-1 text-xs font-medium ${normalizePaymentStatus(item.payment_status) === "paid" ? "text-emerald-700" : "text-amber-700"}`}>
+                                            {normalizePaymentStatus(item.payment_status) === "paid" ? "Dibayar" : "Belum dibayar"}
+                                        </p>
                                     )}
                                     {item.approval_note && <p className="mt-2 text-xs text-slate-500">Catatan: {item.approval_note}</p>}
                                     {item.rejection_reason && <p className="mt-2 text-xs text-red-600">Alasan: {item.rejection_reason}</p>}
@@ -1770,29 +1751,17 @@ function BulkReviewModal({ mode, items, form, saving, onChange, onSubmit, onClos
                         <p className="mt-1">Total: {formatCurrency(total)}</p>
                         <p className="mt-2 text-xs text-slate-500">
                             {isApprove
-                                ? "Setiap item akan disetujui sebesar nominal klaimnya dan memakai bukti transfer yang diupload di bawah."
+                                ? "Setiap item akan disetujui sebesar nominal klaimnya. Pembayaran ditandai terpisah setelah bukti transfer tersedia."
                                 : "Alasan penolakan yang diisi akan dicatat pada setiap reimbursement terpilih."}
                         </p>
                     </div>
                     {isApprove ? (
-                        <>
-                            <textarea
-                                value={form.approvalNote}
-                                onChange={(event) => onChange((prev) => ({ ...prev, approvalNote: event.target.value }))}
-                                placeholder="Catatan approval"
-                                className="min-h-24 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
-                            />
-                            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
-                                <Upload size={16} />
-                                {form.transferFile?.name || "Upload bukti transfer"}
-                                <input
-                                    type="file"
-                                    accept="image/*,.pdf"
-                                    className="hidden"
-                                    onChange={(event) => onChange((prev) => ({ ...prev, transferFile: event.target.files?.[0] ?? null }))}
-                                />
-                            </label>
-                        </>
+                        <textarea
+                            value={form.approvalNote}
+                            onChange={(event) => onChange((prev) => ({ ...prev, approvalNote: event.target.value }))}
+                            placeholder="Catatan approval"
+                            className="min-h-24 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                        />
                     ) : (
                         <textarea
                             value={form.rejectionReason}
@@ -1827,6 +1796,62 @@ function BulkReviewModal({ mode, items, form, saving, onChange, onSubmit, onClos
     );
 }
 
+function PaymentModal({ row, form, saving, onChange, onSubmit, onClose }) {
+    return (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 p-4">
+            <form onSubmit={onSubmit} className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                    <h2 className="text-lg font-semibold text-slate-900">Tandai Reimburse Dibayar</h2>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={saving}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-60"
+                        aria-label="Tutup pembayaran reimbursement"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+                <div className="space-y-4 p-5">
+                    <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+                        <p className="font-semibold text-slate-900">{getDisplayName(row.requester)}</p>
+                        <p className="mt-1">Disetujui: {formatCurrency(row.approved_amount)}</p>
+                        <p className="mt-2 text-xs text-slate-500">Status approval tetap Approved; aksi ini hanya mengubah status pembayaran menjadi Dibayar.</p>
+                    </div>
+                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm font-semibold text-sky-700 hover:bg-sky-100">
+                        <Upload size={16} />
+                        {form.transferFile?.name || "Upload bukti transfer"}
+                        <input
+                            type="file"
+                            accept="image/*,.pdf"
+                            className="hidden"
+                            onChange={(event) => onChange({ transferFile: event.target.files?.[0] ?? null })}
+                        />
+                    </label>
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={saving}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                        Batal
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={saving}
+                        className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:bg-slate-300"
+                    >
+                        {saving && <Loader size={15} className="animate-spin" />}
+                        Tandai Dibayar
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
 function DetailModal({
     row,
     canReview,
@@ -1843,8 +1868,9 @@ function DetailModal({
         ["Tanggal Pengajuan", formatDateTime(row.created_at)],
         ["Tanggal Transaksi", formatDate(row.transaction_date)],
         ["Nominal Klaim", formatCurrency(row.claim_amount)],
-        ["Nominal Disetujui", row.approved_amount ? formatCurrency(row.approved_amount) : "-"],
+        ["Nominal Disetujui", row.status === "approved" ? formatCurrency(row.approved_amount) : "-"],
         ["Status", REIMBURSEMENT_STATUS_LABELS[row.status]],
+        ["Status Pembayaran", row.status === "approved" ? (normalizePaymentStatus(row.payment_status) === "paid" ? "Dibayar" : "Belum dibayar") : "-"],
         ["Approved By", getDisplayName(row.approver)],
         ["Tanggal Approval", formatDateTime(row.approved_at)],
         ["Alasan Penolakan", row.rejection_reason || "-"],
@@ -1961,6 +1987,7 @@ function ReviewModal({ mode, row, form, saving, onChange, onSubmit, onClose }) {
                             <input
                                 type="number"
                                 min="1"
+                                max={row.claim_amount}
                                 value={form.approvedAmount}
                                 onChange={(event) => onChange((prev) => ({ ...prev, approvedAmount: event.target.value }))}
                                 placeholder="Nominal disetujui"
@@ -1972,16 +1999,6 @@ function ReviewModal({ mode, row, form, saving, onChange, onSubmit, onClose }) {
                                 placeholder="Catatan approval"
                                 className="min-h-24 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
                             />
-                            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
-                                <Upload size={16} />
-                                {form.transferFile?.name || "Upload bukti transfer"}
-                                <input
-                                    type="file"
-                                    accept="image/*,.pdf"
-                                    className="hidden"
-                                    onChange={(event) => onChange((prev) => ({ ...prev, transferFile: event.target.files?.[0] ?? null }))}
-                                />
-                            </label>
                         </>
                     ) : (
                         <textarea

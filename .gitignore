@@ -31,6 +31,8 @@ docs/**/*.sql
 
 # Ignore Supabase SQL files entirely
 supabase/**/*.sql
+!supabase/migrations/
+!supabase/migrations/202609180001_separate_reimbursement_approval_payment.sql
 
 # Ignore ad-hoc markdown files, keep README files
 *.md
