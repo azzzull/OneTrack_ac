@@ -148,6 +148,7 @@ export const summarizeReimbursements = (items) => {
         totalReimburse: 0,
         approvedAmount: 0,
         unpaidAmount: 0,
+        pendingAmount: 0,
         pending: 0,
         approved: 0,
         rejected: 0,
@@ -161,6 +162,9 @@ export const summarizeReimbursements = (items) => {
         summary.approvedAmount += validated.approvedAmount;
         summary.unpaidAmount += validated.unpaidAmount;
         summary[validated.status] += 1;
+        if (validated.status === "pending") {
+            summary.pendingAmount += validated.claimAmount;
+        }
         if (validated.status === "approved") {
             summary[validated.paymentStatus] += 1;
         }

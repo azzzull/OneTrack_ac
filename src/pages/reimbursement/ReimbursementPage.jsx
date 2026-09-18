@@ -1036,9 +1036,9 @@ export default function ReimbursementPage() {
                                             </div>
                                             <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3 md:min-w-[27.5rem]">
                                                 <div className="rounded-xl bg-amber-50 p-3">
-                                                    <p className="text-xs font-medium text-amber-700">Belum Dibayar</p>
+                                                    <p className="text-xs font-medium text-amber-700">Menunggu Approval</p>
                                                     <p className="mt-1 break-words font-semibold text-amber-900">
-                                                        {formatCurrency(group.unpaidAmount)}
+                                                        {formatCurrency(group.pendingAmount)}
                                                     </p>
                                                 </div>
                                                 <div className="rounded-xl bg-slate-50 p-3">

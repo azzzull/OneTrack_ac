@@ -52,11 +52,13 @@ test("summary follows individual reimbursement approval and payment states", () 
             totalReimburse: summary.totalReimburse,
             approvedAmount: summary.approvedAmount,
             unpaidAmount: summary.unpaidAmount,
+            pendingAmount: summary.pendingAmount,
         },
         {
             totalReimburse: 450_000,
             approvedAmount: 225_000,
             unpaidAmount: 175_000,
+            pendingAmount: 100_000,
         },
     );
     assert.equal(summary.pending, 1);
