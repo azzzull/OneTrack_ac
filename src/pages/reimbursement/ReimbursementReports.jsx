@@ -40,6 +40,7 @@ import {
     loadReimbursements,
 } from "../../services/reimbursementService";
 import {
+    normalizePaymentStatus,
     summarizeReimbursements,
     validateReimbursementItem,
 } from "../../services/reimbursementAggregation";
@@ -261,6 +262,16 @@ export default function ReimbursementReports() {
                 status: REIMBURSEMENT_STATUS_LABELS[row.status] ?? row.status,
                 approvedBy: getDisplayName(row.approver),
                 approvedAt: parseExcelDate(row.approved_at),
+                paymentStatus:
+                    row.status === "approved"
+                        ? normalizePaymentStatus(row.payment_status) === "paid"
+                            ? "Dibayar"
+                            : "Belum Dibayar"
+                        : "-",
+                paymentBatch: row.reimbursement_payment_batch?.batch_number
+                    ? `Batch #${row.reimbursement_payment_batch.batch_number}`
+                    : "-",
+                paidAt: parseExcelDate(row.paid_at),
                 rejectionReason: row.rejection_reason || "-",
                 approvalNote: row.approval_note || "-",
             };
@@ -298,11 +309,14 @@ export default function ReimbursementReports() {
                 { key: "status", header: "Status" },
                 { key: "approvedBy", header: "Approved By" },
                 { key: "approvedAt", header: "Tanggal Approval" },
+                { key: "paymentStatus", header: "Status Pembayaran" },
+                { key: "paymentBatch", header: "Batch Pembayaran" },
+                { key: "paidAt", header: "Tanggal Pembayaran" },
                 { key: "rejectionReason", header: "Alasan Penolakan" },
                 { key: "approvalNote", header: "Catatan Approval" },
             ],
             rows: rowsForExcel,
-            dateKeys: ["createdAt", "transactionDate", "approvedAt"],
+            dateKeys: ["createdAt", "transactionDate", "approvedAt", "paidAt"],
             currencyKeys: ["claimAmount", "approvedAmount", "difference"],
             wrapKeys: ["description", "rejectionReason", "approvalNote"],
             summaryRows: [

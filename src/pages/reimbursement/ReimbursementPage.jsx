@@ -35,7 +35,7 @@ import {
     getDisplayName,
     loadReimbursementRequesters,
     loadReimbursements,
-    markReimbursementPaid,
+    markReimbursementBatchPaid,
     rejectReimbursement,
     uploadReimbursementFile,
 } from "../../services/reimbursementService";
@@ -368,6 +368,8 @@ export default function ReimbursementPage() {
     const [selectedReimbursementIds, setSelectedReimbursementIds] = useState(
         [],
     );
+    const [selectedPaymentReimbursementIds, setSelectedPaymentReimbursementIds] =
+        useState([]);
     const [reviewTarget, setReviewTarget] = useState(null);
     const [reviewMode, setReviewMode] = useState("approve");
     const [bulkReview, setBulkReview] = useState(null);
@@ -536,9 +538,27 @@ export default function ReimbursementPage() {
         return eligibleDetailItems.filter((item) => selectedIds.has(item.id));
     }, [eligibleDetailItems, selectedReimbursementIds]);
 
+    const payableDetailItems = useMemo(
+        () =>
+            (claimantDetail?.items ?? []).filter(
+                (item) =>
+                    item.status === "approved" &&
+                    normalizePaymentStatus(item.payment_status) === "unpaid",
+            ),
+        [claimantDetail],
+    );
+
+    const selectedPaymentDetailItems = useMemo(() => {
+        const selectedIds = new Set(selectedPaymentReimbursementIds);
+        return payableDetailItems.filter((item) => selectedIds.has(item.id));
+    }, [payableDetailItems, selectedPaymentReimbursementIds]);
+
     useEffect(() => {
         if (!claimantDetail) {
             setSelectedReimbursementIds((current) =>
+                current.length ? [] : current,
+            );
+            setSelectedPaymentReimbursementIds((current) =>
                 current.length ? [] : current,
             );
             return;
@@ -548,7 +568,12 @@ export default function ReimbursementPage() {
             const next = current.filter((id) => eligibleIds.has(id));
             return next.length === current.length ? current : next;
         });
-    }, [claimantDetail, eligibleDetailItems]);
+        const payableIds = new Set(payableDetailItems.map((item) => item.id));
+        setSelectedPaymentReimbursementIds((current) => {
+            const next = current.filter((id) => payableIds.has(id));
+            return next.length === current.length ? current : next;
+        });
+    }, [claimantDetail, eligibleDetailItems, payableDetailItems]);
 
     const addReceiptFiles = (fileList) => {
         const nextFiles = Array.from(fileList ?? []);
@@ -698,7 +723,9 @@ export default function ReimbursementPage() {
     const handleDelete = async (row) => {
         if (!canDelete || !row?.id) return;
         const confirmed = await showConfirm(
-            "Hapus data reimburse ini beserta semua bukti nota dan bukti transfer?",
+            row.payment_batch_id
+                ? "Hapus data reimburse ini beserta semua bukti nota? Bukti transfer batch tetap disimpan sebagai riwayat pembayaran."
+                : "Hapus data reimburse ini beserta semua bukti nota dan bukti transfer?",
             {
                 title: "Konfirmasi Hapus",
                 confirmText: "Ya, Hapus",
@@ -737,6 +764,23 @@ export default function ReimbursementPage() {
             return;
         }
         setSelectedReimbursementIds([]);
+    };
+
+    const togglePaymentSelection = (reimbursementId, checked) => {
+        setSelectedPaymentReimbursementIds((current) => {
+            if (checked) return [...new Set([...current, reimbursementId])];
+            return current.filter((id) => id !== reimbursementId);
+        });
+    };
+
+    const toggleAllPayable = (checked) => {
+        if (checked) {
+            setSelectedPaymentReimbursementIds(
+                payableDetailItems.map((item) => item.id),
+            );
+            return;
+        }
+        setSelectedPaymentReimbursementIds([]);
     };
 
     const openBulkReview = async (mode) => {
@@ -836,17 +880,25 @@ export default function ReimbursementPage() {
         }
     };
 
-    const openPayment = (row) => {
-        setPaymentTarget(row);
+    const openPayment = (items) => {
+        const paymentItems = (Array.isArray(items) ? items : [items]).filter(
+            (item) =>
+                item?.status === "approved" &&
+                normalizePaymentStatus(item.payment_status) === "unpaid",
+        );
+        if (!paymentItems.length) return;
+
+        setPaymentTarget({ items: paymentItems });
         setPaymentForm({ transferFile: null });
     };
 
     const handlePaymentSubmit = async (event) => {
         event.preventDefault();
-        if (!paymentTarget || !user?.id) return;
+        const paymentItems = paymentTarget?.items ?? [];
+        if (!paymentItems.length || !user?.id) return;
         if (!paymentForm.transferFile) {
             await showAlert("Bukti transfer wajib diupload.", {
-                title: "Tandai Reimburse Dibayar",
+                title: "Bayar Reimburse",
             });
             return;
         }
@@ -855,20 +907,24 @@ export default function ReimbursementPage() {
         try {
             const uploaded = await uploadReimbursementFile({
                 file: paymentForm.transferFile,
-                reimbursementId: paymentTarget.id,
+                reimbursementId: paymentItems[0].id,
                 kind: "transfer",
             });
-            await markReimbursementPaid({
-                reimbursement: paymentTarget,
+            const paymentBatch = await markReimbursementBatchPaid({
+                reimbursements: paymentItems,
                 transferProofUrl: uploaded.url,
-                paidBy: user.id,
             });
             setPaymentTarget(null);
+            setSelectedPaymentReimbursementIds([]);
             await loadData();
+            await showAlert(
+                `${paymentItems.length} reimbursement berhasil ditandai dibayar dalam batch #${paymentBatch?.batch_number ?? "-"}.`,
+                { title: "Pembayaran Berhasil" },
+            );
         } catch (paymentError) {
             await showAlert(
-                paymentError.message || "Gagal menandai reimbursement sebagai dibayar.",
-                { title: "Tandai Reimburse Dibayar" },
+                paymentError.message || "Gagal mencatat pembayaran reimbursement.",
+                { title: "Bayar Reimburse" },
             );
         } finally {
             setSaving(false);
@@ -1060,6 +1116,7 @@ export default function ReimbursementPage() {
                                                 type="button"
                                                 onClick={() => {
                                                     setSelectedReimbursementIds([]);
+                                                    setSelectedPaymentReimbursementIds([]);
                                                     setClaimantDetailId(group.id);
                                                 }}
                                                 className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -1211,9 +1268,12 @@ export default function ReimbursementPage() {
                     saving={saving}
                     selectedIds={selectedReimbursementIds}
                     selectedItems={selectedDetailItems}
+                    paymentSelectedIds={selectedPaymentReimbursementIds}
+                    paymentSelectedItems={selectedPaymentDetailItems}
                     onClose={() => {
                         setClaimantDetailId(null);
                         setSelectedReimbursementIds([]);
+                        setSelectedPaymentReimbursementIds([]);
                     }}
                     onOpenFile={openFile}
                     onReview={openReview}
@@ -1221,7 +1281,10 @@ export default function ReimbursementPage() {
                     onDelete={handleDelete}
                     onToggleSelection={toggleDetailSelection}
                     onToggleAll={toggleAllEligible}
+                    onTogglePaymentSelection={togglePaymentSelection}
+                    onToggleAllPayable={toggleAllPayable}
                     onBulkReview={openBulkReview}
+                    onMarkBatchPaid={openPayment}
                 />
             )}
 
@@ -1253,7 +1316,7 @@ export default function ReimbursementPage() {
 
             {paymentTarget && (
                 <PaymentModal
-                    row={paymentTarget}
+                    items={paymentTarget.items}
                     form={paymentForm}
                     saving={saving}
                     onChange={setPaymentForm}
@@ -1391,6 +1454,8 @@ function ClaimantReviewModal({
     saving,
     selectedIds,
     selectedItems,
+    paymentSelectedIds,
+    paymentSelectedItems,
     onClose,
     onOpenFile,
     onReview,
@@ -1398,15 +1463,31 @@ function ClaimantReviewModal({
     onDelete,
     onToggleSelection,
     onToggleAll,
+    onTogglePaymentSelection,
+    onToggleAllPayable,
     onBulkReview,
+    onMarkBatchPaid,
 }) {
     const eligibleItems = claimant.items.filter((item) => item.status === "pending");
+    const payableItems = claimant.items.filter(
+        (item) =>
+            item.status === "approved" &&
+            normalizePaymentStatus(item.payment_status) === "unpaid",
+    );
     const selectedIdSet = new Set(selectedIds);
+    const paymentSelectedIdSet = new Set(paymentSelectedIds);
     const allEligibleSelected =
         eligibleItems.length > 0 &&
         eligibleItems.every((item) => selectedIdSet.has(item.id));
+    const allPayableSelected =
+        payableItems.length > 0 &&
+        payableItems.every((item) => paymentSelectedIdSet.has(item.id));
     const selectedTotal = selectedItems.reduce(
         (sum, item) => sum + Number(item.claim_amount ?? 0),
+        0,
+    );
+    const selectedPaymentTotal = paymentSelectedItems.reduce(
+        (sum, item) => sum + Number(item.approved_amount ?? 0),
         0,
     );
     const summary = [
@@ -1497,7 +1578,7 @@ function ClaimantReviewModal({
                         className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:bg-slate-300"
                     >
                         <Banknote size={13} />
-                        Tandai Dibayar
+                        Bayar Item Ini
                     </button>
                 )}
             {canDelete && (
@@ -1588,11 +1669,42 @@ function ClaimantReviewModal({
                         </div>
                     )}
 
+                    {payableItems.length > 0 && (
+                        <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-3 md:flex-row md:items-center md:justify-between">
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-sky-800">
+                                <input
+                                    type="checkbox"
+                                    checked={allPayableSelected}
+                                    onChange={(event) => onToggleAllPayable(event.target.checked)}
+                                    className="h-4 w-4 rounded border-sky-300 text-sky-600"
+                                />
+                                Pilih semua belum dibayar ({payableItems.length})
+                            </label>
+                            {paymentSelectedItems.length > 0 && (
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <p className="text-sm text-sky-800">
+                                        <span className="font-semibold text-sky-950">{paymentSelectedItems.length} item akan dibayar</span> · {formatCurrency(selectedPaymentTotal)}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => onMarkBatchPaid(paymentSelectedItems)}
+                                        disabled={saving}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:bg-slate-300"
+                                    >
+                                        <Banknote size={15} />
+                                        Bayar Terpilih
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="mt-5 hidden overflow-x-auto rounded-2xl border border-slate-200 md:block">
                         <table className="min-w-full text-left text-sm">
                             <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 <tr>
-                                    <th className="w-12 px-4 py-3">Pilih</th>
+                                    <th className="w-12 px-4 py-3">Review</th>
+                                    <th className="w-12 px-4 py-3">Bayar</th>
                                     <th className="px-4 py-3">Tanggal</th>
                                     <th className="px-4 py-3">Keterangan</th>
                                     <th className="px-4 py-3">Nominal</th>
@@ -1604,6 +1716,9 @@ function ClaimantReviewModal({
                             <tbody className="divide-y divide-slate-100">
                                 {claimant.items.map((item) => {
                                     const isEligible = item.status === "pending";
+                                    const isPayable =
+                                        item.status === "approved" &&
+                                        normalizePaymentStatus(item.payment_status) === "unpaid";
                                     return (
                                         <tr key={item.id} className="align-top hover:bg-slate-50">
                                             <td className="px-4 py-3">
@@ -1614,6 +1729,16 @@ function ClaimantReviewModal({
                                                     onChange={(event) => onToggleSelection(item.id, event.target.checked)}
                                                     className="h-4 w-4 rounded border-slate-300 text-sky-600 disabled:cursor-not-allowed"
                                                     aria-label={`Pilih reimbursement ${formatDate(item.transaction_date)}`}
+                                                />
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={paymentSelectedIdSet.has(item.id)}
+                                                    disabled={!isPayable || saving}
+                                                    onChange={(event) => onTogglePaymentSelection(item.id, event.target.checked)}
+                                                    className="h-4 w-4 rounded border-sky-300 text-sky-600 disabled:cursor-not-allowed"
+                                                    aria-label={`Pilih pembayaran reimbursement ${formatDate(item.transaction_date)}`}
                                                 />
                                             </td>
                                             <td className="whitespace-nowrap px-4 py-3 text-slate-700">
@@ -1643,7 +1768,7 @@ function ClaimantReviewModal({
                                                         className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
                                                     >
                                                         <FileImage size={13} />
-                                                        Bukti transfer
+                                                        Bukti transfer{item.reimbursement_payment_batch?.batch_number ? ` · Batch #${item.reimbursement_payment_batch.batch_number}` : ""}
                                                     </button>
                                                 )}
                                             </td>
@@ -1668,6 +1793,9 @@ function ClaimantReviewModal({
                     <div className="mt-5 space-y-3 md:hidden">
                         {claimant.items.map((item) => {
                             const isEligible = item.status === "pending";
+                            const isPayable =
+                                item.status === "approved" &&
+                                normalizePaymentStatus(item.payment_status) === "unpaid";
                             return (
                                 <article key={item.id} className="rounded-2xl border border-slate-200 p-4">
                                     <div className="flex items-start justify-between gap-3">
@@ -1675,14 +1803,30 @@ function ClaimantReviewModal({
                                             <p className="text-sm font-semibold text-slate-900">{formatDate(item.transaction_date)}</p>
                                             <p className="mt-1 text-sm text-slate-700">{item.description}</p>
                                         </div>
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIdSet.has(item.id)}
-                                            disabled={!isEligible || saving}
-                                            onChange={(event) => onToggleSelection(item.id, event.target.checked)}
-                                            className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600 disabled:cursor-not-allowed"
-                                            aria-label={`Pilih reimbursement ${formatDate(item.transaction_date)}`}
-                                        />
+                                        <div className="flex shrink-0 flex-col gap-2 text-xs font-medium text-slate-600">
+                                            <label className="inline-flex items-center gap-1.5">
+                                                Review
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIdSet.has(item.id)}
+                                                    disabled={!isEligible || saving}
+                                                    onChange={(event) => onToggleSelection(item.id, event.target.checked)}
+                                                    className="h-4 w-4 rounded border-slate-300 text-sky-600 disabled:cursor-not-allowed"
+                                                    aria-label={`Pilih reimbursement ${formatDate(item.transaction_date)}`}
+                                                />
+                                            </label>
+                                            <label className="inline-flex items-center gap-1.5">
+                                                Bayar
+                                                <input
+                                                    type="checkbox"
+                                                    checked={paymentSelectedIdSet.has(item.id)}
+                                                    disabled={!isPayable || saving}
+                                                    onChange={(event) => onTogglePaymentSelection(item.id, event.target.checked)}
+                                                    className="h-4 w-4 rounded border-sky-300 text-sky-600 disabled:cursor-not-allowed"
+                                                    aria-label={`Pilih pembayaran reimbursement ${formatDate(item.transaction_date)}`}
+                                                />
+                                            </label>
+                                        </div>
                                     </div>
                                     <div className="mt-3 flex flex-wrap items-center gap-2">
                                         <span className="font-semibold text-slate-900">{formatCurrency(item.claim_amount)}</span>
@@ -1708,7 +1852,7 @@ function ClaimantReviewModal({
                                             className="mt-2 inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
                                         >
                                             <FileImage size={13} />
-                                            Bukti transfer
+                                            Bukti transfer{item.reimbursement_payment_batch?.batch_number ? ` · Batch #${item.reimbursement_payment_batch.batch_number}` : ""}
                                         </button>
                                     )}
                                     <div className="mt-4">{itemActions(item)}</div>
@@ -1797,12 +1941,19 @@ function BulkReviewModal({ mode, items, form, saving, onChange, onSubmit, onClos
     );
 }
 
-function PaymentModal({ row, form, saving, onChange, onSubmit, onClose }) {
+function PaymentModal({ items, form, saving, onChange, onSubmit, onClose }) {
+    const paymentItems = items ?? [];
+    const totalAmount = paymentItems.reduce(
+        (sum, item) => sum + Number(item.approved_amount ?? 0),
+        0,
+    );
+    const requester = paymentItems[0]?.requester;
+
     return (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 p-4">
             <form onSubmit={onSubmit} className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
                 <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
-                    <h2 className="text-lg font-semibold text-slate-900">Tandai Reimburse Dibayar</h2>
+                    <h2 className="text-lg font-semibold text-slate-900">Bayar Reimburse</h2>
                     <button
                         type="button"
                         onClick={onClose}
@@ -1815,9 +1966,10 @@ function PaymentModal({ row, form, saving, onChange, onSubmit, onClose }) {
                 </div>
                 <div className="space-y-4 p-5">
                     <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-                        <p className="font-semibold text-slate-900">{getDisplayName(row.requester)}</p>
-                        <p className="mt-1">Disetujui: {formatCurrency(row.approved_amount)}</p>
-                        <p className="mt-2 text-xs text-slate-500">Status approval tetap Approved; aksi ini hanya mengubah status pembayaran menjadi Dibayar.</p>
+                        <p className="font-semibold text-slate-900">{getDisplayName(requester)}</p>
+                        <p className="mt-1">{paymentItems.length} reimbursement akan dibayar sekaligus.</p>
+                        <p className="mt-1 font-semibold text-slate-900">Total transfer: {formatCurrency(totalAmount)}</p>
+                        <p className="mt-2 text-xs text-slate-500">Satu bukti transfer akan disimpan untuk seluruh reimbursement dalam batch ini. Status approval tetap Approved.</p>
                     </div>
                     <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm font-semibold text-sky-700 hover:bg-sky-100">
                         <Upload size={16} />
@@ -1845,7 +1997,7 @@ function PaymentModal({ row, form, saving, onChange, onSubmit, onClose }) {
                         className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:bg-slate-300"
                     >
                         {saving && <Loader size={15} className="animate-spin" />}
-                        Tandai Dibayar
+                        Bayar {paymentItems.length} Item
                     </button>
                 </div>
             </form>
@@ -1924,7 +2076,7 @@ function DetailModal({
                             className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
                         >
                             <FileImage size={16} />
-                            Lihat bukti transfer
+                            Lihat bukti transfer{row.reimbursement_payment_batch?.batch_number ? ` · Batch #${row.reimbursement_payment_batch.batch_number}` : ""}
                         </button>
                     )}
                     {canReview && row.status === "pending" && (

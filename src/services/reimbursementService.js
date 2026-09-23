@@ -82,7 +82,9 @@ const loadProfileById = async (id) => {
 export const loadReimbursements = async ({ role, userId } = {}) => {
     let query = supabase
         .from("reimbursements")
-        .select("*, reimbursement_attachments(*)")
+        .select(
+            "*, reimbursement_attachments(*), reimbursement_payment_batch:reimbursement_payment_batches(batch_number, total_amount, paid_at)",
+        )
         .order("created_at", { ascending: false });
 
     if (role === "technician" && userId) {
@@ -239,6 +241,7 @@ export const approveReimbursement = async ({
             status: "approved",
             payment_status: "unpaid",
             transfer_proof_url: null,
+            payment_batch_id: null,
             paid_by: null,
             paid_at: null,
         })
@@ -259,35 +262,44 @@ export const approveReimbursement = async ({
     return data;
 };
 
-export const markReimbursementPaid = async ({
-    reimbursement,
+export const markReimbursementBatchPaid = async ({
+    reimbursements,
     transferProofUrl,
-    paidBy,
 }) => {
-    if (reimbursement?.status !== "approved") {
-        throw new Error("Hanya reimbursement yang sudah disetujui dapat dibayar.");
+    const items = reimbursements ?? [];
+    const reimbursementIds = items.map((item) => item?.id).filter(Boolean);
+
+    if (!reimbursementIds.length) {
+        throw new Error("Pilih reimbursement yang akan dibayar.");
     }
-    if (normalizePaymentStatus(reimbursement.payment_status) === "paid") {
-        throw new Error("Reimbursement ini sudah ditandai sebagai dibayar.");
+    if (new Set(reimbursementIds).size !== reimbursementIds.length) {
+        throw new Error("Daftar reimbursement pembayaran tidak valid.");
     }
     if (!transferProofUrl) throw new Error("Bukti transfer wajib diupload.");
 
-    const { data, error } = await supabase
-        .from("reimbursements")
-        .update({
-            payment_status: "paid",
-            transfer_proof_url: transferProofUrl,
-            paid_by: paidBy,
-            paid_at: new Date().toISOString(),
-        })
-        .eq("id", reimbursement.id)
-        .eq("status", "approved")
-        .eq("payment_status", "unpaid")
-        .select()
-        .single();
+    const requesterId = items[0]?.requester_id;
+    const hasInvalidItem = items.some(
+        (item) =>
+            item?.requester_id !== requesterId ||
+            item?.status !== "approved" ||
+            normalizePaymentStatus(item?.payment_status) !== "unpaid",
+    );
+    if (hasInvalidItem) {
+        throw new Error(
+            "Hanya reimbursement dari pengaju yang sama, sudah disetujui, dan belum dibayar yang dapat digabungkan.",
+        );
+    }
+
+    const { data, error } = await supabase.rpc(
+        "mark_reimbursement_batch_paid",
+        {
+            p_reimbursement_ids: reimbursementIds,
+            p_transfer_proof_url: transferProofUrl,
+        },
+    );
 
     if (error) throw error;
-    return data;
+    return Array.isArray(data) ? data[0] ?? null : data;
 };
 
 export const rejectReimbursement = async ({
@@ -306,6 +318,7 @@ export const rejectReimbursement = async ({
             approval_note: null,
             transfer_proof_url: null,
             payment_status: "unpaid",
+            payment_batch_id: null,
             paid_by: null,
             paid_at: null,
         })
@@ -330,10 +343,14 @@ export const deleteReimbursement = async (reimbursement) => {
     if (!reimbursement?.id) throw new Error("Data reimburse tidak valid.");
 
     const paths = uniqueStoragePaths([
-        getStoragePathFromPublicUrl(
-            reimbursement.transfer_proof_url,
-            REIMBURSEMENT_BUCKET,
-        ),
+        ...(reimbursement.payment_batch_id
+            ? []
+            : [
+                  getStoragePathFromPublicUrl(
+                      reimbursement.transfer_proof_url,
+                      REIMBURSEMENT_BUCKET,
+                  ),
+              ]),
         ...(reimbursement.attachments ?? []).map((attachment) =>
             getStoragePathFromPublicUrl(
                 attachment.file_url,
