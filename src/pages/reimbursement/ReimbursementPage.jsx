@@ -1217,6 +1217,7 @@ export default function ReimbursementPage() {
                     }}
                     onOpenFile={openFile}
                     onReview={openReview}
+                    onMarkPaid={openPayment}
                     onDelete={handleDelete}
                     onToggleSelection={toggleDetailSelection}
                     onToggleAll={toggleAllEligible}
