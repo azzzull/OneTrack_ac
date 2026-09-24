@@ -139,15 +139,22 @@ const FilePicker = ({ files, onAddFiles, onRemoveFile }) => {
 
     return (
         <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-700">
+                    Bukti nota <span className="text-red-600">*</span>
+                </p>
+                <p className="text-xs text-slate-500">Minimal 1 file</p>
+            </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm font-semibold text-sky-700 hover:bg-sky-100">
                     <FileImage size={16} />
-                    Upload file
+                    Upload bukti nota
                     <input
                         type="file"
                         accept="image/*,.pdf"
                         multiple
                         className="hidden"
+                        aria-required="true"
                         onChange={(event) => onAddFiles(event.target.files)}
                     />
                 </label>
@@ -635,6 +642,7 @@ export default function ReimbursementPage() {
                 transactionDate: form.transactionDate,
                 claimAmount,
                 description: form.description.trim(),
+                receiptFiles: form.receiptFiles,
             });
             const uploadedFiles = await Promise.all(
                 form.receiptFiles.map((file) =>
@@ -1803,14 +1811,9 @@ function ClaimantReviewModal({
                                             </td>
                                             <td className="px-4 py-3">
                                                 {item.status === "approved" && (
-                                                    <div>
-                                                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isPaid ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>
-                                                            {isPaid ? "Sudah Dibayar" : "Menunggu Dibayar"}
-                                                        </span>
-                                                        <p className={`mt-1 text-xs font-medium ${isPaid ? "text-emerald-700" : "text-orange-700"}`}>
-                                                            {isPaid ? "Bukti transfer tersedia" : "Bukti transfer belum diupload"}
-                                                        </p>
-                                                    </div>
+                                                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isPaid ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>
+                                                        {isPaid ? "Sudah Dibayar" : "Menunggu Dibayar"}
+                                                    </span>
                                                 )}
                                                 {item.status !== "approved" && (
                                                     <span className="text-xs text-slate-400">-</span>
@@ -1879,11 +1882,6 @@ function ClaimantReviewModal({
                                     </div>
                                     {item.status === "approved" && (
                                         <p className="mt-2 text-xs font-medium text-emerald-700">Disetujui {formatCurrency(item.approved_amount)}</p>
-                                    )}
-                                    {item.status === "approved" && (
-                                        <p className={`mt-1 text-xs font-medium ${isPaid ? "text-emerald-700" : "text-orange-700"}`}>
-                                            {isPaid ? "Bukti transfer tersedia" : "Bukti transfer belum diupload"}
-                                        </p>
                                     )}
                                     {item.approval_note && <p className="mt-2 text-xs text-slate-500">Catatan: {item.approval_note}</p>}
                                     {item.rejection_reason && <p className="mt-2 text-xs text-red-600">Alasan: {item.rejection_reason}</p>}
@@ -2016,11 +2014,12 @@ function PaymentModal({ items, form, saving, onChange, onSubmit, onClose }) {
                     </div>
                     <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm font-semibold text-sky-700 hover:bg-sky-100">
                         <Upload size={16} />
-                        {form.transferFile?.name || "Upload bukti transfer"}
+                        {form.transferFile?.name || "Upload bukti transfer (wajib)"}
                         <input
                             type="file"
                             accept="image/*,.pdf"
                             className="hidden"
+                            aria-required="true"
                             onChange={(event) => onChange({ transferFile: event.target.files?.[0] ?? null })}
                         />
                     </label>

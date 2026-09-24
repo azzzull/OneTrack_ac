@@ -128,7 +128,12 @@ export const createReimbursement = async ({
     transactionDate,
     claimAmount,
     description,
+    receiptFiles,
 }) => {
+    if (!receiptFiles?.length) {
+        throw new Error("Minimal upload 1 bukti nota untuk mengajukan reimbursement.");
+    }
+
     const reimbursement = {
         id: crypto.randomUUID(),
         requester_id: requesterId,
@@ -161,7 +166,9 @@ export const addReimbursementAttachments = async ({
     files,
     uploadedBy,
 }) => {
-    if (!files?.length) return [];
+    if (!files?.length) {
+        throw new Error("Minimal upload 1 bukti nota untuk mengajukan reimbursement.");
+    }
 
     const rows = files.map((file) => ({
         reimbursement_id: reimbursementId,
