@@ -132,6 +132,18 @@ export const validateReimbursementItem = (item) => {
 
 export const deriveReimbursementGroupStatus = (items) => {
     const statuses = new Set(items.map((item) => item.status));
+    const hasUnpaidApprovedItem = items.some(
+        (item) =>
+            item.status === "approved" &&
+            normalizePaymentStatus(item.payment_status) === "unpaid",
+    );
+
+    // Once no approval is pending, an approved reimbursement with no transfer
+    // proof becomes the next action for the group.
+    if (!statuses.has("pending") && hasUnpaidApprovedItem) {
+        return "awaiting_payment";
+    }
+    if (statuses.size === 1 && statuses.has("approved")) return "paid";
     if (statuses.size === 1) return items[0]?.status ?? "pending";
     if (statuses.size === 3) return "partial_reviewed";
     if (statuses.has("pending") && statuses.has("approved")) {
@@ -195,8 +207,10 @@ export const groupReimbursementsByRequester = (items) => {
         partial_approved: 1,
         partial_reviewed: 1,
         partial_processed: 1,
-        approved: 2,
-        rejected: 3,
+        awaiting_payment: 2,
+        paid: 3,
+        approved: 3,
+        rejected: 4,
     };
 
     return [...groups.values()]
@@ -215,7 +229,9 @@ export const groupReimbursementsByRequester = (items) => {
                 status,
                 filterStatus: status.startsWith("partial_")
                     ? "partial"
-                    : status,
+                    : ["awaiting_payment", "paid"].includes(status)
+                      ? "approved"
+                      : status,
                 latestAt:
                     itemsByNewest[0]?.created_at ??
                     itemsByNewest[0]?.transaction_date ??

@@ -585,7 +585,10 @@ export default function ReimbursementReports() {
                                                 Disetujui
                                             </th>
                                             <th className="px-4 py-3">
-                                                Status
+                                                Status Approval
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Pembayaran
                                             </th>
                                             <th className="px-4 py-3">
                                                 Approved By
@@ -639,6 +642,31 @@ export default function ReimbursementReports() {
                                                             ]
                                                         }
                                                     </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {row.status === "approved" ? (
+                                                        <span
+                                                            className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                                                normalizePaymentStatus(
+                                                                    row.payment_status,
+                                                                ) === "paid" &&
+                                                                row.transfer_proof_url
+                                                                    ? "bg-emerald-100 text-emerald-700"
+                                                                    : "bg-orange-100 text-orange-700"
+                                                            }`}
+                                                        >
+                                                            {normalizePaymentStatus(
+                                                                row.payment_status,
+                                                            ) === "paid" &&
+                                                            row.transfer_proof_url
+                                                                ? "Sudah Dibayar"
+                                                                : "Menunggu Dibayar"}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400">
+                                                            -
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3 text-slate-700">
                                                     {getDisplayName(

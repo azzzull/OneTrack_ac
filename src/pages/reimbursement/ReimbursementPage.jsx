@@ -118,14 +118,21 @@ const GROUP_STATUS_LABELS = {
     partial_approved: "Sebagian Disetujui",
     partial_reviewed: "Sebagian Direview",
     partial_processed: "Diproses Sebagian",
+    awaiting_payment: "Menunggu Pembayaran",
+    paid: "Selesai Dibayar",
     approved: "Approved",
     rejected: "Rejected",
 };
 
-const groupStatusStyle = (status) =>
-    REIMBURSEMENT_STATUS_STYLES[
-        status.startsWith("partial_") ? "pending" : status
-    ] ?? REIMBURSEMENT_STATUS_STYLES.pending;
+const groupStatusStyle = (status) => {
+    if (status === "awaiting_payment") return "bg-orange-100 text-orange-700";
+    if (status === "paid") return "bg-emerald-100 text-emerald-700";
+    return (
+        REIMBURSEMENT_STATUS_STYLES[
+            status.startsWith("partial_") ? "pending" : status
+        ] ?? REIMBURSEMENT_STATUS_STYLES.pending
+    );
+};
 
 const FilePicker = ({ files, onAddFiles, onRemoveFile }) => {
     const [cameraOpen, setCameraOpen] = useState(false);
@@ -1085,16 +1092,23 @@ export default function ReimbursementPage() {
                                                     {group.items.length} reimbursement
                                                     {group.items.length === 1 ? "" : "s"}
                                                     {group.pending > 0 && ` · ${group.pending} pending`}
+                                                    {group.unpaid > 0 && ` · ${group.unpaid} menunggu pembayaran`}
                                                 </p>
                                                 <p className="mt-2 text-xs font-medium text-slate-500">
                                                     Pengajuan terbaru {formatDate(group.latestAt)}
                                                 </p>
                                             </div>
-                                            <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3 md:min-w-[27.5rem]">
+                                            <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4 md:min-w-[36rem]">
                                                 <div className="rounded-xl bg-amber-50 p-3">
                                                     <p className="text-xs font-medium text-amber-700">Menunggu Approval</p>
                                                     <p className="mt-1 break-words font-semibold text-amber-900">
                                                         {formatCurrency(group.pendingAmount)}
+                                                    </p>
+                                                </div>
+                                                <div className="rounded-xl bg-orange-50 p-3">
+                                                    <p className="text-xs font-medium text-orange-700">Menunggu Pembayaran</p>
+                                                    <p className="mt-1 break-words font-semibold text-orange-900">
+                                                        {formatCurrency(group.unpaidAmount)}
                                                     </p>
                                                 </div>
                                                 <div className="rounded-xl bg-slate-50 p-3">
@@ -1144,6 +1158,11 @@ export default function ReimbursementPage() {
                                                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${REIMBURSEMENT_STATUS_STYLES[row.status]}`}>
                                                         {REIMBURSEMENT_STATUS_LABELS[row.status]}
                                                     </span>
+                                                    {row.status === "approved" && (
+                                                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${normalizePaymentStatus(row.payment_status) === "paid" && row.transfer_proof_url ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>
+                                                            {normalizePaymentStatus(row.payment_status) === "paid" && row.transfer_proof_url ? "Sudah Dibayar" : "Menunggu Dibayar"}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <p className="mt-2 line-clamp-2 text-sm text-slate-600">
                                                     {row.description}
@@ -1709,7 +1728,8 @@ function ClaimantReviewModal({
                                     <th className="px-4 py-3">Keterangan</th>
                                     <th className="px-4 py-3">Nominal</th>
                                     <th className="px-4 py-3">Bukti</th>
-                                    <th className="px-4 py-3">Status</th>
+                                    <th className="px-4 py-3">Status Approval</th>
+                                    <th className="px-4 py-3">Pembayaran</th>
                                     <th className="px-4 py-3">Aksi</th>
                                 </tr>
                             </thead>
@@ -1719,6 +1739,10 @@ function ClaimantReviewModal({
                                     const isPayable =
                                         item.status === "approved" &&
                                         normalizePaymentStatus(item.payment_status) === "unpaid";
+                                    const isPaid =
+                                        item.status === "approved" &&
+                                        normalizePaymentStatus(item.payment_status) === "paid" &&
+                                        Boolean(item.transfer_proof_url);
                                     return (
                                         <tr key={item.id} className="align-top hover:bg-slate-50">
                                             <td className="px-4 py-3">
@@ -1776,10 +1800,20 @@ function ClaimantReviewModal({
                                                 <span className={`rounded-full px-2 py-1 text-xs font-semibold ${REIMBURSEMENT_STATUS_STYLES[item.status]}`}>
                                                     {REIMBURSEMENT_STATUS_LABELS[item.status]}
                                                 </span>
+                                            </td>
+                                            <td className="px-4 py-3">
                                                 {item.status === "approved" && (
-                                                    <p className={`mt-1 text-xs font-medium ${normalizePaymentStatus(item.payment_status) === "paid" ? "text-emerald-700" : "text-amber-700"}`}>
-                                                        {normalizePaymentStatus(item.payment_status) === "paid" ? "Dibayar" : "Belum dibayar"}
-                                                    </p>
+                                                    <div>
+                                                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isPaid ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>
+                                                            {isPaid ? "Sudah Dibayar" : "Menunggu Dibayar"}
+                                                        </span>
+                                                        <p className={`mt-1 text-xs font-medium ${isPaid ? "text-emerald-700" : "text-orange-700"}`}>
+                                                            {isPaid ? "Bukti transfer tersedia" : "Bukti transfer belum diupload"}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {item.status !== "approved" && (
+                                                    <span className="text-xs text-slate-400">-</span>
                                                 )}
                                             </td>
                                             <td className="px-4 py-3">{itemActions(item)}</td>
@@ -1796,6 +1830,10 @@ function ClaimantReviewModal({
                             const isPayable =
                                 item.status === "approved" &&
                                 normalizePaymentStatus(item.payment_status) === "unpaid";
+                            const isPaid =
+                                item.status === "approved" &&
+                                normalizePaymentStatus(item.payment_status) === "paid" &&
+                                Boolean(item.transfer_proof_url);
                             return (
                                 <article key={item.id} className="rounded-2xl border border-slate-200 p-4">
                                     <div className="flex items-start justify-between gap-3">
@@ -1833,13 +1871,18 @@ function ClaimantReviewModal({
                                         <span className={`rounded-full px-2 py-1 text-xs font-semibold ${REIMBURSEMENT_STATUS_STYLES[item.status]}`}>
                                             {REIMBURSEMENT_STATUS_LABELS[item.status]}
                                         </span>
+                                        {item.status === "approved" && (
+                                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isPaid ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>
+                                                {isPaid ? "Sudah Dibayar" : "Menunggu Dibayar"}
+                                            </span>
+                                        )}
                                     </div>
                                     {item.status === "approved" && (
                                         <p className="mt-2 text-xs font-medium text-emerald-700">Disetujui {formatCurrency(item.approved_amount)}</p>
                                     )}
                                     {item.status === "approved" && (
-                                        <p className={`mt-1 text-xs font-medium ${normalizePaymentStatus(item.payment_status) === "paid" ? "text-emerald-700" : "text-amber-700"}`}>
-                                            {normalizePaymentStatus(item.payment_status) === "paid" ? "Dibayar" : "Belum dibayar"}
+                                        <p className={`mt-1 text-xs font-medium ${isPaid ? "text-emerald-700" : "text-orange-700"}`}>
+                                            {isPaid ? "Bukti transfer tersedia" : "Bukti transfer belum diupload"}
                                         </p>
                                     )}
                                     {item.approval_note && <p className="mt-2 text-xs text-slate-500">Catatan: {item.approval_note}</p>}

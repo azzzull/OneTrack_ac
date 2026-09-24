@@ -156,8 +156,8 @@ begin
 
     select *
     into payment_batch
-    from public.reimbursement_payment_batches
-    where id = new.payment_batch_id;
+    from public.reimbursement_payment_batches as batch
+    where batch.id = new.payment_batch_id;
     if not found
         or payment_batch.requester_id <> new.requester_id
         or payment_batch.transfer_proof_url <> new.transfer_proof_url
@@ -213,10 +213,10 @@ begin
         raise exception 'Bukti transfer wajib diupload.';
     end if;
 
-    select lower(coalesce(role, ''))
+    select lower(coalesce(profile.role, ''))
     into v_role
-    from public.profiles
-    where id = v_actor_id;
+    from public.profiles as profile
+    where profile.id = v_actor_id;
     if coalesce(v_role, '') not in ('admin', 'management') then
         raise exception 'Hanya admin atau management yang dapat mencatat pembayaran reimbursement.';
     end if;
@@ -224,20 +224,20 @@ begin
     -- Lock selected rows before validating, so two payment attempts cannot pay
     -- the same reimbursement or create overlapping batches.
     perform 1
-    from public.reimbursements
-    where id = any(p_reimbursement_ids)
-    order by id
+    from public.reimbursements as reimbursement
+    where reimbursement.id = any(p_reimbursement_ids)
+    order by reimbursement.id
     for update;
 
     select
         count(*),
-        count(distinct requester_id),
-        coalesce(sum(approved_amount), 0)
+        count(distinct reimbursement.requester_id),
+        coalesce(sum(reimbursement.approved_amount), 0)
     into v_item_count, v_requester_count, v_total_amount
-    from public.reimbursements
-    where id = any(p_reimbursement_ids)
-      and status = 'approved'
-      and payment_status = 'unpaid';
+    from public.reimbursements as reimbursement
+    where reimbursement.id = any(p_reimbursement_ids)
+      and reimbursement.status = 'approved'
+      and reimbursement.payment_status = 'unpaid';
 
     if v_item_count <> cardinality(p_reimbursement_ids) then
         raise exception 'Sebagian reimbursement sudah berubah status atau tidak dapat dibayar. Muat ulang data lalu coba lagi.';
@@ -246,10 +246,10 @@ begin
         raise exception 'Satu batch pembayaran hanya boleh berisi reimbursement dari satu pengaju.';
     end if;
 
-    select requester_id
+    select reimbursement.requester_id
     into v_requester_id
-    from public.reimbursements
-    where id = any(p_reimbursement_ids)
+    from public.reimbursements as reimbursement
+    where reimbursement.id = any(p_reimbursement_ids)
     limit 1;
 
     insert into public.reimbursement_payment_batches (
@@ -268,15 +268,15 @@ begin
     )
     returning * into v_batch;
 
-    update public.reimbursements
+    update public.reimbursements as reimbursement
     set payment_status = 'paid',
         transfer_proof_url = p_transfer_proof_url,
         payment_batch_id = v_batch.id,
         paid_by = v_actor_id,
         paid_at = v_paid_at
-    where id = any(p_reimbursement_ids)
-      and status = 'approved'
-      and payment_status = 'unpaid';
+    where reimbursement.id = any(p_reimbursement_ids)
+      and reimbursement.status = 'approved'
+      and reimbursement.payment_status = 'unpaid';
 
     return query
     select

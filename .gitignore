@@ -34,6 +34,7 @@ supabase/**/*.sql
 !supabase/migrations/
 !supabase/migrations/202609180001_separate_reimbursement_approval_payment.sql
 !supabase/migrations/202609230001_add_reimbursement_payment_batches.sql
+!supabase/migrations/202609240001_fix_reimbursement_payment_batch_rpc.sql
 
 # Ignore ad-hoc markdown files, keep README files
 *.md
