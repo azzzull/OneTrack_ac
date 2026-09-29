@@ -1528,6 +1528,17 @@ export const approveBusinessTrip = async ({ note = "", tripId }) => {
     });
     if (error) throw normalizeApprovalError(error);
     const result = await getBusinessTripApprovalDetail(data.id);
+    const accommodation = result.trip.accommodationRequest;
+    if (accommodation?.id) {
+        await notifyEvent(NOTIFICATION_EVENT_TYPES.ACCOMMODATION_REQUESTED, {
+            accommodation_id: accommodation.id,
+            technician_id: result.trip.requesterId,
+            technician_name: result.trip.requesterName,
+            amount: accommodation.requestedAmount,
+            business_trip_id: result.trip.id,
+            business_trip_no: result.trip.businessTripNo,
+        });
+    }
     await notifyBusinessTripEvent(
         NOTIFICATION_EVENT_TYPES.BUSINESS_TRIP_APPROVED,
         result.trip,

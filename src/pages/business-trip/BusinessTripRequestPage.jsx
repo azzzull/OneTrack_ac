@@ -332,7 +332,10 @@ export default function BusinessTripRequestPage() {
         } catch (submitError) {
             console.error("[BusinessTrip] submit failed", submitError);
             setConfirmOpen(false);
-            showToast("Submit Trip gagal. Lengkapi data lalu coba lagi.");
+            showToast(
+                submitError?.message ||
+                    "Submit Trip gagal. Lengkapi data lalu coba lagi.",
+            );
         } finally {
             setSubmitting(false);
         }

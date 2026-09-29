@@ -274,6 +274,15 @@ const BUSINESS_EVENT_ALLOWED_ROLES: Record<string, string[]> = {
     loan_repayment_approved: ["technician"],
     loan_repayment_rejected: ["technician"],
     loan_deducted: ["technician"],
+    business_trip_submitted: ["admin", "management"],
+    business_trip_approved: [],
+    business_trip_rejected: [],
+    business_trip_advance_disbursed: [],
+    business_trip_started: ["admin", "management"],
+    business_trip_realization_submitted: ["admin", "management"],
+    business_trip_realization_revision_required: [],
+    business_trip_realization_verified: [],
+    business_trip_settlement_completed: [],
 };
 
 const canUseBusinessRecipients = (
