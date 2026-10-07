@@ -1383,26 +1383,46 @@ function ClaimantReviewModal({
     const visibleItems = useMemo(() => {
         const search = itemFilters.search.trim().toLowerCase();
 
-        return claimant.items.filter((item) => {
-            if (!matchesReviewPeriod(item, itemFilters)) return false;
+        const priorityFor = (item) => {
+            if (item.status === "pending") return 0;
             if (
-                itemFilters.status !== "all" &&
-                item.status !== itemFilters.status
+                item.status === "approved" &&
+                normalizePaymentStatus(item.payment_status) === "unpaid"
             ) {
-                return false;
+                return 1;
             }
-            if (!search) return true;
+            if (item.status === "approved") return 2;
+            if (item.status === "rejected") return 3;
+            return 4;
+        };
 
-            return [
-                item.description,
-                item.claim_amount,
-                item.approved_amount,
-                REIMBURSEMENT_STATUS_LABELS[item.status],
-            ]
-                .join(" ")
-                .toLowerCase()
-                .includes(search);
-        });
+        return claimant.items
+            .filter((item) => {
+                if (!matchesReviewPeriod(item, itemFilters)) return false;
+                if (
+                    itemFilters.status !== "all" &&
+                    item.status !== itemFilters.status
+                ) {
+                    return false;
+                }
+                if (!search) return true;
+
+                return [
+                    item.description,
+                    item.claim_amount,
+                    item.approved_amount,
+                    REIMBURSEMENT_STATUS_LABELS[item.status],
+                ]
+                    .join(" ")
+                    .toLowerCase()
+                    .includes(search);
+            })
+            .sort(
+                (a, b) =>
+                    priorityFor(a) - priorityFor(b) ||
+                    new Date(b.created_at ?? b.transaction_date ?? 0) -
+                        new Date(a.created_at ?? a.transaction_date ?? 0),
+            );
     }, [claimant.items, itemFilters]);
     const eligibleItems = visibleItems.filter((item) => item.status === "pending");
     const payableItems = visibleItems.filter(
