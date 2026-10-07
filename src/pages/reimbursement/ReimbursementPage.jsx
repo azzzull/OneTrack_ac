@@ -21,7 +21,7 @@ import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import { useDialog } from "../../context/useDialog";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import supabase from "../../supabaseClient";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 import {
@@ -33,7 +33,6 @@ import {
     deleteReimbursement,
     formatCurrency,
     getDisplayName,
-    loadReimbursementRequesters,
     loadReimbursements,
     markReimbursementBatchPaid,
     rejectReimbursement,
@@ -78,17 +77,6 @@ const toDateKey = (value) => {
     return date.toISOString().slice(0, 10);
 };
 
-const isImageUrl = (url) =>
-    /\.(png|jpe?g|webp|gif|bmp|avif)(\?.*)?$/i.test(String(url ?? ""));
-
-const onlyDigits = (value) => String(value ?? "").replace(/\D/g, "");
-
-const formatNumberInput = (value) => {
-    const digits = onlyDigits(value);
-    if (!digits) return "";
-    return new Intl.NumberFormat("en-US").format(Number(digits));
-};
-
 const getWeekStart = (date) => {
     const next = new Date(date);
     const day = next.getDay() || 7;
@@ -97,7 +85,9 @@ const getWeekStart = (date) => {
     return next.toISOString().slice(0, 10);
 };
 
-const matchesPeriod = (row, filters) => {
+const matchesReviewPeriod = (row, filters) => {
+    if (filters.period === "all") return true;
+
     const dateKey = toDateKey(row.transaction_date);
     if (!dateKey) return false;
     const now = new Date();
@@ -111,6 +101,17 @@ const matchesPeriod = (row, filters) => {
         if (filters.dateTo && dateKey > filters.dateTo) return false;
     }
     return true;
+};
+
+const isImageUrl = (url) =>
+    /\.(png|jpe?g|webp|gif|bmp|avif)(\?.*)?$/i.test(String(url ?? ""));
+
+const onlyDigits = (value) => String(value ?? "").replace(/\D/g, "");
+
+const formatNumberInput = (value) => {
+    const digits = onlyDigits(value);
+    if (!digits) return "";
+    return new Intl.NumberFormat("en-US").format(Number(digits));
 };
 
 const GROUP_STATUS_LABELS = {
@@ -370,9 +371,7 @@ export default function ReimbursementPage() {
     const { user, role } = useAuth();
     const { alert: showAlert, confirm: showConfirm } = useDialog();
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
     const [rows, setRows] = useState([]);
-    const [requesters, setRequesters] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -407,14 +406,6 @@ export default function ReimbursementPage() {
     const [paymentForm, setPaymentForm] = useState({
         transferFile: null,
     });
-    const [filters, setFilters] = useState({
-        period: searchParams.get("period") === "all" ? "all" : "month",
-        dateFrom: "",
-        dateTo: "",
-        requesterId: "",
-        status: searchParams.get("status") === "pending" ? "pending" : "all",
-        search: "",
-    });
     const channelRef = useRef(null);
     const userId = user?.id;
 
@@ -427,12 +418,8 @@ export default function ReimbursementPage() {
         setLoading(true);
         setError("");
         try {
-            const [reimbursements, requesterRows] = await Promise.all([
-                loadReimbursements({ role, userId }),
-                canReview ? loadReimbursementRequesters() : Promise.resolve([]),
-            ]);
+            const reimbursements = await loadReimbursements({ role, userId });
             setRows(reimbursements);
-            setRequesters(requesterRows);
         } catch (loadError) {
             console.error("Reimbursement load failed:", loadError);
             const message = loadError.message || "Gagal memuat data reimburse.";
@@ -446,7 +433,7 @@ export default function ReimbursementPage() {
         } finally {
             setLoading(false);
         }
-    }, [canReview, role, userId]);
+    }, [role, userId]);
 
     useEffect(() => {
         queueMicrotask(loadData);
@@ -478,61 +465,13 @@ export default function ReimbursementPage() {
         };
     }, [loadData, userId]);
 
-    const filteredRows = useMemo(() => {
-        const search = filters.search.trim().toLowerCase();
-        return rows.filter((row) => {
-            if (filters.status !== "all" && row.status !== filters.status) return false;
-            if (filters.requesterId && row.requester_id !== filters.requesterId) return false;
-            if (!matchesPeriod(row, filters)) return false;
-            if (search) {
-                const text = [
-                    getDisplayName(row.requester),
-                    row.description,
-                    row.claim_amount,
-                    row.approved_amount,
-                    REIMBURSEMENT_STATUS_LABELS[row.status],
-                ]
-                    .join(" ")
-                    .toLowerCase();
-                if (!text.includes(search)) return false;
-            }
-            return true;
-        });
-    }, [filters, rows]);
+    const filteredRows = rows;
 
     const claimantGroups = useMemo(() => {
         if (!canReview) return [];
 
-        const search = filters.search.trim().toLowerCase();
-        const groupedRows = rows.filter((row) => {
-            if (
-                filters.requesterId &&
-                row.requester_id !== filters.requesterId
-            ) {
-                return false;
-            }
-            return matchesPeriod(row, filters);
-        });
-
-        return groupReimbursementsByRequester(groupedRows).filter((group) => {
-            if (
-                filters.status !== "all" &&
-                group.filterStatus !== filters.status
-            ) {
-                return false;
-            }
-            if (!search) return true;
-
-            return [
-                getDisplayName(group.requester),
-                group.requester?.email,
-                group.requester?.role,
-            ]
-                .join(" ")
-                .toLowerCase()
-                .includes(search);
-        });
-    }, [canReview, filters, rows]);
+        return groupReimbursementsByRequester(rows);
+    }, [canReview, rows]);
 
     const claimantDetail = useMemo(() => {
         if (!claimantDetailId) return null;
@@ -773,12 +712,18 @@ export default function ReimbursementPage() {
         });
     };
 
-    const toggleAllEligible = (checked) => {
+    const toggleAllEligible = (checked, items = eligibleDetailItems) => {
+        const itemIds = items.map((item) => item.id);
         if (checked) {
-            setSelectedReimbursementIds(eligibleDetailItems.map((item) => item.id));
+            setSelectedReimbursementIds((current) => [
+                ...new Set([...current, ...itemIds]),
+            ]);
             return;
         }
-        setSelectedReimbursementIds([]);
+        const itemIdSet = new Set(itemIds);
+        setSelectedReimbursementIds((current) =>
+            current.filter((id) => !itemIdSet.has(id)),
+        );
     };
 
     const togglePaymentSelection = (reimbursementId, checked) => {
@@ -788,15 +733,24 @@ export default function ReimbursementPage() {
         });
     };
 
-    const toggleAllPayable = (checked) => {
+    const toggleAllPayable = (checked, items = payableDetailItems) => {
+        const itemIds = items.map((item) => item.id);
         if (checked) {
-            setSelectedPaymentReimbursementIds(
-                payableDetailItems.map((item) => item.id),
-            );
+            setSelectedPaymentReimbursementIds((current) => [
+                ...new Set([...current, ...itemIds]),
+            ]);
             return;
         }
-        setSelectedPaymentReimbursementIds([]);
+        const itemIdSet = new Set(itemIds);
+        setSelectedPaymentReimbursementIds((current) =>
+            current.filter((id) => !itemIdSet.has(id)),
+        );
     };
+
+    const clearClaimantSelections = useCallback(() => {
+        setSelectedReimbursementIds([]);
+        setSelectedPaymentReimbursementIds([]);
+    }, []);
 
     const openBulkReview = async (mode) => {
         if (!selectedDetailItems.length) {
@@ -988,84 +942,6 @@ export default function ReimbursementPage() {
                             {error}
                         </div>
                     )}
-
-                    <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                            <Filter size={16} />
-                            Filter
-                        </div>
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
-                            <CustomSelect
-                                value={filters.period}
-                                onChange={(value) => setFilters((prev) => ({ ...prev, period: value }))}
-                                options={[
-                                    { value: "all", label: "Semua periode" },
-                                    { value: "today", label: "Hari ini" },
-                                    { value: "week", label: "Minggu ini" },
-                                    { value: "month", label: "Bulan ini" },
-                                    { value: "year", label: "Tahun ini" },
-                                    { value: "custom", label: "Custom range" },
-                                ]}
-                            />
-                            {filters.period === "custom" && (
-                                <>
-                                    <input
-                                        type="date"
-                                        value={filters.dateFrom}
-                                        onChange={(event) => setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
-                                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                                    />
-                                    <input
-                                        type="date"
-                                        value={filters.dateTo}
-                                        onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
-                                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                                    />
-                                </>
-                            )}
-                            {canReview && (
-                                <CustomSelect
-                                    value={filters.requesterId}
-                                    onChange={(value) => setFilters((prev) => ({ ...prev, requesterId: value }))}
-                                    options={[
-                                        { value: "", label: "Semua pengaju" },
-                                        ...requesters.map((item) => ({
-                                            value: item.id,
-                                            label: getDisplayName(item),
-                                        })),
-                                    ]}
-                                />
-                            )}
-                            <CustomSelect
-                                value={filters.status}
-                                onChange={(value) => setFilters((prev) => ({ ...prev, status: value }))}
-                                options={[
-                                    { value: "all", label: "Semua status" },
-                                    { value: "pending", label: "Pending" },
-                                    ...(canReview
-                                        ? [
-                                              {
-                                                  value: "partial",
-                                                  label: "Sebagian Disetujui",
-                                              },
-                                          ]
-                                        : []),
-                                    { value: "approved", label: "Approved" },
-                                    { value: "rejected", label: "Rejected" },
-                                ]}
-                            />
-                            <label className="relative block">
-                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                <input
-                                    type="search"
-                                    value={filters.search}
-                                    onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
-                                    placeholder={canReview ? "Cari pengaju" : "Search"}
-                                    className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
-                                />
-                            </label>
-                        </div>
-                    </div>
 
                     <section className="space-y-3">
                         {loading ? (
@@ -1312,6 +1188,7 @@ export default function ReimbursementPage() {
                     onToggleAllPayable={toggleAllPayable}
                     onBulkReview={openBulkReview}
                     onMarkBatchPaid={openPayment}
+                    onClearSelections={clearClaimantSelections}
                 />
             )}
 
@@ -1494,9 +1371,41 @@ function ClaimantReviewModal({
     onToggleAllPayable,
     onBulkReview,
     onMarkBatchPaid,
+    onClearSelections,
 }) {
-    const eligibleItems = claimant.items.filter((item) => item.status === "pending");
-    const payableItems = claimant.items.filter(
+    const [itemFilters, setItemFilters] = useState({
+        period: "all",
+        dateFrom: "",
+        dateTo: "",
+        status: "all",
+        search: "",
+    });
+    const visibleItems = useMemo(() => {
+        const search = itemFilters.search.trim().toLowerCase();
+
+        return claimant.items.filter((item) => {
+            if (!matchesReviewPeriod(item, itemFilters)) return false;
+            if (
+                itemFilters.status !== "all" &&
+                item.status !== itemFilters.status
+            ) {
+                return false;
+            }
+            if (!search) return true;
+
+            return [
+                item.description,
+                item.claim_amount,
+                item.approved_amount,
+                REIMBURSEMENT_STATUS_LABELS[item.status],
+            ]
+                .join(" ")
+                .toLowerCase()
+                .includes(search);
+        });
+    }, [claimant.items, itemFilters]);
+    const eligibleItems = visibleItems.filter((item) => item.status === "pending");
+    const payableItems = visibleItems.filter(
         (item) =>
             item.status === "approved" &&
             normalizePaymentStatus(item.payment_status) === "unpaid",
@@ -1517,31 +1426,52 @@ function ClaimantReviewModal({
         (sum, item) => sum + Number(item.approved_amount ?? 0),
         0,
     );
+
+    useEffect(() => {
+        onClearSelections();
+    }, [
+        claimant.id,
+        itemFilters.dateFrom,
+        itemFilters.dateTo,
+        itemFilters.period,
+        itemFilters.search,
+        itemFilters.status,
+        onClearSelections,
+    ]);
+
     const summary = [
         {
             label: "Pending",
-            itemCount: claimant.pending,
-            amount: claimant.items
+            itemCount: visibleItems.filter((item) => item.status === "pending")
+                .length,
+            amount: visibleItems
                 .filter((item) => item.status === "pending")
                 .reduce((sum, item) => sum + Number(item.claim_amount ?? 0), 0),
             className: "bg-amber-50 text-amber-800",
         },
         {
             label: "Disetujui",
-            itemCount: claimant.approved,
-            amount: claimant.approvedAmount,
+            itemCount: visibleItems.filter((item) => item.status === "approved")
+                .length,
+            amount: visibleItems
+                .filter((item) => item.status === "approved")
+                .reduce((sum, item) => sum + Number(item.approved_amount ?? 0), 0),
             className: "bg-emerald-50 text-emerald-800",
         },
         {
             label: "Belum Dibayar",
-            itemCount: claimant.unpaid,
-            amount: claimant.unpaidAmount,
+            itemCount: payableItems.length,
+            amount: payableItems.reduce(
+                (sum, item) => sum + Number(item.approved_amount ?? 0),
+                0,
+            ),
             className: "bg-orange-50 text-orange-800",
         },
         {
             label: "Ditolak",
-            itemCount: claimant.rejected,
-            amount: claimant.items
+            itemCount: visibleItems.filter((item) => item.status === "rejected")
+                .length,
+            amount: visibleItems
                 .filter((item) => item.status === "rejected")
                 .reduce((sum, item) => sum + Number(item.claim_amount ?? 0), 0),
             className: "bg-red-50 text-red-800",
@@ -1631,7 +1561,13 @@ function ClaimantReviewModal({
                             {getDisplayName(claimant.requester)}
                         </h2>
                         <p className="mt-1 text-sm text-slate-600">
-                            {claimant.items.length} reimbursement · Total pengajuan {formatCurrency(claimant.totalReimburse)}
+                            {visibleItems.length} dari {claimant.items.length} reimbursement · Total pengajuan {formatCurrency(
+                                visibleItems.reduce(
+                                    (sum, item) =>
+                                        sum + Number(item.claim_amount ?? 0),
+                                    0,
+                                ),
+                            )}
                         </p>
                     </div>
                     <button
@@ -1646,7 +1582,91 @@ function ClaimantReviewModal({
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                            <Filter size={16} />
+                            Filter pengajuan {getDisplayName(claimant.requester)}
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <CustomSelect
+                                value={itemFilters.period}
+                                onChange={(value) =>
+                                    setItemFilters((current) => ({
+                                        ...current,
+                                        period: value,
+                                    }))
+                                }
+                                options={[
+                                    { value: "all", label: "Semua periode" },
+                                    { value: "today", label: "Hari ini" },
+                                    { value: "week", label: "Minggu ini" },
+                                    { value: "month", label: "Bulan ini" },
+                                    { value: "year", label: "Tahun ini" },
+                                    { value: "custom", label: "Custom range" },
+                                ]}
+                            />
+                            {itemFilters.period === "custom" && (
+                                <>
+                                    <input
+                                        type="date"
+                                        value={itemFilters.dateFrom}
+                                        onChange={(event) =>
+                                            setItemFilters((current) => ({
+                                                ...current,
+                                                dateFrom: event.target.value,
+                                            }))
+                                        }
+                                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                                        aria-label="Tanggal awal"
+                                    />
+                                    <input
+                                        type="date"
+                                        value={itemFilters.dateTo}
+                                        onChange={(event) =>
+                                            setItemFilters((current) => ({
+                                                ...current,
+                                                dateTo: event.target.value,
+                                            }))
+                                        }
+                                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                                        aria-label="Tanggal akhir"
+                                    />
+                                </>
+                            )}
+                            <CustomSelect
+                                value={itemFilters.status}
+                                onChange={(value) =>
+                                    setItemFilters((current) => ({
+                                        ...current,
+                                        status: value,
+                                    }))
+                                }
+                                options={[
+                                    { value: "all", label: "Semua status" },
+                                    { value: "pending", label: "Pending" },
+                                    { value: "approved", label: "Approved" },
+                                    { value: "rejected", label: "Rejected" },
+                                ]}
+                            />
+                            <label className="relative block">
+                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="search"
+                                    value={itemFilters.search}
+                                    onChange={(event) =>
+                                        setItemFilters((current) => ({
+                                            ...current,
+                                            search: event.target.value,
+                                        }))
+                                    }
+                                    placeholder="Cari keterangan atau nominal"
+                                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm"
+                                />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         {summary.map((item) => (
                             <div key={item.label} className={`rounded-xl p-3 ${item.className}`}>
                                 <p className="text-xs font-medium">{item.label}</p>
@@ -1661,13 +1681,18 @@ function ClaimantReviewModal({
                                 <input
                                     type="checkbox"
                                     checked={allEligibleSelected}
-                                    onChange={(event) => onToggleAll(event.target.checked)}
+                                    onChange={(event) =>
+                                        onToggleAll(
+                                            event.target.checked,
+                                            eligibleItems,
+                                        )
+                                    }
                                     className="h-4 w-4 rounded border-slate-300 text-sky-600"
                                 />
                                 Pilih semua pending ({eligibleItems.length})
                             </label>
                             {selectedItems.length > 0 && (
-                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <div className="hidden flex-col gap-2 sm:flex-row sm:items-center md:flex">
                                     <p className="text-sm text-slate-600">
                                         <span className="font-semibold text-slate-900">{selectedItems.length} item dipilih</span> · {formatCurrency(selectedTotal)}
                                     </p>
@@ -1702,13 +1727,18 @@ function ClaimantReviewModal({
                                 <input
                                     type="checkbox"
                                     checked={allPayableSelected}
-                                    onChange={(event) => onToggleAllPayable(event.target.checked)}
+                                    onChange={(event) =>
+                                        onToggleAllPayable(
+                                            event.target.checked,
+                                            payableItems,
+                                        )
+                                    }
                                     className="h-4 w-4 rounded border-sky-300 text-sky-600"
                                 />
                                 Pilih semua belum dibayar ({payableItems.length})
                             </label>
                             {paymentSelectedItems.length > 0 && (
-                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <div className="hidden flex-col gap-2 sm:flex-row sm:items-center md:flex">
                                     <p className="text-sm text-sky-800">
                                         <span className="font-semibold text-sky-950">{paymentSelectedItems.length} item akan dibayar</span> · {formatCurrency(selectedPaymentTotal)}
                                     </p>
@@ -1742,7 +1772,7 @@ function ClaimantReviewModal({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {claimant.items.map((item) => {
+                                {visibleItems.map((item) => {
                                     const isEligible = item.status === "pending";
                                     const isPayable =
                                         item.status === "approved" &&
@@ -1776,8 +1806,8 @@ function ClaimantReviewModal({
                                             <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                                                 {formatDate(item.transaction_date)}
                                             </td>
-                                            <td className="max-w-xs px-4 py-3">
-                                                <p className="line-clamp-2 text-slate-700">{item.description}</p>
+                                            <td className="whitespace-nowrap px-4 py-3">
+                                                <p className="text-slate-700">{item.description}</p>
                                                 {item.approval_note && (
                                                     <p className="mt-1 line-clamp-1 text-xs text-slate-500">Catatan: {item.approval_note}</p>
                                                 )}
@@ -1828,7 +1858,7 @@ function ClaimantReviewModal({
                     </div>
 
                     <div className="mt-5 space-y-3 md:hidden">
-                        {claimant.items.map((item) => {
+                        {visibleItems.map((item) => {
                             const isEligible = item.status === "pending";
                             const isPayable =
                                 item.status === "approved" &&
@@ -1842,7 +1872,7 @@ function ClaimantReviewModal({
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
                                             <p className="text-sm font-semibold text-slate-900">{formatDate(item.transaction_date)}</p>
-                                            <p className="mt-1 text-sm text-slate-700">{item.description}</p>
+                                            <p className="mt-1 overflow-x-auto whitespace-nowrap text-sm text-slate-700">{item.description}</p>
                                         </div>
                                         <div className="flex shrink-0 flex-col gap-2 text-xs font-medium text-slate-600">
                                             <label className="inline-flex items-center gap-1.5">
@@ -1902,6 +1932,59 @@ function ClaimantReviewModal({
                         })}
                     </div>
                 </div>
+                {(selectedItems.length > 0 || paymentSelectedItems.length > 0) && (
+                    <div className="shrink-0 space-y-2 border-t border-slate-200 bg-white p-3 md:hidden">
+                        {selectedItems.length > 0 && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-2.5">
+                                <p className="text-xs text-slate-600">
+                                    <span className="font-semibold text-slate-900">
+                                        {selectedItems.length} item dipilih
+                                    </span>{" "}
+                                    · {formatCurrency(selectedTotal)}
+                                </p>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onBulkReview("approve")}
+                                        disabled={saving}
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300"
+                                    >
+                                        <Check size={14} />
+                                        Approve
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => onBulkReview("reject")}
+                                        disabled={saving}
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:bg-slate-300"
+                                    >
+                                        <X size={14} />
+                                        Tolak
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {paymentSelectedItems.length > 0 && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-sky-50 p-2.5">
+                                <p className="text-xs text-sky-800">
+                                    <span className="font-semibold text-sky-950">
+                                        {paymentSelectedItems.length} item akan dibayar
+                                    </span>{" "}
+                                    · {formatCurrency(selectedPaymentTotal)}
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => onMarkBatchPaid(paymentSelectedItems)}
+                                    disabled={saving}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:bg-slate-300"
+                                >
+                                    <Banknote size={14} />
+                                    Bayar
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
