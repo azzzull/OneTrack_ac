@@ -1380,7 +1380,6 @@ function ClaimantReviewModal({
         status: "all",
         search: "",
     });
-    const [expandedDescriptionIds, setExpandedDescriptionIds] = useState([]);
     const visibleItems = useMemo(() => {
         const search = itemFilters.search.trim().toLowerCase();
 
@@ -1501,18 +1500,6 @@ function ClaimantReviewModal({
                 Lihat bukti{attachments.length > 1 ? ` ${index + 1}` : ""}
             </button>
         ));
-    };
-
-    const isDescriptionExpanded = (itemId) =>
-        expandedDescriptionIds.includes(itemId);
-    const canExpandDescription = (description) =>
-        String(description ?? "").trim().length > 90;
-    const toggleDescription = (itemId) => {
-        setExpandedDescriptionIds((current) =>
-            current.includes(itemId)
-                ? current.filter((id) => id !== itemId)
-                : [...current, itemId],
-        );
     };
 
     const itemActions = (item) => (
@@ -1820,31 +1807,9 @@ function ClaimantReviewModal({
                                                 {formatDate(item.transaction_date)}
                                             </td>
                                             <td className="max-w-xs px-4 py-3">
-                                                <p
-                                                    className={`text-slate-700 ${
-                                                        isDescriptionExpanded(item.id)
-                                                            ? "break-words"
-                                                            : "line-clamp-2"
-                                                    }`}
-                                                >
-                                                    {item.description}
-                                                </p>
-                                                {canExpandDescription(item.description) && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            toggleDescription(item.id)
-                                                        }
-                                                        aria-expanded={isDescriptionExpanded(
-                                                            item.id,
-                                                        )}
-                                                        className="mt-1 text-xs font-semibold text-sky-700 hover:text-sky-900"
-                                                    >
-                                                        {isDescriptionExpanded(item.id)
-                                                            ? "Sembunyikan"
-                                                            : "Lihat selengkapnya"}
-                                                    </button>
-                                                )}
+                                                <ExpandableDescription
+                                                    description={item.description}
+                                                />
                                                 {item.approval_note && (
                                                     <p className="mt-1 line-clamp-1 text-xs text-slate-500">Catatan: {item.approval_note}</p>
                                                 )}
@@ -1909,29 +1874,10 @@ function ClaimantReviewModal({
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
                                             <p className="text-sm font-semibold text-slate-900">{formatDate(item.transaction_date)}</p>
-                                            <p
-                                                className={`mt-1 text-sm text-slate-700 ${
-                                                    isDescriptionExpanded(item.id)
-                                                        ? "break-words"
-                                                        : "line-clamp-2"
-                                                }`}
-                                            >
-                                                {item.description}
-                                            </p>
-                                            {canExpandDescription(item.description) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        toggleDescription(item.id)
-                                                    }
-                                                    aria-expanded={isDescriptionExpanded(item.id)}
-                                                    className="mt-1 text-xs font-semibold text-sky-700 hover:text-sky-900"
-                                                >
-                                                    {isDescriptionExpanded(item.id)
-                                                        ? "Sembunyikan"
-                                                        : "Lihat selengkapnya"}
-                                                </button>
-                                            )}
+                                            <ExpandableDescription
+                                                description={item.description}
+                                                className="mt-1 text-sm"
+                                            />
                                         </div>
                                         <div className="flex shrink-0 flex-col gap-2 text-xs font-medium text-slate-600">
                                             <label className="inline-flex items-center gap-1.5">
@@ -2045,6 +1991,53 @@ function ClaimantReviewModal({
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+function ExpandableDescription({ description, className = "" }) {
+    const textRef = useRef(null);
+    const [expanded, setExpanded] = useState(false);
+    const [canExpand, setCanExpand] = useState(false);
+
+    useEffect(() => {
+        if (expanded) return undefined;
+
+        const element = textRef.current;
+        if (!element) return undefined;
+
+        const checkOverflow = () => {
+            setCanExpand(element.scrollHeight > element.clientHeight + 1);
+        };
+
+        checkOverflow();
+        if (typeof ResizeObserver === "undefined") return undefined;
+
+        const observer = new ResizeObserver(checkOverflow);
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [description, expanded]);
+
+    return (
+        <div>
+            <p
+                ref={textRef}
+                className={`${className} text-slate-700 ${
+                    expanded ? "break-words" : "line-clamp-2"
+                }`}
+            >
+                {description || "-"}
+            </p>
+            {(canExpand || expanded) && (
+                <button
+                    type="button"
+                    onClick={() => setExpanded((current) => !current)}
+                    aria-expanded={expanded}
+                    className="mt-1 text-xs font-semibold text-sky-700 hover:text-sky-900"
+                >
+                    {expanded ? "Sembunyikan" : "Lihat selengkapnya"}
+                </button>
+            )}
         </div>
     );
 }
