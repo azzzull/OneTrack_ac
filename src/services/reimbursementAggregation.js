@@ -23,6 +23,18 @@ export const normalizePaymentStatus = (value) =>
         ? "paid"
         : "unpaid";
 
+// The review queue only needs records that still require a decision or a
+// payment. Rejected and paid records are final and remain available in reports.
+export const requiresReimbursementAction = (item) => {
+    const status = String(item?.status ?? "").trim().toLowerCase();
+
+    return (
+        status === "pending" ||
+        (status === "approved" &&
+            normalizePaymentStatus(item?.payment_status) === "unpaid")
+    );
+};
+
 export const validateApprovedAmount = ({ claimAmount, approvedAmount }) => {
     const claim = toFiniteAmount(claimAmount, "klaim");
     const approved = toFiniteAmount(approvedAmount, "disetujui");
@@ -131,28 +143,25 @@ export const validateReimbursementItem = (item) => {
 };
 
 export const deriveReimbursementGroupStatus = (items) => {
-    const statuses = new Set(items.map((item) => item.status));
-    const hasUnpaidApprovedItem = items.some(
-        (item) =>
-            item.status === "approved" &&
-            normalizePaymentStatus(item.payment_status) === "unpaid",
+    const actionableItems = items.filter(requiresReimbursementAction);
+    const hasPendingItem = actionableItems.some(
+        (item) => item.status === "pending",
+    );
+    const hasUnpaidApprovedItem = actionableItems.some(
+        (item) => item.status === "approved",
     );
 
-    // Once no approval is pending, an approved reimbursement with no transfer
-    // proof becomes the next action for the group.
-    if (!statuses.has("pending") && hasUnpaidApprovedItem) {
-        return "awaiting_payment";
-    }
-    if (statuses.size === 1 && statuses.has("approved")) return "paid";
-    if (statuses.size === 1) return items[0]?.status ?? "pending";
-    if (statuses.size === 3) return "partial_reviewed";
-    if (statuses.has("pending") && statuses.has("approved")) {
+    if (hasPendingItem && hasUnpaidApprovedItem) {
         return "partial_approved";
     }
-    if (statuses.has("approved") && statuses.has("rejected")) {
-        return "partial_processed";
-    }
-    return "partial_reviewed";
+    if (hasPendingItem) return "pending";
+    if (hasUnpaidApprovedItem) return "awaiting_payment";
+
+    const statuses = new Set(items.map((item) => item.status));
+    if (statuses.has("approved")) return "paid";
+    if (statuses.has("rejected")) return "rejected";
+
+    return items[0]?.status ?? "pending";
 };
 
 export const summarizeReimbursements = (items) => {
@@ -205,8 +214,6 @@ export const groupReimbursementsByRequester = (items) => {
     const sortPriority = {
         pending: 0,
         partial_approved: 1,
-        partial_reviewed: 1,
-        partial_processed: 1,
         awaiting_payment: 2,
         paid: 3,
         approved: 3,

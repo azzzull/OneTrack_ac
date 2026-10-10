@@ -36,6 +36,7 @@ supabase/**/*.sql
 !supabase/migrations/202609230001_add_reimbursement_payment_batches.sql
 !supabase/migrations/202609240001_fix_reimbursement_payment_batch_rpc.sql
 !supabase/migrations/202609290001_refine_accommodation_business_trip_submission_guards.sql
+!supabase/migrations/202610100001_require_full_accommodation_realization_before_next_request.sql
 
 # Ignore ad-hoc markdown files, keep README files
 *.md

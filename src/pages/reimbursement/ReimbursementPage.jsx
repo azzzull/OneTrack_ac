@@ -41,6 +41,7 @@ import {
 import {
     groupReimbursementsByRequester,
     normalizePaymentStatus,
+    requiresReimbursementAction,
     validateApprovedAmount,
 } from "../../services/reimbursementAggregation";
 
@@ -467,11 +468,16 @@ export default function ReimbursementPage() {
 
     const filteredRows = rows;
 
+    const actionableRows = useMemo(
+        () => rows.filter(requiresReimbursementAction),
+        [rows],
+    );
+
     const claimantGroups = useMemo(() => {
         if (!canReview) return [];
 
-        return groupReimbursementsByRequester(rows);
-    }, [canReview, rows]);
+        return groupReimbursementsByRequester(actionableRows);
+    }, [actionableRows, canReview]);
 
     const claimantDetail = useMemo(() => {
         if (!claimantDetailId) return null;
@@ -973,7 +979,7 @@ export default function ReimbursementPage() {
                                                     </span>
                                                 </div>
                                                 <p className="mt-2 text-sm text-slate-600">
-                                                    {group.items.length} reimbursement
+                                                    {group.items.length} reimbursement aktif
                                                     {group.items.length === 1 ? "" : "s"}
                                                     {group.pending > 0 && ` · ${group.pending} pending`}
                                                     {group.unpaid > 0 && ` · ${group.unpaid} menunggu pembayaran`}
@@ -996,7 +1002,7 @@ export default function ReimbursementPage() {
                                                     </p>
                                                 </div>
                                                 <div className="rounded-xl bg-slate-50 p-3">
-                                                    <p className="text-xs font-medium text-slate-500">Total Reimburse</p>
+                                                    <p className="text-xs font-medium text-slate-500">Total Reimburse Aktif</p>
                                                     <p className="mt-1 break-words font-semibold text-slate-900">
                                                         {formatCurrency(group.totalReimburse)}
                                                     </p>
@@ -1487,15 +1493,6 @@ function ClaimantReviewModal({
             ),
             className: "bg-orange-50 text-orange-800",
         },
-        {
-            label: "Ditolak",
-            itemCount: visibleItems.filter((item) => item.status === "rejected")
-                .length,
-            amount: visibleItems
-                .filter((item) => item.status === "rejected")
-                .reduce((sum, item) => sum + Number(item.claim_amount ?? 0), 0),
-            className: "bg-red-50 text-red-800",
-        },
     ].filter((item) => item.itemCount > 0);
 
     const receiptButtons = (item) => {
@@ -1581,7 +1578,7 @@ function ClaimantReviewModal({
                             {getDisplayName(claimant.requester)}
                         </h2>
                         <p className="mt-1 text-sm text-slate-600">
-                            {visibleItems.length} dari {claimant.items.length} reimbursement · Total pengajuan {formatCurrency(
+                            {visibleItems.length} dari {claimant.items.length} reimbursement aktif · Total pengajuan {formatCurrency(
                                 visibleItems.reduce(
                                     (sum, item) =>
                                         sum + Number(item.claim_amount ?? 0),
@@ -1665,7 +1662,6 @@ function ClaimantReviewModal({
                                     { value: "all", label: "Semua status" },
                                     { value: "pending", label: "Pending" },
                                     { value: "approved", label: "Approved" },
-                                    { value: "rejected", label: "Rejected" },
                                 ]}
                             />
                             <label className="relative block">

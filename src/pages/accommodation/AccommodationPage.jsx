@@ -46,6 +46,7 @@ import {
     rejectAccommodationRequest,
     uploadAccommodationFile,
 } from "../../services/accommodationService";
+import { hasOpenAccommodationSettlement } from "../../services/accommodationSettlement";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 
 const statusFilters = [
@@ -440,6 +441,22 @@ export default function AccommodationPage({ mode = "technician" }) {
         [requests, selectedId],
     );
 
+    const unsettledRequest = useMemo(
+        () =>
+            requests.find(
+                (request) =>
+                    request.technician_id === userId &&
+                    hasOpenAccommodationSettlement(request),
+            ) ?? null,
+        [requests, userId],
+    );
+
+    const unsettledRequestMessage = unsettledRequest
+        ? `Selesaikan realisasi pengajuan akomodasi "${
+              unsettledRequest.request_title || "sebelumnya"
+          }" terlebih dahulu sebelum membuat pengajuan baru.`
+        : "";
+
     const dashboardStats = useMemo(() => {
         const count = (status) =>
             periodRequests.filter((item) => item.status === status).length;
@@ -482,13 +499,31 @@ export default function AccommodationPage({ mode = "technician" }) {
             }));
     }, [createForm.customerId, projects]);
 
-    const openCreateModal = () => {
+    const openCreateModal = async () => {
+        if (loading) {
+            await showAlert("Data akomodasi masih dimuat. Silakan coba lagi sebentar.", {
+                title: "Pengajuan Akomodasi",
+            });
+            return;
+        }
+        if (unsettledRequest) {
+            await showAlert(unsettledRequestMessage, {
+                title: "Realisasi Belum Selesai",
+            });
+            return;
+        }
         setCreateForm({ customerId: "", projectId: "" });
         setCreateOpen(true);
     };
 
     const submitCreate = async (event) => {
         event.preventDefault();
+        if (unsettledRequest) {
+            await showAlert(unsettledRequestMessage, {
+                title: "Realisasi Belum Selesai",
+            });
+            return;
+        }
         const formData = new FormData(event.currentTarget);
         const selectedCustomer = customers.find(
             (customer) => customer.id === createForm.customerId,
@@ -647,6 +682,11 @@ export default function AccommodationPage({ mode = "technician" }) {
                                 Kelola pengajuan akomodasi, cash advance, dan
                                 realisasi operasional teknisi.
                             </p>
+                            {canCreate && unsettledRequest && (
+                                <p className="mt-2 text-sm font-medium text-amber-700">
+                                    Pengajuan baru dikunci sampai realisasi sebelumnya selesai.
+                                </p>
+                            )}
                         </div>
                         <div className="flex w-full flex-col gap-2 md:max-w-xl md:flex-row md:items-center md:justify-end">
                             <label className="flex w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500 md:max-w-sm md:px-4 md:py-3">
@@ -1027,9 +1067,21 @@ export default function AccommodationPage({ mode = "technician" }) {
                 <button
                     type="button"
                     onClick={openCreateModal}
-                    className="fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-sky-600 text-white shadow-xl shadow-sky-900/20 hover:bg-sky-700 md:bottom-6"
-                    aria-label="Create accommodation request"
-                    title="Create accommodation request"
+                    className={`fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-xl shadow-sky-900/20 md:bottom-6 ${
+                        unsettledRequest
+                            ? "bg-amber-500 hover:bg-amber-600"
+                            : "bg-sky-600 hover:bg-sky-700"
+                    }`}
+                    aria-label={
+                        unsettledRequest
+                            ? "Pengajuan baru dikunci sampai realisasi sebelumnya selesai"
+                            : "Create accommodation request"
+                    }
+                    title={
+                        unsettledRequest
+                            ? "Selesaikan realisasi sebelumnya terlebih dahulu"
+                            : "Create accommodation request"
+                    }
                 >
                     <Plus size={26} />
                 </button>

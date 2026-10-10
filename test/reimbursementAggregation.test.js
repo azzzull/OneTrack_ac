@@ -3,6 +3,7 @@ import test from "node:test";
 import {
     assertReimbursementAggregate,
     groupReimbursementsByRequester,
+    requiresReimbursementAction,
     summarizeReimbursements,
     validateApprovedAmount,
 } from "../src/services/reimbursementAggregation.js";
@@ -66,7 +67,7 @@ test("summary follows individual reimbursement approval and payment states", () 
     assert.equal(summary.rejected, 1);
 });
 
-test("group status is derived from every child and reuses the same aggregate", () => {
+test("rejected reimbursement does not make an active group partially processed", () => {
     const groups = groupReimbursementsByRequester([
         approvedUnpaid,
         {
@@ -90,7 +91,7 @@ test("group status is derived from every child and reuses the same aggregate", (
     ]);
 
     assert.equal(groups.length, 1);
-    assert.equal(groups[0].status, "partial_reviewed");
+    assert.equal(groups[0].status, "partial_approved");
     assert.deepEqual(
         {
             totalReimburse: groups[0].totalReimburse,
@@ -103,6 +104,45 @@ test("group status is derived from every child and reuses the same aggregate", (
             unpaidAmount: 175_000,
         }),
     );
+});
+
+test("review queue keeps only reimbursement that still needs action", () => {
+    const rows = [
+        approvedUnpaid,
+        {
+            id: "pending",
+            requester_id: "asep",
+            status: "pending",
+            claim_amount: 100_000,
+            approved_amount: null,
+            payment_status: "unpaid",
+        },
+        {
+            id: "paid",
+            requester_id: "asep",
+            status: "approved",
+            claim_amount: 50_000,
+            approved_amount: 50_000,
+            payment_status: "paid",
+            transfer_proof_url: "https://example.test/proof.jpg",
+        },
+        {
+            id: "rejected",
+            requester_id: "asep",
+            status: "rejected",
+            claim_amount: 25_000,
+            approved_amount: null,
+            payment_status: "unpaid",
+        },
+    ];
+
+    const actionableRows = rows.filter(requiresReimbursementAction);
+
+    assert.deepEqual(
+        actionableRows.map((item) => item.id),
+        ["approved-unpaid", "pending"],
+    );
+    assert.equal(groupReimbursementsByRequester(actionableRows)[0].status, "partial_approved");
 });
 
 test("invalid approval and aggregate values are rejected instead of clamped", () => {
