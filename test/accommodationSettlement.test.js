@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+    blocksNextAccommodationSubmission,
     hasOpenAccommodationSettlement,
     isAccommodationFullyRealized,
 } from "../src/services/accommodationSettlement.js";
@@ -38,6 +39,27 @@ test("pending requests are blocked and rejected requests are terminal", () => {
             approved_amount: 0,
             totalRealized: 0,
         }),
+        false,
+    );
+});
+
+test("only legacy accommodation requests exempted during migration release the next submission", () => {
+    const standardOpenRequest = {
+        status: "approved",
+        requested_at: "2025-01-01T00:00:00.000Z",
+    };
+    const exemptLegacyRequest = {
+        status: "partial_realized",
+        requested_at: "2025-01-01T00:00:00.000Z",
+        blocks_next_accommodation_submission: false,
+    };
+
+    assert.equal(
+        blocksNextAccommodationSubmission(standardOpenRequest),
+        true,
+    );
+    assert.equal(
+        blocksNextAccommodationSubmission(exemptLegacyRequest),
         false,
     );
 });

@@ -46,7 +46,7 @@ import {
     rejectAccommodationRequest,
     uploadAccommodationFile,
 } from "../../services/accommodationService";
-import { hasOpenAccommodationSettlement } from "../../services/accommodationSettlement";
+import { blocksNextAccommodationSubmission } from "../../services/accommodationSettlement";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 
 const statusFilters = [
@@ -446,7 +446,7 @@ export default function AccommodationPage({ mode = "technician" }) {
             requests.find(
                 (request) =>
                     request.technician_id === userId &&
-                    hasOpenAccommodationSettlement(request),
+                    blocksNextAccommodationSubmission(request),
             ) ?? null,
         [requests, userId],
     );

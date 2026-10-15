@@ -37,6 +37,7 @@ supabase/**/*.sql
 !supabase/migrations/202609240001_fix_reimbursement_payment_batch_rpc.sql
 !supabase/migrations/202609290001_refine_accommodation_business_trip_submission_guards.sql
 !supabase/migrations/202610100001_require_full_accommodation_realization_before_next_request.sql
+!supabase/migrations/202610150001_limit_accommodation_submission_block_to_30_days.sql
 
 # Ignore ad-hoc markdown files, keep README files
 *.md

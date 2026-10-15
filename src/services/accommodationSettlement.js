@@ -33,3 +33,7 @@ export const isAccommodationFullyRealized = (request) => {
 export const hasOpenAccommodationSettlement = (request) =>
     normalizeStatus(request?.status) !== "rejected" &&
     !isAccommodationFullyRealized(request);
+
+export const blocksNextAccommodationSubmission = (request) =>
+    hasOpenAccommodationSettlement(request) &&
+    request?.blocks_next_accommodation_submission !== false;
