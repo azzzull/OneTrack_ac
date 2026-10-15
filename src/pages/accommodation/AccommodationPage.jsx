@@ -47,6 +47,7 @@ import {
     uploadAccommodationFile,
 } from "../../services/accommodationService";
 import { blocksNextAccommodationSubmission } from "../../services/accommodationSettlement";
+import { groupAccommodationRequestsByTechnician } from "../../services/accommodationAggregation";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
 
 const statusFilters = [
@@ -261,6 +262,7 @@ export default function AccommodationPage({ mode = "technician" }) {
     const [customEndDate, setCustomEndDate] = useState(todayKey());
     const [search, setSearch] = useState("");
     const [selectedId, setSelectedId] = useState(null);
+    const [expandedTechnicianId, setExpandedTechnicianId] = useState(null);
     const [createOpen, setCreateOpen] = useState(false);
     const [createForm, setCreateForm] = useState({
         customerId: "",
@@ -435,6 +437,14 @@ export default function AccommodationPage({ mode = "technician" }) {
             return matchesFilter && (!keyword || haystack.includes(keyword));
         });
     }, [filter, periodRequests, search]);
+
+    const technicianGroups = useMemo(
+        () =>
+            showTechnicianColumn
+                ? groupAccommodationRequestsByTechnician(filteredRequests)
+                : [],
+        [filteredRequests, showTechnicianColumn],
+    );
 
     const selectedRequest = useMemo(
         () => requests.find((item) => item.id === selectedId) ?? null,
@@ -941,6 +951,182 @@ export default function AccommodationPage({ mode = "technician" }) {
                             <div className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
                                 Loading accommodation requests...
                             </div>
+                        ) : showTechnicianColumn ? (
+                            technicianGroups.length ? (
+                                technicianGroups.map((group) => {
+                                    const isExpanded =
+                                        expandedTechnicianId === group.id;
+
+                                    return (
+                                        <article
+                                            key={group.id}
+                                            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
+                                        >
+                                            <div className="p-4">
+                                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                                    <div className="min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <h2 className="text-base font-semibold text-slate-900">
+                                                                {getDisplayName(
+                                                                    group.technician,
+                                                                )}
+                                                            </h2>
+                                                            <StatusBadge
+                                                                status={group.status}
+                                                            />
+                                                        </div>
+                                                        <p className="mt-2 text-sm text-slate-600">
+                                                            {group.items.length} pengajuan
+                                                            {group.items.length === 1
+                                                                ? ""
+                                                                : " akomodasi"}
+                                                            {group.pending > 0 &&
+                                                                ` · ${group.pending} pending`}
+                                                            {group.inRealization > 0 &&
+                                                                ` · ${group.inRealization} dalam realisasi`}
+                                                        </p>
+                                                        <p className="mt-2 text-xs font-medium text-slate-500">
+                                                            Pengajuan terbaru{" "}
+                                                            {formatDate(group.latestAt)}
+                                                        </p>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2 text-sm lg:w-xl">
+                                                        <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                                            <p className="text-xs font-medium text-slate-500">
+                                                                Total Request
+                                                            </p>
+                                                            <p className="mt-1 break-words font-semibold text-slate-900">
+                                                                {formatCurrency(
+                                                                    group.requestedAmount,
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                        <div className="rounded-xl bg-emerald-50 px-3 py-2">
+                                                            <p className="text-xs font-medium text-emerald-700">
+                                                                Total Approved
+                                                            </p>
+                                                            <p className="mt-1 break-words font-semibold text-emerald-900">
+                                                                {formatCurrency(
+                                                                    group.approvedAmount,
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                        <div className="rounded-xl bg-blue-50 px-3 py-2">
+                                                            <p className="text-xs font-medium text-blue-700">
+                                                                Total Realized
+                                                            </p>
+                                                            <p className="mt-1 break-words font-semibold text-blue-900">
+                                                                {formatCurrency(
+                                                                    group.realizedAmount,
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                        <div className="rounded-xl bg-amber-50 px-3 py-2">
+                                                            <p className="text-xs font-medium text-amber-700">
+                                                                Outstanding
+                                                            </p>
+                                                            <p className="mt-1 break-words font-semibold text-amber-900">
+                                                                {formatCurrency(
+                                                                    group.remainingAmount,
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setExpandedTechnicianId(
+                                                                isExpanded
+                                                                    ? null
+                                                                    : group.id,
+                                                            )
+                                                        }
+                                                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                                    >
+                                                        <Eye size={15} />
+                                                        {isExpanded
+                                                            ? "Sembunyikan Pengajuan"
+                                                            : "Lihat Pengajuan"}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {isExpanded && (
+                                                <div className="border-t border-slate-200 bg-slate-50 p-3 md:p-4">
+                                                    <div className="space-y-2">
+                                                        {group.items.map(
+                                                            (item) => (
+                                                                <button
+                                                                    key={item.id}
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setSelectedId(
+                                                                            item.id,
+                                                                        )
+                                                                    }
+                                                                    className="flex w-full flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-sky-300 hover:bg-sky-50 md:flex-row md:items-center md:justify-between"
+                                                                >
+                                                                    <div className="min-w-0">
+                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                            <p className="font-semibold text-slate-900">
+                                                                                {
+                                                                                    item.request_title
+                                                                                }
+                                                                            </p>
+                                                                            <StatusBadge
+                                                                                status={
+                                                                                    item.status
+                                                                                }
+                                                                            />
+                                                                        </div>
+                                                                        <p className="mt-1 line-clamp-1 text-sm text-slate-600">
+                                                                            {
+                                                                                item.purpose
+                                                                            }
+                                                                        </p>
+                                                                        <p className="mt-1 text-xs font-medium text-slate-500">
+                                                                            {formatDate(
+                                                                                item.requested_at ||
+                                                                                    item.created_at,
+                                                                            )}
+                                                                        </p>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-2 gap-x-5 gap-y-1 text-sm md:text-right">
+                                                                        <span className="text-slate-500">
+                                                                            Request{" "}
+                                                                            <strong className="block text-slate-900">
+                                                                                {formatCurrency(
+                                                                                    item.requested_amount,
+                                                                                )}
+                                                                            </strong>
+                                                                        </span>
+                                                                        <span className="text-slate-500">
+                                                                            Sisa{" "}
+                                                                            <strong className="block text-amber-800">
+                                                                                {item.approved_amount
+                                                                                    ? formatCurrency(
+                                                                                          item.remainingAmount,
+                                                                                      )
+                                                                                    : "-"}
+                                                                            </strong>
+                                                                        </span>
+                                                                    </div>
+                                                                </button>
+                                                            ),
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </article>
+                                    );
+                                })
+                            ) : (
+                                <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50 p-8 text-center text-sm text-sky-700">
+                                    Belum ada pengajuan.
+                                </div>
+                            )
                         ) : filteredRequests.length ? (
                             filteredRequests.map((item) => (
                                 <article
