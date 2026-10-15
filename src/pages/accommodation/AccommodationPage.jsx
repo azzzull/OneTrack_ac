@@ -1,5 +1,4 @@
 import {
-    createElement,
     useCallback,
     useEffect,
     useMemo,
@@ -7,24 +6,21 @@ import {
     useState,
 } from "react";
 import {
-    Banknote,
     BarChart3,
     Camera,
-    CalendarDays,
     CheckCircle2,
-    Clock3,
     Eye,
     FileImage,
+    Filter,
     FolderOpen,
     Plus,
-    Receipt,
     Search,
     Trash2,
     Upload,
     X,
     XCircle,
 } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import ImagePreviewModal from "../../components/ImagePreviewModal";
 import CustomSelect from "../../components/ui/CustomSelect";
@@ -47,30 +43,14 @@ import {
     uploadAccommodationFile,
 } from "../../services/accommodationService";
 import { blocksNextAccommodationSubmission } from "../../services/accommodationSettlement";
-import { groupAccommodationRequestsByTechnician } from "../../services/accommodationAggregation";
+import {
+    groupAccommodationRequestsByTechnician,
+    requiresAccommodationMonitoring,
+} from "../../services/accommodationAggregation";
 import { createUniqueChannelName } from "../../utils/realtimeChannelManager";
-
-const statusFilters = [
-    { key: "pending", title: "Pending", icon: Clock3 },
-    { key: "approved", title: "Approved", icon: CheckCircle2 },
-    { key: "rejected", title: "Rejected", icon: XCircle },
-    { key: "partial_realized", title: "Partial", icon: Receipt },
-    { key: "realized", title: "Realized", icon: FileImage },
-];
-
-const periodOptions = [
-    { key: "all", label: "Semua" },
-    { key: "weekly", label: "Weekly" },
-    { key: "monthly", label: "Monthly" },
-    { key: "yearly", label: "Yearly" },
-    { key: "custom", label: "Custom" },
-];
 
 const inputClass =
     "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300";
-
-const periodInputClass =
-    "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300";
 
 const onlyDigits = (value) => String(value ?? "").replace(/\D/g, "");
 
@@ -119,6 +99,10 @@ const getRequestDateKey = (request) =>
 const matchesPeriod = (request, period) => {
     const dateKey = getRequestDateKey(request);
     if (!dateKey) return false;
+
+    if (period.mode === "today") {
+        return dateKey === toDateKey(new Date());
+    }
 
     if (period.mode === "weekly") {
         return dateKey >= period.weekStart && dateKey <= period.weekEnd;
@@ -174,67 +158,10 @@ const StatusBadge = ({ status }) => (
     </span>
 );
 
-const SummaryCard = ({
-    title,
-    value,
-    icon: Icon,
-    compact = false,
-    active = false,
-    onClick,
-    wide = false,
-}) => {
-    const Component = onClick ? "button" : "div";
-
-    return (
-        <Component
-            type={onClick ? "button" : undefined}
-            onClick={onClick}
-            className={`w-full rounded-2xl bg-white text-left shadow-sm transition ${
-                compact ? "h-25 p-3" : "p-4"
-            } ${wide ? "min-w-max" : ""} ${
-                active
-                    ? "ring-2 ring-sky-400"
-                    : onClick
-                    ? "hover:-translate-y-0.5 hover:shadow-md"
-                    : ""
-            }`}
-        >
-            <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                    <p
-                        className={`${
-                            compact ? "line-clamp-2 min-h-8 text-xs" : "text-sm"
-                        } text-slate-500`}
-                    >
-                        {title}
-                    </p>
-                    <p
-                        className={`mt-1 whitespace-nowrap font-semibold leading-tight text-slate-900 ${
-                            compact ? "text-lg" : "text-2xl"
-                        }`}
-                    >
-                        {value}
-                    </p>
-                </div>
-                <span
-                    className={`rounded-2xl ${
-                        active
-                            ? "bg-sky-500 text-white"
-                            : "bg-sky-50 text-sky-500"
-                    } ${compact ? "p-2" : "p-3"}`}
-                >
-                    {createElement(Icon, { size: compact ? 18 : 22 })}
-                </span>
-            </div>
-        </Component>
-    );
-};
-
 export default function AccommodationPage({ mode = "technician" }) {
     const { user, role, profile } = useAuth();
     const { alert: showAlert } = useDialog();
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } =
         useSidebarCollapsed();
     const [requests, setRequests] = useState([]);
@@ -242,27 +169,9 @@ export default function AccommodationPage({ mode = "technician" }) {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const initialStatus = searchParams.get("status");
-    const initialPeriod = searchParams.get("period");
-    const [filter, setFilter] = useState(
-        statusFilters.some((item) => item.key === initialStatus)
-            ? initialStatus
-            : null,
-    );
-    const [periodMode, setPeriodMode] = useState(
-        periodOptions.some((item) => item.key === initialPeriod)
-            ? initialPeriod
-            : "weekly",
-    );
-    const [weekStart, setWeekStart] = useState(getWeekStartKey());
-    const [weekEnd, setWeekEnd] = useState(getWeekEndKey());
-    const [monthFilter, setMonthFilter] = useState(getMonthKey());
-    const [yearFilter, setYearFilter] = useState(getYearKey());
-    const [customStartDate, setCustomStartDate] = useState(todayKey());
-    const [customEndDate, setCustomEndDate] = useState(todayKey());
     const [search, setSearch] = useState("");
     const [selectedId, setSelectedId] = useState(null);
-    const [expandedTechnicianId, setExpandedTechnicianId] = useState(null);
+    const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
     const [createOpen, setCreateOpen] = useState(false);
     const [createForm, setCreateForm] = useState({
         customerId: "",
@@ -363,87 +272,41 @@ export default function AccommodationPage({ mode = "technician" }) {
         };
     }, [loadData, userId]);
 
-    const periodFilter = useMemo(
-        () => ({
-            mode: periodMode,
-            weekStart,
-            weekEnd,
-            month: monthFilter,
-            year: yearFilter,
-            startDate: customStartDate,
-            endDate: customEndDate,
-        }),
-        [
-            customEndDate,
-            customStartDate,
-            monthFilter,
-            periodMode,
-            weekEnd,
-            weekStart,
-            yearFilter,
-        ],
-    );
-
-    const periodRequests = useMemo(
-        () => requests.filter((item) => matchesPeriod(item, periodFilter)),
-        [periodFilter, requests],
-    );
-
-    const periodLabel = useMemo(() => {
-        if (periodMode === "all") return "Semua periode";
-        if (periodMode === "weekly") {
-            return `${formatDate(weekStart)} - ${formatDate(weekEnd)}`;
-        }
-
-        if (periodMode === "monthly") {
-            const [year, month] = monthFilter.split("-");
-            const date = new Date(Number(year), Number(month) - 1, 1);
-            return date.toLocaleDateString("id-ID", {
-                month: "long",
-                year: "numeric",
-            });
-        }
-
-        if (periodMode === "yearly") {
-            return `Tahun ${yearFilter}`;
-        }
-
-        return `${formatDate(customStartDate)} - ${formatDate(customEndDate)}`;
-    }, [
-        customEndDate,
-        customStartDate,
-        monthFilter,
-        periodMode,
-        weekEnd,
-        weekStart,
-        yearFilter,
-    ]);
-
-    const handleCardFilter = (key) => {
-        setFilter((current) => (current === key ? null : key));
-    };
-
-    const filteredRequests = useMemo(() => {
+    const searchFilteredRequests = useMemo(() => {
         const keyword = search.trim().toLowerCase();
-        return periodRequests.filter((item) => {
-            const matchesFilter =
-                !filter ||
-                (filter === "outstanding"
-                    ? Number(item.remainingAmount ?? 0) > 0
-                    : item.status === filter);
+        return requests.filter((item) => {
             const haystack = `${item.request_title ?? ""} ${
                 item.purpose ?? ""
             } ${getDisplayName(item.technician)}`.toLowerCase();
-            return matchesFilter && (!keyword || haystack.includes(keyword));
+            return !keyword || haystack.includes(keyword);
         });
-    }, [filter, periodRequests, search]);
+    }, [requests, search]);
+
+    const monitoringRequests = useMemo(
+        () => searchFilteredRequests.filter(requiresAccommodationMonitoring),
+        [searchFilteredRequests],
+    );
 
     const technicianGroups = useMemo(
         () =>
             showTechnicianColumn
-                ? groupAccommodationRequestsByTechnician(filteredRequests)
+                ? groupAccommodationRequestsByTechnician(monitoringRequests)
                 : [],
-        [filteredRequests, showTechnicianColumn],
+        [monitoringRequests, showTechnicianColumn],
+    );
+
+    const selectedTechnicianGroup = useMemo(() => {
+        if (!selectedTechnicianId) return null;
+        return (
+            groupAccommodationRequestsByTechnician(requests).find(
+                (group) => group.id === selectedTechnicianId,
+            ) ?? null
+        );
+    }, [requests, selectedTechnicianId]);
+
+    const visibleRequests = useMemo(
+        () => (showTechnicianColumn ? [] : searchFilteredRequests),
+        [searchFilteredRequests, showTechnicianColumn],
     );
 
     const selectedRequest = useMemo(
@@ -466,28 +329,6 @@ export default function AccommodationPage({ mode = "technician" }) {
               unsettledRequest.request_title || "sebelumnya"
           }" terlebih dahulu sebelum membuat pengajuan baru.`
         : "";
-
-    const dashboardStats = useMemo(() => {
-        const count = (status) =>
-            periodRequests.filter((item) => item.status === status).length;
-        return {
-            pending: count("pending"),
-            approved: count("approved"),
-            rejected: count("rejected"),
-            partial_realized: count("partial_realized"),
-            realized: count("realized"),
-            outstanding: periodRequests.reduce(
-                (sum, item) => sum + Number(item.remainingAmount ?? 0),
-                0,
-            ),
-            pendingAmount: periodRequests
-                .filter((item) => item.status === "pending")
-                .reduce(
-                    (sum, item) => sum + Number(item.requested_amount ?? 0),
-                    0,
-                ),
-        };
-    }, [periodRequests]);
 
     const customerOptions = useMemo(
         () =>
@@ -689,8 +530,9 @@ export default function AccommodationPage({ mode = "technician" }) {
                                     : "My Accommodation Requests"}
                             </h1>
                             <p className="mt-1 text-slate-600">
-                                Kelola pengajuan akomodasi, cash advance, dan
-                                realisasi operasional teknisi.
+                                {showTechnicianColumn
+                                    ? "Monitor pengajuan pending dan realisasi akomodasi per pengaju."
+                                    : "Kelola pengajuan akomodasi, cash advance, dan realisasi Anda."}
                             </p>
                             {canCreate && unsettledRequest && (
                                 <p className="mt-2 text-sm font-medium text-amber-700">
@@ -707,7 +549,11 @@ export default function AccommodationPage({ mode = "technician" }) {
                                         setSearch(event.target.value)
                                     }
                                     className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 md:text-base"
-                                    placeholder="Cari title atau purpose..."
+                                    placeholder={
+                                        showTechnicianColumn
+                                            ? "Cari pengaju, judul, atau purpose..."
+                                            : "Cari judul atau purpose..."
+                                    }
                                 />
                             </label>
                             {canViewAccommodationReport && (
@@ -729,223 +575,6 @@ export default function AccommodationPage({ mode = "technician" }) {
                         </div>
                     </div>
 
-                    <section className="mt-6 rounded-2xl bg-white p-4 shadow-sm">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                            <div>
-                                <p className="text-sm font-semibold text-slate-900">
-                                    Filter Periode
-                                </p>
-                                <p className="mt-1 text-sm text-slate-500">
-                                    Periode: {periodLabel}
-                                </p>
-                            </div>
-                            <div className="flex flex-col gap-3 md:flex-row md:items-end">
-                                <div className="block md:hidden">
-                                    <CustomSelect
-                                        value={periodMode}
-                                        onChange={setPeriodMode}
-                                        options={periodOptions.map((item) => ({
-                                            value: item.key,
-                                            label: item.label,
-                                        }))}
-                                    />
-                                </div>
-                                <div className="hidden rounded-full bg-slate-100 p-1 md:inline-flex">
-                                    {periodOptions.map((item) => (
-                                        <button
-                                            key={item.key}
-                                            type="button"
-                                            onClick={() =>
-                                                setPeriodMode(item.key)
-                                            }
-                                            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                                                periodMode === item.key
-                                                    ? "bg-sky-500 text-white"
-                                                    : "text-slate-600 hover:bg-white"
-                                            }`}
-                                        >
-                                            {item.label}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {periodMode === "weekly" && (
-                                    <div className="flex flex-wrap gap-2">
-                                        <input
-                                            type="date"
-                                            value={weekStart}
-                                            onChange={(event) =>
-                                                setWeekStart(event.target.value)
-                                            }
-                                            className={`${periodInputClass} w-40`}
-                                        />
-                                        <input
-                                            type="date"
-                                            value={weekEnd}
-                                            onChange={(event) =>
-                                                setWeekEnd(event.target.value)
-                                            }
-                                            className={`${periodInputClass} w-40`}
-                                        />
-                                    </div>
-                                )}
-
-                                {periodMode === "monthly" && (
-                                    <input
-                                        type="month"
-                                        value={monthFilter}
-                                        onChange={(event) =>
-                                            setMonthFilter(event.target.value)
-                                        }
-                                        className={`${periodInputClass} w-36`}
-                                    />
-                                )}
-
-                                {periodMode === "yearly" && (
-                                    <input
-                                        type="number"
-                                        min="2020"
-                                        max="2100"
-                                        value={yearFilter}
-                                        onChange={(event) =>
-                                            setYearFilter(event.target.value)
-                                        }
-                                        className={`${periodInputClass} w-24`}
-                                    />
-                                )}
-
-                                {periodMode === "custom" && (
-                                    <div className="flex flex-wrap gap-2">
-                                        <input
-                                            type="date"
-                                            value={customStartDate}
-                                            onChange={(event) =>
-                                                setCustomStartDate(
-                                                    event.target.value,
-                                                )
-                                            }
-                                            className={`${periodInputClass} w-40`}
-                                        />
-                                        <input
-                                            type="date"
-                                            value={customEndDate}
-                                            onChange={(event) =>
-                                                setCustomEndDate(
-                                                    event.target.value,
-                                                )
-                                            }
-                                            className={`${periodInputClass} w-40`}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </section>
-
-                    {canViewAccommodationReport && (
-                        <section className="mt-6">
-                            <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 md:hidden">
-                                {statusFilters.map((item) => (
-                                    <div key={item.key} className="min-w-36">
-                                        <SummaryCard
-                                            title={item.title}
-                                            value={dashboardStats[item.key]}
-                                            icon={item.icon}
-                                            compact
-                                            active={filter === item.key}
-                                            onClick={() =>
-                                                handleCardFilter(item.key)
-                                            }
-                                        />
-                                    </div>
-                                ))}
-                                <div className="min-w-64">
-                                    <SummaryCard
-                                        title="Outstanding"
-                                        value={formatCurrency(
-                                            dashboardStats.outstanding,
-                                        )}
-                                        icon={Banknote}
-                                        compact
-                                        wide
-                                        active={filter === "outstanding"}
-                                        onClick={() =>
-                                            handleCardFilter("outstanding")
-                                        }
-                                    />
-                                </div>
-                            </div>
-                            <div className="mt-3 md:hidden">
-                                <SummaryCard
-                                    title="Pending Amount"
-                                    value={formatCurrency(
-                                        dashboardStats.pendingAmount,
-                                    )}
-                                    icon={CalendarDays}
-                                    active={filter === "pending"}
-                                    onClick={() => handleCardFilter("pending")}
-                                />
-                            </div>
-                            <div className="hidden gap-4 md:flex md:flex-wrap">
-                                {statusFilters.map((item) => (
-                                    <div
-                                        key={item.key}
-                                        className="min-w-40 flex-1"
-                                    >
-                                        <SummaryCard
-                                            title={item.title}
-                                            value={dashboardStats[item.key]}
-                                            icon={item.icon}
-                                            active={filter === item.key}
-                                            onClick={() =>
-                                                handleCardFilter(item.key)
-                                            }
-                                        />
-                                    </div>
-                                ))}
-                                <div className="min-w-72 flex-1">
-                                    <SummaryCard
-                                        title="Outstanding"
-                                        value={formatCurrency(
-                                            dashboardStats.outstanding,
-                                        )}
-                                        icon={Banknote}
-                                        wide
-                                        active={filter === "outstanding"}
-                                        onClick={() =>
-                                            handleCardFilter("outstanding")
-                                        }
-                                    />
-                                </div>
-                                <div className="min-w-72 flex-1">
-                                    <SummaryCard
-                                        title="Pending Amount"
-                                        value={formatCurrency(
-                                            dashboardStats.pendingAmount,
-                                        )}
-                                        icon={CalendarDays}
-                                        wide
-                                        active={filter === "pending"}
-                                        onClick={() =>
-                                            handleCardFilter("pending")
-                                        }
-                                    />
-                                </div>
-                            </div>
-                            {filter && (
-                                <div className="mt-3 flex justify-end">
-                                    <button
-                                        type="button"
-                                        onClick={() => setFilter(null)}
-                                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-                                    >
-                                        Clear filter
-                                    </button>
-                                </div>
-                            )}
-                        </section>
-                    )}
-
                     <section className="mt-6 space-y-3">
                         {loading ? (
                             <div className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
@@ -953,11 +582,7 @@ export default function AccommodationPage({ mode = "technician" }) {
                             </div>
                         ) : showTechnicianColumn ? (
                             technicianGroups.length ? (
-                                technicianGroups.map((group) => {
-                                    const isExpanded =
-                                        expandedTechnicianId === group.id;
-
-                                    return (
+                                technicianGroups.map((group) => (
                                         <article
                                             key={group.id}
                                             className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
@@ -1037,98 +662,26 @@ export default function AccommodationPage({ mode = "technician" }) {
                                                     <button
                                                         type="button"
                                                         onClick={() =>
-                                                            setExpandedTechnicianId(
-                                                                isExpanded
-                                                                    ? null
-                                                                    : group.id,
+                                                            setSelectedTechnicianId(
+                                                                group.id,
                                                             )
                                                         }
                                                         className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                                                     >
                                                         <Eye size={15} />
-                                                        {isExpanded
-                                                            ? "Sembunyikan Pengajuan"
-                                                            : "Lihat Pengajuan"}
+                                                        Detail Pengaju
                                                     </button>
                                                 </div>
                                             </div>
-
-                                            {isExpanded && (
-                                                <div className="border-t border-slate-200 bg-slate-50 p-3 md:p-4">
-                                                    <div className="space-y-2">
-                                                        {group.items.map(
-                                                            (item) => (
-                                                                <button
-                                                                    key={item.id}
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        setSelectedId(
-                                                                            item.id,
-                                                                        )
-                                                                    }
-                                                                    className="flex w-full flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-sky-300 hover:bg-sky-50 md:flex-row md:items-center md:justify-between"
-                                                                >
-                                                                    <div className="min-w-0">
-                                                                        <div className="flex flex-wrap items-center gap-2">
-                                                                            <p className="font-semibold text-slate-900">
-                                                                                {
-                                                                                    item.request_title
-                                                                                }
-                                                                            </p>
-                                                                            <StatusBadge
-                                                                                status={
-                                                                                    item.status
-                                                                                }
-                                                                            />
-                                                                        </div>
-                                                                        <p className="mt-1 line-clamp-1 text-sm text-slate-600">
-                                                                            {
-                                                                                item.purpose
-                                                                            }
-                                                                        </p>
-                                                                        <p className="mt-1 text-xs font-medium text-slate-500">
-                                                                            {formatDate(
-                                                                                item.requested_at ||
-                                                                                    item.created_at,
-                                                                            )}
-                                                                        </p>
-                                                                    </div>
-                                                                    <div className="grid grid-cols-2 gap-x-5 gap-y-1 text-sm md:text-right">
-                                                                        <span className="text-slate-500">
-                                                                            Request{" "}
-                                                                            <strong className="block text-slate-900">
-                                                                                {formatCurrency(
-                                                                                    item.requested_amount,
-                                                                                )}
-                                                                            </strong>
-                                                                        </span>
-                                                                        <span className="text-slate-500">
-                                                                            Sisa{" "}
-                                                                            <strong className="block text-amber-800">
-                                                                                {item.approved_amount
-                                                                                    ? formatCurrency(
-                                                                                          item.remainingAmount,
-                                                                                      )
-                                                                                    : "-"}
-                                                                            </strong>
-                                                                        </span>
-                                                                    </div>
-                                                                </button>
-                                                            ),
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )}
                                         </article>
-                                    );
-                                })
+                                ))
                             ) : (
                                 <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50 p-8 text-center text-sm text-sky-700">
                                     Belum ada pengajuan.
                                 </div>
                             )
-                        ) : filteredRequests.length ? (
-                            filteredRequests.map((item) => (
+                        ) : visibleRequests.length ? (
+                            visibleRequests.map((item) => (
                                 <article
                                     key={item.id}
                                     className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
@@ -1352,6 +905,17 @@ export default function AccommodationPage({ mode = "technician" }) {
                 </Modal>
             )}
 
+            {selectedTechnicianGroup && (
+                <AccommodationTechnicianDetail
+                    group={selectedTechnicianGroup}
+                    onClose={() => setSelectedTechnicianId(null)}
+                    onSelectRequest={(requestId) => {
+                        setSelectedTechnicianId(null);
+                        setSelectedId(requestId);
+                    }}
+                />
+            )}
+
             {selectedRequest && (
                 <DetailDrawer
                     request={selectedRequest}
@@ -1476,6 +1040,222 @@ export default function AccommodationPage({ mode = "technician" }) {
                     </form>
                 </Modal>
             )}
+        </div>
+    );
+}
+
+function AccommodationTechnicianDetail({ group, onClose, onSelectRequest }) {
+    const [filters, setFilters] = useState({
+        period: "all",
+        dateFrom: "",
+        dateTo: "",
+        status: "all",
+        search: "",
+    });
+
+    const visibleItems = useMemo(() => {
+        const keyword = filters.search.trim().toLowerCase();
+        return group.items.filter((item) => {
+            const matchesStatus =
+                filters.status === "all" || item.status === filters.status;
+            const matchesSearch = `${item.request_title ?? ""} ${
+                item.purpose ?? ""
+            } ${getAccommodationCustomerLabel(item)} ${
+                getAccommodationProjectLabel(item)
+            }`
+                .toLowerCase()
+                .includes(keyword);
+
+            return (
+                matchesStatus &&
+                matchesSearch &&
+                matchesPeriod(item, {
+                    mode: filters.period,
+                    weekStart: getWeekStartKey(),
+                    weekEnd: getWeekEndKey(),
+                    month: getMonthKey(),
+                    year: getYearKey(),
+                    startDate: filters.dateFrom,
+                    endDate: filters.dateTo,
+                })
+            );
+        });
+    }, [filters, group.items]);
+
+    const visibleRequestedAmount = visibleItems.reduce(
+        (total, item) => total + Number(item.requested_amount ?? 0),
+        0,
+    );
+
+    return (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 p-0 md:p-4">
+            <div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl md:max-h-[92vh] md:max-w-6xl md:rounded-2xl">
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4 md:px-5">
+                    <div className="min-w-0">
+                        <h2 className="truncate text-lg font-semibold text-slate-900">
+                            {getDisplayName(group.technician)}
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-600">
+                            {visibleItems.length} dari {group.items.length} pengajuan · Total request {formatCurrency(visibleRequestedAmount)}
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                        aria-label="Tutup detail pengaju akomodasi"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                            <Filter size={16} />
+                            Filter pengajuan {getDisplayName(group.technician)}
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <CustomSelect
+                                value={filters.period}
+                                onChange={(value) =>
+                                    setFilters((current) => ({
+                                        ...current,
+                                        period: value,
+                                    }))
+                                }
+                                options={[
+                                    { value: "all", label: "Semua periode" },
+                                    { value: "today", label: "Hari ini" },
+                                    { value: "weekly", label: "Minggu ini" },
+                                    { value: "monthly", label: "Bulan ini" },
+                                    { value: "yearly", label: "Tahun ini" },
+                                    { value: "custom", label: "Custom range" },
+                                ]}
+                            />
+                            {filters.period === "custom" && (
+                                <>
+                                    <input
+                                        type="date"
+                                        value={filters.dateFrom}
+                                        onChange={(event) =>
+                                            setFilters((current) => ({
+                                                ...current,
+                                                dateFrom: event.target.value,
+                                            }))
+                                        }
+                                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                                        aria-label="Tanggal awal"
+                                    />
+                                    <input
+                                        type="date"
+                                        value={filters.dateTo}
+                                        onChange={(event) =>
+                                            setFilters((current) => ({
+                                                ...current,
+                                                dateTo: event.target.value,
+                                            }))
+                                        }
+                                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                                        aria-label="Tanggal akhir"
+                                    />
+                                </>
+                            )}
+                            <CustomSelect
+                                value={filters.status}
+                                onChange={(value) =>
+                                    setFilters((current) => ({
+                                        ...current,
+                                        status: value,
+                                    }))
+                                }
+                                options={[
+                                    { value: "all", label: "Semua status" },
+                                    { value: "pending", label: "Pending" },
+                                    { value: "approved", label: "Approved" },
+                                    {
+                                        value: "realization_process",
+                                        label: "Realisasi diproses",
+                                    },
+                                    {
+                                        value: "partial_realized",
+                                        label: "Realisasi sebagian",
+                                    },
+                                    { value: "realized", label: "Realized" },
+                                    { value: "rejected", label: "Rejected" },
+                                ]}
+                            />
+                            <label className="relative block">
+                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="search"
+                                    value={filters.search}
+                                    onChange={(event) =>
+                                        setFilters((current) => ({
+                                            ...current,
+                                            search: event.target.value,
+                                        }))
+                                    }
+                                    placeholder="Cari judul atau purpose"
+                                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm"
+                                />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                        {visibleItems.length ? (
+                            visibleItems.map((item) => (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => onSelectRequest(item.id)}
+                                    className="flex w-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-sky-300 hover:bg-sky-50 md:flex-row md:items-start md:justify-between"
+                                >
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <p className="font-semibold text-slate-900">
+                                                {item.request_title}
+                                            </p>
+                                            <StatusBadge status={item.status} />
+                                        </div>
+                                        <p className="mt-2 text-sm text-slate-600">
+                                            {item.purpose}
+                                        </p>
+                                        <p className="mt-2 text-xs font-medium text-slate-500">
+                                            {getAccommodationCustomerLabel(item)} · {getAccommodationProjectLabel(item)} · {formatDate(item.requested_at || item.created_at)}
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-sm md:min-w-72">
+                                        <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                            <p className="text-xs font-medium text-slate-500">
+                                                Request
+                                            </p>
+                                            <p className="mt-1 font-semibold text-slate-900">
+                                                {formatCurrency(item.requested_amount)}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-xl bg-amber-50 px-3 py-2">
+                                            <p className="text-xs font-medium text-amber-700">
+                                                Sisa
+                                            </p>
+                                            <p className="mt-1 font-semibold text-amber-900">
+                                                {item.approved_amount
+                                                    ? formatCurrency(item.remainingAmount)
+                                                    : "-"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+                            ))
+                        ) : (
+                            <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50 p-8 text-center text-sm text-sky-700">
+                                Tidak ada pengajuan yang sesuai filter.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

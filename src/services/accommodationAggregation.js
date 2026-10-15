@@ -6,6 +6,16 @@ const toAmount = (value) => {
 const getRequestDate = (item) =>
     item?.requested_at ?? item?.created_at ?? item?.reviewed_at ?? null;
 
+const normalizeStatus = (value) =>
+    String(value ?? "pending")
+        .trim()
+        .toLowerCase()
+        .replaceAll("-", "_")
+        .replaceAll(" ", "_");
+
+export const requiresAccommodationMonitoring = (item) =>
+    !["realized", "rejected"].includes(normalizeStatus(item?.status));
+
 const GROUP_STATUS_PRIORITY = {
     pending: 0,
     approved: 1,

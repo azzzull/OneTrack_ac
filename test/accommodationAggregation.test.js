@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { groupAccommodationRequestsByTechnician } from "../src/services/accommodationAggregation.js";
+import {
+    groupAccommodationRequestsByTechnician,
+    requiresAccommodationMonitoring,
+} from "../src/services/accommodationAggregation.js";
+
+test("only pending and unrealized accommodation requests appear in monitoring", () => {
+    assert.equal(requiresAccommodationMonitoring({ status: "pending" }), true);
+    assert.equal(
+        requiresAccommodationMonitoring({ status: "partial_realized" }),
+        true,
+    );
+    assert.equal(requiresAccommodationMonitoring({ status: "realized" }), false);
+    assert.equal(requiresAccommodationMonitoring({ status: "rejected" }), false);
+});
 
 test("accommodation requests are grouped and summarized by technician", () => {
     const groups = groupAccommodationRequestsByTechnician([
