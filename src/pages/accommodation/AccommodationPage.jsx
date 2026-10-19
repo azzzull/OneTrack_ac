@@ -325,9 +325,11 @@ export default function AccommodationPage({ mode = "technician" }) {
     );
 
     const unsettledRequestMessage = unsettledRequest
-        ? `Selesaikan realisasi pengajuan akomodasi "${
+        ? `Pengajuan baru belum dapat dibuat karena akomodasi "${
               unsettledRequest.request_title || "sebelumnya"
-          }" terlebih dahulu sebelum membuat pengajuan baru.`
+          }" yang diajukan pada ${formatDate(
+              unsettledRequest.requested_at || unsettledRequest.created_at,
+          )} belum direalisasikan sepenuhnya. Buka detail pengajuan tersebut untuk menambahkan realisasi.`
         : "";
 
     const customerOptions = useMemo(
