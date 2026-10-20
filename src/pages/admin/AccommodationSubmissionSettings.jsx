@@ -54,21 +54,22 @@ export default function AccommodationSubmissionSettings() {
         loadSetting();
     }, [loadSetting]);
 
-    const saveSetting = async () => {
+    const persistSetting = async ({ nextEnabled = enabled, successMessage }) => {
         setSaving(true);
         setMessage("");
         try {
             const setting = await saveAccommodationSubmissionBlockSetting({
-                enabled,
+                enabled: nextEnabled,
                 note,
             });
             setEnabled(setting.enabled);
             setNote(setting.note);
             setUpdatedAt(setting.updatedAt);
             setMessage(
-                setting.enabled
+                successMessage ||
+                    (setting.enabled
                     ? "Pembatasan pengajuan akomodasi telah diaktifkan."
-                    : "Pembatasan pengajuan akomodasi sementara dinonaktifkan.",
+                    : "Pembatasan pengajuan akomodasi sementara dinonaktifkan."),
             );
         } catch (error) {
             setMessage(
@@ -78,6 +79,16 @@ export default function AccommodationSubmissionSettings() {
             setSaving(false);
         }
     };
+
+    const saveSetting = () =>
+        persistSetting({
+            successMessage: "Catatan pengaturan telah disimpan.",
+        });
+
+    const toggleSetting = () =>
+        persistSetting({
+            nextEnabled: !enabled,
+        });
 
     return (
         <div className="min-h-screen bg-sky-50">
@@ -162,7 +173,7 @@ export default function AccommodationSubmissionSettings() {
                                                 role="switch"
                                                 aria-checked={enabled}
                                                 disabled={saving}
-                                                onClick={() => setEnabled((current) => !current)}
+                                                onClick={toggleSetting}
                                                 className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
                                                     enabled
                                                         ? "bg-emerald-600"
@@ -210,6 +221,7 @@ export default function AccommodationSubmissionSettings() {
                                             className="mt-0.5 shrink-0 text-amber-600"
                                         />
                                         <p>
+                                            Toggle langsung menyimpan perubahan.
                                             Saat pembatasan nonaktif, pengajuan
                                             baru tetap dapat masuk meskipun ada
                                             saldo akomodasi terdahulu yang belum
@@ -236,7 +248,7 @@ export default function AccommodationSubmissionSettings() {
                                             ) : (
                                                 <Save size={16} />
                                             )}
-                                            Simpan Pengaturan
+                                            Simpan Catatan
                                         </button>
                                     </div>
                                 </>
