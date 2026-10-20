@@ -14,6 +14,7 @@ import AdminMasterDataModulePage from "@/pages/admin/MasterDataModule";
 import AdminNewJobPage from "@/pages/admin/NewJob";
 import AdminRequestsPage from "@/pages/admin/Requests";
 import AdminAttendanceLogPage from "@/pages/admin/AttendanceLog";
+import AccommodationSubmissionSettings from "@/pages/admin/AccommodationSubmissionSettings";
 import AccommodationPage from "@/pages/accommodation/AccommodationPage";
 import AccommodationReports from "@/pages/accommodation/AccommodationReports";
 import OvertimeManagement from "@/pages/overtime/OvertimeManagement";
@@ -135,6 +136,14 @@ function App() {
                     element={
                         <ProtectedRoute allowedRoles={["admin", "management"]}>
                             <AccommodationReports />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/admin/accommodation-settings"
+                    element={
+                        <ProtectedRoute allowedRoles={["admin"]}>
+                            <AccommodationSubmissionSettings />
                         </ProtectedRoute>
                     }
                 />

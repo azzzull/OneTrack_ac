@@ -39,6 +39,8 @@ supabase/**/*.sql
 !supabase/migrations/202610100001_require_full_accommodation_realization_before_next_request.sql
 !supabase/migrations/202610150001_limit_accommodation_submission_block_to_30_days.sql
 !supabase/migrations/202610190001_explain_blocking_accommodation_submission.sql
+!supabase/migrations/202610200001_sync_accommodation_status_from_realization.sql
+!supabase/migrations/202610200002_add_accommodation_submission_block_setting.sql
 
 # Ignore ad-hoc markdown files, keep README files
 *.md

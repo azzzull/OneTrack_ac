@@ -17,11 +17,18 @@ test("only fully realized accommodation requests release the next submission", (
         approved_amount: 500_000,
         totalRealized: 500_000,
     };
+    const overRealization = {
+        status: "realized",
+        approved_amount: 500_000,
+        totalRealized: 635_000,
+    };
 
     assert.equal(isAccommodationFullyRealized(partialRealization), false);
     assert.equal(hasOpenAccommodationSettlement(partialRealization), true);
     assert.equal(isAccommodationFullyRealized(completedRealization), true);
     assert.equal(hasOpenAccommodationSettlement(completedRealization), false);
+    assert.equal(isAccommodationFullyRealized(overRealization), true);
+    assert.equal(hasOpenAccommodationSettlement(overRealization), false);
 });
 
 test("pending requests are blocked and rejected requests are terminal", () => {

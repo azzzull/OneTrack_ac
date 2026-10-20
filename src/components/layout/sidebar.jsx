@@ -20,6 +20,7 @@ import {
     ClipboardCheck,
     Plane,
     ShieldCheck,
+    ShieldAlert,
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
@@ -81,6 +82,11 @@ const menuByRole = {
         { label: "Pekerjaan", path: "/requests", icon: List },
         { label: "New Job", path: "/jobs/new", icon: Plus },
         { label: "Accommodation", path: "/admin/accommodation", icon: Wallet },
+        {
+            label: "Aturan Akomodasi",
+            path: "/admin/accommodation-settings",
+            icon: ShieldAlert,
+        },
         { label: "Master Data", path: "/master-data", icon: Database },
         { label: "Absensi", path: "/admin/attendance", icon: CalendarDays },
         { label: "Lembur", path: "/overtime", icon: Clock3 },

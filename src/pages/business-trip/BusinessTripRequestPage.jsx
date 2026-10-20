@@ -51,6 +51,33 @@ const inputClass = (hasError = false) =>
 
 const hasText = (value) => String(value ?? "").trim().length > 0;
 
+const getSubmitFailure = (error) => {
+    const message = String(error?.message ?? "").trim();
+    const normalizedMessage = message.toLowerCase();
+    const isAccommodationBlock =
+        normalizedMessage.includes("akomodasi") &&
+        (normalizedMessage.includes("belum direalisasikan") ||
+            normalizedMessage.includes("belum diselesaikan"));
+
+    if (isAccommodationBlock) {
+        return {
+            title: "Pengajuan ditahan oleh akomodasi sebelumnya",
+            message,
+            guidance:
+                "Selesaikan realisasi atau proses penolakan akomodasi tersebut terlebih dahulu, lalu ajukan kembali Business Trip ini.",
+        };
+    }
+
+    return {
+        title: "Pengajuan belum dapat dikirim",
+        message:
+            message ||
+            "Sistem belum dapat mengirim pengajuan. Periksa kembali data pengajuan, lalu coba lagi.",
+        guidance:
+            "Lengkapi atau perbaiki data yang disebutkan di atas, kemudian kirim ulang pengajuan.",
+    };
+};
+
 const todayInputValue = () => {
     const date = new Date();
     const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -81,6 +108,7 @@ export default function BusinessTripRequestPage() {
     const [touched, setTouched] = useState({});
     const [toast, setToast] = useState("");
     const [confirmOpen, setConfirmOpen] = useState(false);
+    const [submitFailure, setSubmitFailure] = useState(null);
     const [saving, setSaving] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [loadError, setLoadError] = useState("");
@@ -294,6 +322,7 @@ export default function BusinessTripRequestPage() {
             accommodation: true,
         });
         if (!canSubmit) return;
+        setSubmitFailure(null);
         setConfirmOpen(true);
     };
 
@@ -332,10 +361,7 @@ export default function BusinessTripRequestPage() {
         } catch (submitError) {
             console.error("[BusinessTrip] submit failed", submitError);
             setConfirmOpen(false);
-            showToast(
-                submitError?.message ||
-                    "Submit Trip gagal. Lengkapi data lalu coba lagi.",
-            );
+            setSubmitFailure(getSubmitFailure(submitError));
         } finally {
             setSubmitting(false);
         }
@@ -639,6 +665,45 @@ export default function BusinessTripRequestPage() {
                                 disabled={submitting}
                             >
                                 {submitting ? "Mengirim..." : "Ajukan"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {submitFailure && (
+                <div
+                    className="fixed inset-0 z-100 flex items-end bg-slate-950/45 p-4 md:items-center md:justify-center"
+                    role="presentation"
+                >
+                    <div
+                        role="alertdialog"
+                        aria-modal="true"
+                        aria-labelledby="business-trip-submit-failure-title"
+                        className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl"
+                    >
+                        <div className="flex gap-3">
+                            <span className="shrink-0 rounded-lg bg-rose-50 p-2.5 text-rose-600">
+                                <AlertCircle size={20} />
+                            </span>
+                            <div>
+                                <h3
+                                    id="business-trip-submit-failure-title"
+                                    className="text-base font-semibold text-slate-950"
+                                >
+                                    {submitFailure.title}
+                                </h3>
+                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                    {submitFailure.message}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="mt-4 rounded-lg bg-slate-50 px-3 py-2.5 text-[13px] leading-5 text-slate-600">
+                            {submitFailure.guidance}
+                        </div>
+                        <div className="mt-5 flex justify-end">
+                            <Button onClick={() => setSubmitFailure(null)}>
+                                Mengerti
                             </Button>
                         </div>
                     </div>
