@@ -6,6 +6,7 @@ import {
     useState,
 } from "react";
 import {
+    AlertTriangle,
     BarChart3,
     Camera,
     CheckCircle2,
@@ -13,8 +14,13 @@ import {
     FileImage,
     Filter,
     FolderOpen,
+    LoaderCircle,
     Plus,
+    Save,
     Search,
+    Settings2,
+    ShieldCheck,
+    ShieldOff,
     Trash2,
     Upload,
     X,
@@ -43,7 +49,11 @@ import {
     uploadAccommodationFile,
 } from "../../services/accommodationService";
 import { blocksNextAccommodationSubmission } from "../../services/accommodationSettlement";
-import { isAccommodationSubmissionBlockEnabled } from "../../services/accommodationSubmissionSettings";
+import {
+    getAccommodationSubmissionBlockSetting,
+    isAccommodationSubmissionBlockEnabled,
+    saveAccommodationSubmissionBlockSetting,
+} from "../../services/accommodationSubmissionSettings";
 import {
     groupAccommodationRequestsByTechnician,
     requiresAccommodationMonitoring,
@@ -137,6 +147,15 @@ const formatDate = (value) => {
     });
 };
 
+const formatSettingUpdatedAt = (value) => {
+    if (!value) return "Belum pernah diubah";
+
+    return new Intl.DateTimeFormat("id-ID", {
+        dateStyle: "medium",
+        timeStyle: "short",
+    }).format(new Date(value));
+};
+
 const getProjectLabel = (project) =>
     project?.project_name || project?.name || "Project";
 
@@ -171,6 +190,13 @@ export default function AccommodationPage({ mode = "technician" }) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [submissionBlockEnabled, setSubmissionBlockEnabled] = useState(true);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [settingsLoading, setSettingsLoading] = useState(false);
+    const [settingsSaving, setSettingsSaving] = useState(false);
+    const [settingsEnabled, setSettingsEnabled] = useState(true);
+    const [settingsNote, setSettingsNote] = useState("");
+    const [settingsUpdatedAt, setSettingsUpdatedAt] = useState(null);
+    const [settingsMessage, setSettingsMessage] = useState("");
     const [search, setSearch] = useState("");
     const [selectedId, setSelectedId] = useState(null);
     const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
@@ -237,6 +263,54 @@ export default function AccommodationPage({ mode = "technician" }) {
             return submissionBlockEnabled;
         }
     }, [submissionBlockEnabled]);
+
+    const openAccommodationSettings = async () => {
+        setSettingsOpen(true);
+        setSettingsLoading(true);
+        setSettingsMessage("");
+        try {
+            const setting = await getAccommodationSubmissionBlockSetting();
+            setSettingsEnabled(setting.enabled);
+            setSettingsNote(setting.note);
+            setSettingsUpdatedAt(setting.updatedAt);
+        } catch (error) {
+            setSettingsMessage(
+                error?.message || "Pengaturan pembatasan gagal dimuat.",
+            );
+        } finally {
+            setSettingsLoading(false);
+        }
+    };
+
+    const persistAccommodationSettings = async ({
+        nextEnabled = settingsEnabled,
+        successMessage,
+    } = {}) => {
+        setSettingsSaving(true);
+        setSettingsMessage("");
+        try {
+            const setting = await saveAccommodationSubmissionBlockSetting({
+                enabled: nextEnabled,
+                note: settingsNote,
+            });
+            setSettingsEnabled(setting.enabled);
+            setSettingsNote(setting.note);
+            setSettingsUpdatedAt(setting.updatedAt);
+            setSubmissionBlockEnabled(setting.enabled);
+            setSettingsMessage(
+                successMessage ||
+                    (setting.enabled
+                        ? "Pembatasan pengajuan akomodasi telah diaktifkan."
+                        : "Pembatasan pengajuan akomodasi sementara dinonaktifkan."),
+            );
+        } catch (error) {
+            setSettingsMessage(
+                error?.message || "Pengaturan pembatasan gagal disimpan.",
+            );
+        } finally {
+            setSettingsSaving(false);
+        }
+    };
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -603,6 +677,16 @@ export default function AccommodationPage({ mode = "technician" }) {
                                     Report
                                 </button>
                             )}
+                            {isAdmin && (
+                                <button
+                                    type="button"
+                                    onClick={openAccommodationSettings}
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50 md:py-3"
+                                >
+                                    <Settings2 size={16} />
+                                    Pengaturan
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -855,6 +939,154 @@ export default function AccommodationPage({ mode = "technician" }) {
                 >
                     <Plus size={26} />
                 </button>
+            )}
+
+            {settingsOpen && isAdmin && (
+                <Modal
+                    title="Aturan Pengajuan Akomodasi"
+                    onClose={() => setSettingsOpen(false)}
+                >
+                    {settingsLoading ? (
+                        <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-slate-500">
+                            <LoaderCircle className="animate-spin" size={18} />
+                            Memuat pengaturan…
+                        </div>
+                    ) : (
+                        <div className="space-y-5">
+                            <div
+                                className={`rounded-xl border p-4 ${
+                                    settingsEnabled
+                                        ? "border-emerald-200 bg-emerald-50"
+                                        : "border-amber-200 bg-amber-50"
+                                }`}
+                            >
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="flex gap-3">
+                                        <span
+                                            className={`mt-0.5 rounded-lg bg-white p-2 ${
+                                                settingsEnabled
+                                                    ? "text-emerald-700"
+                                                    : "text-amber-700"
+                                            }`}
+                                        >
+                                            {settingsEnabled ? (
+                                                <ShieldCheck size={19} />
+                                            ) : (
+                                                <ShieldOff size={19} />
+                                            )}
+                                        </span>
+                                        <div>
+                                            <h3 className="font-semibold text-slate-900">
+                                                {settingsEnabled
+                                                    ? "Pembatasan aktif"
+                                                    : "Pembatasan sementara nonaktif"}
+                                            </h3>
+                                            <p className="mt-1 text-sm leading-5 text-slate-600">
+                                                {settingsEnabled
+                                                    ? "Pengajuan baru ditahan bila akomodasi sebelumnya belum direalisasikan atau diselesaikan."
+                                                    : "Pengajuan akomodasi dan Business Trip baru dapat dikirim meskipun ada akomodasi sebelumnya yang belum selesai."}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={settingsEnabled}
+                                        disabled={settingsSaving}
+                                        onClick={() =>
+                                            persistAccommodationSettings({
+                                                nextEnabled: !settingsEnabled,
+                                            })
+                                        }
+                                        className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                            settingsEnabled
+                                                ? "bg-emerald-600"
+                                                : "bg-slate-400"
+                                        }`}
+                                    >
+                                        <span
+                                            className={`inline-block h-6 w-6 rounded-full bg-white shadow transition ${
+                                                settingsEnabled
+                                                    ? "translate-x-7"
+                                                    : "translate-x-1"
+                                            }`}
+                                        />
+                                        <span className="sr-only">
+                                            {settingsEnabled
+                                                ? "Nonaktifkan pembatasan"
+                                                : "Aktifkan pembatasan"}
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <label className="block">
+                                <span className="text-sm font-semibold text-slate-800">
+                                    Catatan perubahan
+                                </span>
+                                <span className="mt-1 block text-xs leading-5 text-slate-500">
+                                    Opsional. Jelaskan alasan mengubah aturan.
+                                </span>
+                                <textarea
+                                    value={settingsNote}
+                                    onChange={(event) =>
+                                        setSettingsNote(event.target.value)
+                                    }
+                                    rows={3}
+                                    placeholder="Contoh: Pemutihan data akomodasi sampai 31 Oktober."
+                                    className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                                />
+                            </label>
+
+                            <div className="flex items-start gap-2 text-xs leading-5 text-slate-500">
+                                <AlertTriangle
+                                    size={15}
+                                    className="mt-0.5 shrink-0 text-amber-600"
+                                />
+                                <p>
+                                    Toggle langsung menyimpan perubahan. Saat
+                                    nonaktif, pengajuan baru tetap dapat masuk
+                                    meskipun ada saldo akomodasi terdahulu yang
+                                    belum selesai.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                                <p className="text-xs text-slate-500">
+                                    Terakhir diperbarui: {formatSettingUpdatedAt(settingsUpdatedAt)}
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        persistAccommodationSettings({
+                                            successMessage:
+                                                "Catatan pengaturan telah disimpan.",
+                                        })
+                                    }
+                                    disabled={settingsSaving}
+                                    className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {settingsSaving ? (
+                                        <LoaderCircle
+                                            className="animate-spin"
+                                            size={16}
+                                        />
+                                    ) : (
+                                        <Save size={16} />
+                                    )}
+                                    Simpan Catatan
+                                </button>
+                            </div>
+
+                            {settingsMessage && (
+                                <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                    {settingsMessage}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </Modal>
             )}
 
             {createOpen && (
