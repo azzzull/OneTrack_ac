@@ -41,6 +41,7 @@ supabase/**/*.sql
 !supabase/migrations/202610190001_explain_blocking_accommodation_submission.sql
 !supabase/migrations/202610200001_sync_accommodation_status_from_realization.sql
 !supabase/migrations/202610200002_add_accommodation_submission_block_setting.sql
+!supabase/migrations/202610210001_allow_clients_to_read_accommodation_submission_gate.sql
 
 # Ignore ad-hoc markdown files, keep README files
 *.md

@@ -43,6 +43,7 @@ import {
     uploadAccommodationFile,
 } from "../../services/accommodationService";
 import { blocksNextAccommodationSubmission } from "../../services/accommodationSettlement";
+import { isAccommodationSubmissionBlockEnabled } from "../../services/accommodationSubmissionSettings";
 import {
     groupAccommodationRequestsByTechnician,
     requiresAccommodationMonitoring,
@@ -169,6 +170,7 @@ export default function AccommodationPage({ mode = "technician" }) {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [submissionBlockEnabled, setSubmissionBlockEnabled] = useState(true);
     const [search, setSearch] = useState("");
     const [selectedId, setSelectedId] = useState(null);
     const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
@@ -223,13 +225,27 @@ export default function AccommodationPage({ mode = "technician" }) {
         }
     }, [role, userId]);
 
+    const refreshSubmissionBlockSetting = useCallback(async () => {
+        try {
+            const enabled = await isAccommodationSubmissionBlockEnabled();
+            if (isMountedRef.current) {
+                setSubmissionBlockEnabled(enabled);
+            }
+            return enabled;
+        } catch (error) {
+            console.error("Accommodation submission setting load failed:", error);
+            return submissionBlockEnabled;
+        }
+    }, [submissionBlockEnabled]);
+
     useEffect(() => {
         isMountedRef.current = true;
         queueMicrotask(loadData);
+        queueMicrotask(refreshSubmissionBlockSetting);
         return () => {
             isMountedRef.current = false;
         };
-    }, [loadData]);
+    }, [loadData, refreshSubmissionBlockSetting]);
 
     useEffect(() => {
         if (!userId) return;
@@ -314,7 +330,7 @@ export default function AccommodationPage({ mode = "technician" }) {
         [requests, selectedId],
     );
 
-    const unsettledRequest = useMemo(
+    const pendingSettlementRequest = useMemo(
         () =>
             requests.find(
                 (request) =>
@@ -324,11 +340,16 @@ export default function AccommodationPage({ mode = "technician" }) {
         [requests, userId],
     );
 
-    const unsettledRequestMessage = unsettledRequest
+    const unsettledRequest = submissionBlockEnabled
+        ? pendingSettlementRequest
+        : null;
+
+    const getUnsettledRequestMessage = (request) =>
+        request
         ? `Pengajuan baru belum dapat dibuat karena akomodasi "${
-              unsettledRequest.request_title || "sebelumnya"
+              request.request_title || "sebelumnya"
           }" yang diajukan pada ${formatDate(
-              unsettledRequest.requested_at || unsettledRequest.created_at,
+              request.requested_at || request.created_at,
           )} belum direalisasikan sepenuhnya. Buka detail pengajuan tersebut untuk menambahkan realisasi.`
         : "";
 
@@ -359,10 +380,14 @@ export default function AccommodationPage({ mode = "technician" }) {
             });
             return;
         }
-        if (unsettledRequest) {
-            await showAlert(unsettledRequestMessage, {
-                title: "Realisasi Belum Selesai",
-            });
+        const isBlockEnabled = await refreshSubmissionBlockSetting();
+        if (isBlockEnabled && pendingSettlementRequest) {
+            await showAlert(
+                getUnsettledRequestMessage(pendingSettlementRequest),
+                {
+                    title: "Realisasi Belum Selesai",
+                },
+            );
             return;
         }
         setCreateForm({ customerId: "", projectId: "" });
@@ -371,10 +396,14 @@ export default function AccommodationPage({ mode = "technician" }) {
 
     const submitCreate = async (event) => {
         event.preventDefault();
-        if (unsettledRequest) {
-            await showAlert(unsettledRequestMessage, {
-                title: "Realisasi Belum Selesai",
-            });
+        const isBlockEnabled = await refreshSubmissionBlockSetting();
+        if (isBlockEnabled && pendingSettlementRequest) {
+            await showAlert(
+                getUnsettledRequestMessage(pendingSettlementRequest),
+                {
+                    title: "Realisasi Belum Selesai",
+                },
+            );
             return;
         }
         const formData = new FormData(event.currentTarget);

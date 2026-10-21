@@ -16,6 +16,15 @@ export const getAccommodationSubmissionBlockSetting = async () => {
     return normalizeSetting(Array.isArray(data) ? data[0] : data);
 };
 
+export const isAccommodationSubmissionBlockEnabled = async () => {
+    const { data, error } = await supabase.rpc(
+        "is_accommodation_submission_block_enabled",
+    );
+
+    if (error) throw error;
+    return data !== false;
+};
+
 export const saveAccommodationSubmissionBlockSetting = async ({
     enabled,
     note,
