@@ -201,6 +201,7 @@ export default function AccommodationPage({ mode = "technician" }) {
     const [selectedId, setSelectedId] = useState(null);
     const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
     const [createOpen, setCreateOpen] = useState(false);
+    const [createValidationError, setCreateValidationError] = useState("");
     const [createForm, setCreateForm] = useState({
         customerId: "",
         projectId: "",
@@ -465,12 +466,32 @@ export default function AccommodationPage({ mode = "technician" }) {
             return;
         }
         setCreateForm({ customerId: "", projectId: "" });
+        setCreateValidationError("");
         setCreateOpen(true);
     };
 
     const submitCreate = async (event) => {
         event.preventDefault();
-        const isBlockEnabled = await refreshSubmissionBlockSetting();
+        const formData = new FormData(event.currentTarget);
+        const requestTitle = String(formData.get("request_title") ?? "").trim();
+        const requestedAmount = Number(formData.get("requested_amount") ?? 0);
+        const purpose = String(formData.get("purpose") ?? "").trim();
+
+        if (!requestTitle || !requestedAmount || !purpose) {
+            setCreateValidationError(
+                "Lengkapi judul, nominal pengajuan, dan keperluan sebelum mengirim.",
+            );
+            return;
+        }
+
+        setCreateValidationError("");
+
+        // Once the admin has opened the gate, do not delay a submission by
+        // reading the setting again. The database trigger remains the source
+        // of truth if the setting changes again in the meantime.
+        const isBlockEnabled = submissionBlockEnabled
+            ? await refreshSubmissionBlockSetting()
+            : false;
         if (isBlockEnabled && pendingSettlementRequest) {
             await showAlert(
                 getUnsettledRequestMessage(pendingSettlementRequest),
@@ -480,7 +501,6 @@ export default function AccommodationPage({ mode = "technician" }) {
             );
             return;
         }
-        const formData = new FormData(event.currentTarget);
         const selectedCustomer = customers.find(
             (customer) => customer.id === createForm.customerId,
         );
@@ -503,6 +523,9 @@ export default function AccommodationPage({ mode = "technician" }) {
             setCreateForm({ customerId: "", projectId: "" });
             setCreateOpen(false);
             await loadData();
+            await showAlert("Pengajuan akomodasi berhasil dikirim.", {
+                title: "Berhasil",
+            });
         } catch (error) {
             await showAlert(error?.message ?? "Gagal membuat pengajuan.", {
                 title: "Gagal",
@@ -1094,11 +1117,13 @@ export default function AccommodationPage({ mode = "technician" }) {
                     title="Create Accommodation Request"
                     onClose={() => {
                         setCreateForm({ customerId: "", projectId: "" });
+                        setCreateValidationError("");
                         setCreateOpen(false);
                     }}
                 >
                     <form
                         onSubmit={submitCreate}
+                        noValidate
                         className="grid gap-3 md:grid-cols-2"
                     >
                         <TextInput
@@ -1164,6 +1189,14 @@ export default function AccommodationPage({ mode = "technician" }) {
                             label="Submit Request"
                             className="md:col-span-2"
                         />
+                        {createValidationError && (
+                            <p
+                                role="alert"
+                                className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                            >
+                                {createValidationError}
+                            </p>
+                        )}
                     </form>
                 </Modal>
             )}
