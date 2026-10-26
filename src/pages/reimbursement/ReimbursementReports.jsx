@@ -12,15 +12,19 @@ import {
     CheckCircle2,
     Clock3,
     Download,
+    Eye,
+    FileImage,
     Filter,
     Loader,
     Receipt,
     Search,
     Wallet,
+    X,
     XCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
+import ImagePreviewModal from "../../components/ImagePreviewModal";
 import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
@@ -40,6 +44,7 @@ import {
     loadReimbursements,
 } from "../../services/reimbursementService";
 import {
+    groupReimbursementsByRequester,
     normalizePaymentStatus,
     summarizeReimbursements,
     validateReimbursementItem,
@@ -74,6 +79,8 @@ const getWeekStart = (date) => {
 };
 
 const matchesPeriod = (row, filters) => {
+    if (filters.period === "all") return true;
+
     const dateKey = toDateKey(row.transaction_date);
     if (!dateKey) return false;
     const now = new Date();
@@ -91,6 +98,28 @@ const matchesPeriod = (row, filters) => {
         if (filters.dateTo && dateKey > filters.dateTo) return false;
     }
     return true;
+};
+
+const isImageUrl = (url) =>
+    /\.(png|jpe?g|webp|gif|bmp|avif)(\?.*)?$/i.test(String(url ?? ""));
+
+const GROUP_STATUS_LABELS = {
+    pending: "Pending",
+    partial_approved: "Sebagian Disetujui",
+    awaiting_payment: "Menunggu Pembayaran",
+    paid: "Selesai Dibayar",
+    approved: "Approved",
+    rejected: "Rejected",
+};
+
+const groupStatusStyle = (status) => {
+    if (status === "awaiting_payment") return "bg-orange-100 text-orange-700";
+    if (status === "paid") return "bg-emerald-100 text-emerald-700";
+    return (
+        REIMBURSEMENT_STATUS_STYLES[
+            status.startsWith("partial_") ? "pending" : status
+        ] ?? REIMBURSEMENT_STATUS_STYLES.pending
+    );
 };
 
 const SummaryCard = ({ label, value, icon: Icon, compact = false }) => (
@@ -133,10 +162,12 @@ export default function ReimbursementReports() {
     const navigate = useNavigate();
     const [rows, setRows] = useState([]);
     const [requesters, setRequesters] = useState([]);
+    const [selectedRequesterId, setSelectedRequesterId] = useState(null);
+    const [preview, setPreview] = useState({ src: "", title: "" });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [filters, setFilters] = useState({
-        period: "month",
+        period: "all",
         dateFrom: "",
         dateTo: "",
         requesterId: "",
@@ -243,6 +274,29 @@ export default function ReimbursementReports() {
             difference: result.claimAmount - result.approvedAmount,
         };
     }, [filteredRows]);
+
+    // Unlike the review page, this report intentionally groups every matching
+    // record, including paid and rejected reimbursements.
+    const requesterGroups = useMemo(
+        () => groupReimbursementsByRequester(filteredRows),
+        [filteredRows],
+    );
+
+    const selectedRequesterGroup = useMemo(
+        () =>
+            requesterGroups.find((group) => group.id === selectedRequesterId) ??
+            null,
+        [requesterGroups, selectedRequesterId],
+    );
+
+    const openFile = (url, title) => {
+        if (!url) return;
+        if (isImageUrl(url)) {
+            setPreview({ src: url, title });
+            return;
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
+    };
 
     const exportExcel = async () => {
         const rowsForExcel = filteredRows.map((row, index) => {
@@ -471,6 +525,7 @@ export default function ReimbursementReports() {
                                     }))
                                 }
                                 options={[
+                                    { value: "all", label: "Semua periode" },
                                     { value: "today", label: "Hari ini" },
                                     { value: "week", label: "Minggu ini" },
                                     { value: "month", label: "Bulan ini" },
@@ -556,133 +611,377 @@ export default function ReimbursementReports() {
                         </div>
                     </div>
 
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                        {loading ? (
-                            <div className="flex items-center justify-center gap-2 p-8 text-slate-600">
-                                <Loader size={18} className="animate-spin" />
-                                Memuat data...
-                            </div>
-                        ) : filteredRows.length === 0 ? (
-                            <div className="p-8 text-center text-sm text-slate-500">
-                                Tidak ada data reimburse.
-                            </div>
-                        ) : (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="border-b border-slate-200 bg-slate-100 text-left text-slate-700">
-                                        <tr>
-                                            <th className="px-4 py-3">
-                                                Pengaju
-                                            </th>
-                                            <th className="px-4 py-3">
-                                                Tanggal Transaksi
-                                            </th>
-                                            <th className="px-4 py-3">
-                                                Keterangan
-                                            </th>
-                                            <th className="px-4 py-3">Klaim</th>
-                                            <th className="px-4 py-3">
-                                                Disetujui
-                                            </th>
-                                            <th className="px-4 py-3">
-                                                Status Approval
-                                            </th>
-                                            <th className="px-4 py-3">
-                                                Pembayaran
-                                            </th>
-                                            <th className="px-4 py-3">
-                                                Approved By
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {filteredRows.map((row) => (
-                                            <tr
-                                                key={row.id}
-                                                className="hover:bg-slate-50"
-                                            >
-                                                <td className="px-4 py-3 font-semibold text-slate-900">
-                                                    {getDisplayName(
-                                                        row.requester,
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3 text-slate-700">
-                                                    {formatDate(
-                                                        row.transaction_date,
-                                                    )}
-                                                </td>
-                                                <td className="max-w-xs px-4 py-3 text-slate-700">
-                                                    <span className="line-clamp-2">
-                                                        {row.description}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 font-semibold text-slate-900">
-                                                    {formatCurrency(
-                                                        row.claim_amount,
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3 font-semibold text-slate-900">
-                                                    {row.approved_amount
-                                                        ? formatCurrency(
-                                                              row.approved_amount,
-                                                          )
-                                                        : "-"}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span
-                                                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                                                            REIMBURSEMENT_STATUS_STYLES[
-                                                                row.status
-                                                            ]
-                                                        }`}
-                                                    >
-                                                        {
-                                                            REIMBURSEMENT_STATUS_LABELS[
-                                                                row.status
-                                                            ]
-                                                        }
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    {row.status === "approved" ? (
+                    {loading ? (
+                        <div className="flex items-center justify-center gap-2 rounded-2xl bg-white p-8 text-slate-600 shadow-sm">
+                            <Loader size={18} className="animate-spin" />
+                            Memuat data...
+                        </div>
+                    ) : requesterGroups.length === 0 ? (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+                            Tidak ada data reimburse.
+                        </div>
+                    ) : (
+                        <section className="space-y-4">
+                            {requesterGroups.map((group) => {
+                                const paidAmount = Math.max(
+                                    0,
+                                    group.approvedAmount - group.unpaidAmount,
+                                );
+
+                                return (
+                                    <article
+                                        key={group.id}
+                                        className="overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md md:hover:scale-[1.01]"
+                                    >
+                                        <div className="p-4 md:p-5">
+                                            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <h2 className="text-base font-semibold text-slate-900">
+                                                            {getDisplayName(group.requester)}
+                                                        </h2>
                                                         <span
-                                                            className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                                                                normalizePaymentStatus(
-                                                                    row.payment_status,
-                                                                ) === "paid" &&
-                                                                row.transfer_proof_url
-                                                                    ? "bg-emerald-100 text-emerald-700"
-                                                                    : "bg-orange-100 text-orange-700"
-                                                            }`}
+                                                            className={`rounded-full px-2 py-1 text-xs font-semibold ${groupStatusStyle(group.status)}`}
                                                         >
-                                                            {normalizePaymentStatus(
-                                                                row.payment_status,
-                                                            ) === "paid" &&
-                                                            row.transfer_proof_url
-                                                                ? "Sudah Dibayar"
-                                                                : "Menunggu Dibayar"}
+                                                            {GROUP_STATUS_LABELS[
+                                                                group.status
+                                                            ] ?? "Reimburse"}
                                                         </span>
-                                                    ) : (
-                                                        <span className="text-xs text-slate-400">
-                                                            -
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3 text-slate-700">
-                                                    {getDisplayName(
-                                                        row.approver,
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
+                                                    </div>
+                                                    <p className="mt-2 text-sm text-slate-600">
+                                                        {group.items.length} transaksi
+                                                        {group.items.length === 1
+                                                            ? ""
+                                                            : " reimburse"}
+                                                        {group.paid > 0 &&
+                                                            ` · ${group.paid} sudah dibayar`}
+                                                        {group.unpaid > 0 &&
+                                                            ` · ${group.unpaid} menunggu pembayaran`}
+                                                    </p>
+                                                    <p className="mt-2 text-xs font-medium text-slate-500">
+                                                        Transaksi terbaru {formatDate(group.latestAt)}
+                                                    </p>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 md:min-w-[38rem]">
+                                                    <ReportAmount
+                                                        label="Total Klaim"
+                                                        value={formatCurrency(
+                                                            group.totalReimburse,
+                                                        )}
+                                                        className="bg-slate-50 text-slate-900"
+                                                    />
+                                                    <ReportAmount
+                                                        label="Disetujui"
+                                                        value={formatCurrency(
+                                                            group.approvedAmount,
+                                                        )}
+                                                        className="bg-sky-50 text-sky-900"
+                                                    />
+                                                    <ReportAmount
+                                                        label="Sudah Dibayar"
+                                                        value={formatCurrency(paidAmount)}
+                                                        className="bg-emerald-50 text-emerald-900"
+                                                    />
+                                                    <ReportAmount
+                                                        label="Menunggu Pembayaran"
+                                                        value={formatCurrency(
+                                                            group.unpaidAmount,
+                                                        )}
+                                                        className="bg-orange-50 text-orange-900"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSelectedRequesterId(group.id)
+                                                    }
+                                                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                                >
+                                                    <Eye size={15} />
+                                                    Lihat semua transaksi
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </article>
+                                );
+                            })}
+                        </section>
+                    )}
                 </main>
             </div>
             <MobileBottomNav />
+            {selectedRequesterGroup && (
+                <ReportRequesterDetailModal
+                    group={selectedRequesterGroup}
+                    onClose={() => setSelectedRequesterId(null)}
+                    onOpenFile={openFile}
+                />
+            )}
+            <ImagePreviewModal
+                title={preview.title}
+                src={preview.src}
+                alt={preview.title}
+                onClose={() => setPreview({ src: "", title: "" })}
+            />
+        </div>
+    );
+}
+
+function ReportAmount({ label, value, className }) {
+    return (
+        <div className={`rounded-xl p-3 ${className}`}>
+            <p className="text-xs font-medium opacity-70">{label}</p>
+            <p className="mt-1 break-words font-semibold">{value}</p>
+        </div>
+    );
+}
+
+function ReportRequesterDetailModal({ group, onClose, onOpenFile }) {
+    const paidCount = group.items.filter(
+        (item) =>
+            item.status === "approved" &&
+            normalizePaymentStatus(item.payment_status) === "paid" &&
+            Boolean(item.transfer_proof_url),
+    ).length;
+    const paidAmount = Math.max(
+        0,
+        group.approvedAmount - group.unpaidAmount,
+    );
+
+    const receiptButtons = (item) => {
+        const attachments = item.attachments ?? [];
+        if (!attachments.length) {
+            return <span className="text-xs text-slate-500">Tidak ada bukti nota</span>;
+        }
+
+        return attachments.map((attachment, index) => (
+            <button
+                key={attachment.id ?? `${item.id}-${index}`}
+                type="button"
+                onClick={() =>
+                    onOpenFile(
+                        attachment.file_url,
+                        `Bukti nota ${index + 1}`,
+                    )
+                }
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+                <FileImage size={13} />
+                Lihat nota{attachments.length > 1 ? ` ${index + 1}` : ""}
+            </button>
+        ));
+    };
+
+    const paymentStatus = (item) => {
+        if (item.status !== "approved") {
+            return <span className="text-xs text-slate-400">-</span>;
+        }
+
+        const isPaid =
+            normalizePaymentStatus(item.payment_status) === "paid" &&
+            Boolean(item.transfer_proof_url);
+        return (
+            <span
+                className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                    isPaid
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-orange-100 text-orange-700"
+                }`}
+            >
+                {isPaid ? "Sudah Dibayar" : "Menunggu Dibayar"}
+            </span>
+        );
+    };
+
+    const transferProof = (item) => {
+        if (!item.transfer_proof_url) return null;
+        const batchLabel = item.reimbursement_payment_batch?.batch_number
+            ? ` · Batch #${item.reimbursement_payment_batch.batch_number}`
+            : "";
+
+        return (
+            <button
+                type="button"
+                onClick={() =>
+                    onOpenFile(item.transfer_proof_url, "Bukti transfer")
+                }
+                className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+            >
+                <FileImage size={13} />
+                Bukti transfer{batchLabel}
+            </button>
+        );
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-0 md:p-4">
+            <div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl md:max-h-[92vh] md:max-w-6xl md:rounded-2xl">
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4 md:px-5">
+                    <div className="min-w-0">
+                        <h2 className="truncate text-lg font-semibold text-slate-900">
+                            {getDisplayName(group.requester)}
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-600">
+                            {group.items.length} transaksi hasil filter report,
+                            termasuk {paidCount} yang sudah dibayar.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                        aria-label="Tutup detail reimburse"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
+                    <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                        <ReportAmount
+                            label="Total Klaim"
+                            value={formatCurrency(group.totalReimburse)}
+                            className="bg-slate-50 text-slate-900"
+                        />
+                        <ReportAmount
+                            label="Disetujui"
+                            value={formatCurrency(group.approvedAmount)}
+                            className="bg-sky-50 text-sky-900"
+                        />
+                        <ReportAmount
+                            label="Sudah Dibayar"
+                            value={formatCurrency(paidAmount)}
+                            className="bg-emerald-50 text-emerald-900"
+                        />
+                        <ReportAmount
+                            label="Menunggu Pembayaran"
+                            value={formatCurrency(group.unpaidAmount)}
+                            className="bg-orange-50 text-orange-900"
+                        />
+                    </div>
+
+                    <div className="mt-5 hidden overflow-x-auto rounded-2xl border border-slate-200 md:block">
+                        <table className="min-w-full text-left text-sm">
+                            <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th className="px-4 py-3">Tanggal</th>
+                                    <th className="px-4 py-3">Keterangan</th>
+                                    <th className="px-4 py-3">Nominal</th>
+                                    <th className="px-4 py-3">Status Approval</th>
+                                    <th className="px-4 py-3">Pembayaran</th>
+                                    <th className="px-4 py-3">Bukti</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {group.items.map((item) => (
+                                    <tr key={item.id} className="align-top hover:bg-slate-50">
+                                        <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                                            {formatDate(item.transaction_date)}
+                                        </td>
+                                        <td className="min-w-72 px-4 py-3 text-slate-700">
+                                            <p>{item.description}</p>
+                                            {item.approval_note && (
+                                                <p className="mt-1 text-xs text-slate-500">
+                                                    Catatan approval: {item.approval_note}
+                                                </p>
+                                            )}
+                                            {item.rejection_reason && (
+                                                <p className="mt-1 text-xs text-red-600">
+                                                    Alasan penolakan: {item.rejection_reason}
+                                                </p>
+                                            )}
+                                            {item.approved_by && (
+                                                <p className="mt-1 text-xs text-slate-500">
+                                                    Disetujui oleh: {getDisplayName(item.approver)}
+                                                </p>
+                                            )}
+                                        </td>
+                                        <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-900">
+                                            {formatCurrency(item.claim_amount)}
+                                            {item.status === "approved" && (
+                                                <p className="mt-1 text-xs font-medium text-emerald-700">
+                                                    Disetujui {formatCurrency(item.approved_amount)}
+                                                </p>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span
+                                                className={`rounded-full px-2 py-1 text-xs font-semibold ${REIMBURSEMENT_STATUS_STYLES[item.status]}`}
+                                            >
+                                                {REIMBURSEMENT_STATUS_LABELS[item.status]}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3">{paymentStatus(item)}</td>
+                                        <td className="min-w-44 px-4 py-3">
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {receiptButtons(item)}
+                                            </div>
+                                            {transferProof(item)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="mt-5 space-y-3 md:hidden">
+                        {group.items.map((item) => (
+                            <article
+                                key={item.id}
+                                className="rounded-2xl border border-slate-200 p-4"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-semibold text-slate-900">
+                                            {formatDate(item.transaction_date)}
+                                        </p>
+                                        <p className="mt-1 text-sm text-slate-700">
+                                            {item.description}
+                                        </p>
+                                    </div>
+                                    <span
+                                        className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${REIMBURSEMENT_STATUS_STYLES[item.status]}`}
+                                    >
+                                        {REIMBURSEMENT_STATUS_LABELS[item.status]}
+                                    </span>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <span className="font-semibold text-slate-900">
+                                        {formatCurrency(item.claim_amount)}
+                                    </span>
+                                    {item.status === "approved" && (
+                                        <span className="text-xs font-medium text-emerald-700">
+                                            Disetujui {formatCurrency(item.approved_amount)}
+                                        </span>
+                                    )}
+                                    {paymentStatus(item)}
+                                </div>
+                                {item.approval_note && (
+                                    <p className="mt-2 text-xs text-slate-500">
+                                        Catatan approval: {item.approval_note}
+                                    </p>
+                                )}
+                                {item.rejection_reason && (
+                                    <p className="mt-2 text-xs text-red-600">
+                                        Alasan penolakan: {item.rejection_reason}
+                                    </p>
+                                )}
+                                {item.approved_by && (
+                                    <p className="mt-2 text-xs text-slate-500">
+                                        Disetujui oleh: {getDisplayName(item.approver)}
+                                    </p>
+                                )}
+                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                    {receiptButtons(item)}
+                                </div>
+                                {transferProof(item)}
+                            </article>
+                        ))}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
