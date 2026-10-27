@@ -78,6 +78,7 @@ const PREVIEW_ROWS = [
         employeeId: "preview-arif",
         amount: 4200000,
         approvedAmount: 4000000,
+        approvedBy: { first_name: "Dewi Putri", role: "management" },
         actualAmount: 3850000,
         businessTripNo: "BT-26092403",
         businessTripTitle: "Commissioning Unit B",
@@ -94,6 +95,7 @@ const PREVIEW_ROWS = [
         employeeId: "preview-syifa",
         amount: 450000,
         approvedAmount: 450000,
+        approvedBy: { first_name: "Dewi Putri", role: "management" },
         actualAmount: 450000,
         businessTripNo: "",
         businessTripTitle: "",
@@ -110,6 +112,7 @@ const PREVIEW_ROWS = [
         employeeId: "preview-mustofa",
         amount: 275000,
         approvedAmount: 250000,
+        approvedBy: { first_name: "Dewi Putri", role: "management" },
         actualAmount: 0,
         businessTripNo: "",
         businessTripTitle: "",
@@ -254,6 +257,7 @@ export default function GeneralReports({ preview = false }) {
             return [
                 categoryLabel(row.category),
                 getDisplayName(row.employee),
+                getDisplayName(row.approvedBy),
                 row.projectName,
                 row.businessTripNo,
                 row.businessTripTitle,
@@ -306,6 +310,7 @@ export default function GeneralReports({ preview = false }) {
         { key: "businessTrip", header: "Business Trip" },
         { key: "description", header: "Judul / Keterangan" },
         { key: "approvedAmount", header: "Nominal Disetujui" },
+        { key: "approvedBy", header: "Approved By" },
         { key: "transferProof", header: "Bukti Transfer" },
     ];
 
@@ -319,6 +324,7 @@ export default function GeneralReports({ preview = false }) {
                 businessTrip: getBusinessTripLabel(row) || "-",
                 description: row.description,
                 approvedAmount: row.approvedAmount,
+                approvedBy: getDisplayName(row.approvedBy),
                 transferProof: row.transferProofUrl || "-",
             })),
         [filteredRows],
@@ -561,7 +567,7 @@ export default function GeneralReports({ preview = false }) {
                         </div>
 
                         <div className="overflow-x-auto">
-                            <table className="min-w-[52rem] w-full text-left text-sm">
+                            <table className="min-w-[60rem] w-full text-left text-sm">
                                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     <tr>
                                         <th className="px-4 py-3">Tanggal</th>
@@ -570,6 +576,7 @@ export default function GeneralReports({ preview = false }) {
                                         <th className="px-4 py-3">Project / Business Trip</th>
                                         <th className="px-4 py-3">Judul / Keterangan</th>
                                         <th className="px-4 py-3 text-right">Disetujui</th>
+                                        <th className="px-4 py-3">Approved By</th>
                                         <th className="px-4 py-3">Bukti Transfer</th>
                                     </tr>
                                 </thead>
@@ -577,7 +584,7 @@ export default function GeneralReports({ preview = false }) {
                                     {loading ? (
                                         <tr>
                                             <td
-                                                colSpan={7}
+                                                colSpan={8}
                                                 className="px-4 py-10 text-center text-slate-500"
                                             >
                                                 <span className="inline-flex items-center gap-2">
@@ -628,6 +635,9 @@ export default function GeneralReports({ preview = false }) {
                                                 <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">
                                                     {formatCurrency(row.approvedAmount)}
                                                 </td>
+                                                <td className="px-4 py-3 text-slate-700">
+                                                    {getDisplayName(row.approvedBy)}
+                                                </td>
                                                 <td className="px-4 py-3">
                                                     {row.transferProofUrl ? (
                                                         <button
@@ -654,7 +664,7 @@ export default function GeneralReports({ preview = false }) {
                                     ) : (
                                         <tr>
                                             <td
-                                                colSpan={7}
+                                                colSpan={8}
                                                 className="px-4 py-10 text-center text-slate-500"
                                             >
                                                 <span className="inline-flex items-center gap-2">
