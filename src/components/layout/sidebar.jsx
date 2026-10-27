@@ -50,7 +50,7 @@ const menuByRole = {
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
         {
-            label: "Laporan Umum",
+            label: "General Report",
             path: "/reports/general",
             icon: BarChart3,
         },
@@ -93,7 +93,7 @@ const menuByRole = {
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
         {
-            label: "Laporan Umum",
+            label: "General Report",
             path: "/reports/general",
             icon: BarChart3,
         },
