@@ -20,6 +20,7 @@ import AccommodationReports from "@/pages/accommodation/AccommodationReports";
 import OvertimeManagement from "@/pages/overtime/OvertimeManagement";
 import ReimbursementPage from "@/pages/reimbursement/ReimbursementPage";
 import ReimbursementReports from "@/pages/reimbursement/ReimbursementReports";
+import GeneralReports from "@/pages/reports/GeneralReports";
 import LoanPage from "@/pages/loan/LoanPage";
 import LoanReports from "@/pages/loan/LoanReports";
 import BusinessTripRoutes from "@/pages/business-trip/BusinessTripRoutes";
@@ -280,6 +281,20 @@ function App() {
                         </ProtectedRoute>
                     }
                 />
+                <Route
+                    path="/reports/general"
+                    element={
+                        <ProtectedRoute allowedRoles={["admin", "management"]}>
+                            <GeneralReports />
+                        </ProtectedRoute>
+                    }
+                />
+                {import.meta.env.DEV && (
+                    <Route
+                        path="/preview/general-report"
+                        element={<GeneralReports preview />}
+                    />
+                )}
                 <Route
                     path="/loans"
                     element={

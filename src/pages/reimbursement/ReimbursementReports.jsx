@@ -1,5 +1,4 @@
 import {
-    createElement,
     useCallback,
     useEffect,
     useMemo,
@@ -25,6 +24,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import ImagePreviewModal from "../../components/ImagePreviewModal";
+import ReportSummaryCard from "../../components/reports/ReportSummaryCard";
 import CustomSelect from "../../components/ui/CustomSelect";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
@@ -121,40 +121,6 @@ const groupStatusStyle = (status) => {
         ] ?? REIMBURSEMENT_STATUS_STYLES.pending
     );
 };
-
-const SummaryCard = ({ label, value, icon: Icon, compact = false }) => (
-    <div
-        className={`rounded-2xl bg-white shadow-sm ${
-            compact ? "h-25 p-3" : "p-4"
-        }`}
-    >
-        <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-                <p
-                    className={`${
-                        compact ? "line-clamp-2 min-h-8 text-xs" : "text-sm"
-                    } text-slate-500`}
-                >
-                    {label}
-                </p>
-                <p
-                    className={`mt-1 wrap-break-word font-semibold text-slate-900 ${
-                        compact ? "text-lg" : "text-2xl"
-                    }`}
-                >
-                    {value}
-                </p>
-            </div>
-            <span
-                className={`shrink-0 rounded-2xl bg-sky-50 text-sky-500 ${
-                    compact ? "p-2" : "p-3"
-                }`}
-            >
-                {createElement(Icon, { size: compact ? 18 : 22 })}
-            </span>
-        </div>
-    </div>
-);
 
 export default function ReimbursementReports() {
     const { collapsed, toggle } = useSidebarCollapsed();
@@ -422,7 +388,7 @@ export default function ReimbursementReports() {
                     <section className="mb-6">
                         <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 md:hidden">
                             <div className="min-w-36">
-                                <SummaryCard
+                                <ReportSummaryCard
                                     label="Total Klaim"
                                     value={summary.total}
                                     icon={Receipt}
@@ -430,7 +396,7 @@ export default function ReimbursementReports() {
                                 />
                             </div>
                             <div className="min-w-36">
-                                <SummaryCard
+                                <ReportSummaryCard
                                     label="Pending"
                                     value={summary.pending}
                                     icon={Clock3}
@@ -438,7 +404,7 @@ export default function ReimbursementReports() {
                                 />
                             </div>
                             <div className="min-w-36">
-                                <SummaryCard
+                                <ReportSummaryCard
                                     label="Approved"
                                     value={summary.approved}
                                     icon={CheckCircle2}
@@ -446,7 +412,7 @@ export default function ReimbursementReports() {
                                 />
                             </div>
                             <div className="min-w-36">
-                                <SummaryCard
+                                <ReportSummaryCard
                                     label="Rejected"
                                     value={summary.rejected}
                                     icon={XCircle}
@@ -455,49 +421,49 @@ export default function ReimbursementReports() {
                             </div>
                         </div>
                         <div className="mt-3 grid grid-cols-1 gap-3 md:hidden">
-                            <SummaryCard
+                            <ReportSummaryCard
                                 label="Nominal Klaim"
                                 value={formatCurrency(summary.claimAmount)}
                                 icon={Wallet}
                             />
-                            <SummaryCard
+                            <ReportSummaryCard
                                 label="Disetujui"
                                 value={formatCurrency(summary.approvedAmount)}
                                 icon={Banknote}
                             />
-                            <SummaryCard
+                            <ReportSummaryCard
                                 label="Selisih"
                                 value={formatCurrency(summary.difference)}
                                 icon={Wallet}
                             />
                         </div>
                         <div className="hidden gap-4 md:grid md:grid-cols-3">
-                            <SummaryCard
+                            <ReportSummaryCard
                                 label="Total Klaim"
                                 value={summary.total}
                                 icon={Receipt}
                             />
-                            <SummaryCard
+                            <ReportSummaryCard
                                 label="Pending"
                                 value={summary.pending}
                                 icon={Clock3}
                             />
-                            <SummaryCard
+                            <ReportSummaryCard
                                 label="Approved"
                                 value={summary.approved}
                                 icon={CheckCircle2}
                             />
-                            <SummaryCard
+                            <ReportSummaryCard
                                 label="Rejected"
                                 value={summary.rejected}
                                 icon={XCircle}
                             />
-                            <SummaryCard
+                            <ReportSummaryCard
                                 label="Nominal Klaim"
                                 value={formatCurrency(summary.claimAmount)}
                                 icon={Wallet}
                             />
-                            <SummaryCard
+                            <ReportSummaryCard
                                 label="Disetujui"
                                 value={formatCurrency(summary.approvedAmount)}
                                 icon={Banknote}

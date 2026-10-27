@@ -1,5 +1,4 @@
 import {
-    createElement,
     useCallback,
     useEffect,
     useMemo,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import Sidebar, { MobileBottomNav } from "../../components/layout/sidebar";
 import ImagePreviewModal from "../../components/ImagePreviewModal";
+import ReportSummaryCard from "../../components/reports/ReportSummaryCard";
 import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
@@ -62,22 +62,6 @@ const getAccommodationProjectLabel = (request) =>
     request?.project?.project_name ||
     request?.project?.name ||
     "-";
-
-const SummaryCard = ({ title, value, icon: Icon }) => (
-    <div className="rounded-2xl bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-            <div>
-                <p className="text-sm text-slate-500">{title}</p>
-                <p className="mt-1 text-2xl font-semibold text-slate-900">
-                    {value}
-                </p>
-            </div>
-            <span className="rounded-2xl bg-sky-50 p-3 text-sky-500">
-                {createElement(Icon, { size: 22 })}
-            </span>
-        </div>
-    </div>
-);
 
 const getMonthKey = (date = new Date()) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -504,27 +488,27 @@ export default function AccommodationReports() {
                     </section>
 
                     <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-                        <SummaryCard
+                        <ReportSummaryCard
                             title="Total Requested"
                             value={formatCurrency(summary.requested)}
                             icon={Wallet}
                         />
-                        <SummaryCard
+                        <ReportSummaryCard
                             title="Total Approved"
                             value={formatCurrency(summary.approved)}
                             icon={Banknote}
                         />
-                        <SummaryCard
+                        <ReportSummaryCard
                             title="Total Realized"
                             value={formatCurrency(summary.realized)}
                             icon={Receipt}
                         />
-                        <SummaryCard
+                        <ReportSummaryCard
                             title="Outstanding"
                             value={formatCurrency(summary.outstanding)}
                             icon={Clock3}
                         />
-                        <SummaryCard
+                        <ReportSummaryCard
                             title="Pending Amount"
                             value={formatCurrency(summary.pending)}
                             icon={Wallet}

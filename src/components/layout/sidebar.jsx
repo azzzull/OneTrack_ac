@@ -18,6 +18,7 @@ import {
     Receipt,
     HandCoins,
     ClipboardCheck,
+    BarChart3,
     Plane,
     ShieldCheck,
 } from "lucide-react";
@@ -48,6 +49,11 @@ const menuByRole = {
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
+        {
+            label: "Laporan Umum",
+            path: "/reports/general",
+            icon: BarChart3,
+        },
         {
             label: "Business Trip",
             path: "/business-trip",
@@ -86,6 +92,11 @@ const menuByRole = {
         { label: "Lembur", path: "/overtime", icon: Clock3 },
         { label: "Reimburse", path: "/reimburse", icon: Receipt },
         { label: "Pinjaman", path: "/loans", icon: HandCoins },
+        {
+            label: "Laporan Umum",
+            path: "/reports/general",
+            icon: BarChart3,
+        },
         {
             label: "Business Trip",
             path: "/business-trip",
@@ -1069,8 +1080,16 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     );
 }
 
-export function MobileBottomNav() {
-    const { role, profile, user, isOnline, logout } = useAuth();
+export function MobileBottomNav({ roleOverride, profileOverride } = {}) {
+    const {
+        role: authenticatedRole,
+        profile: authenticatedProfile,
+        user,
+        isOnline,
+        logout,
+    } = useAuth();
+    const role = roleOverride ?? authenticatedRole;
+    const profile = profileOverride ?? authenticatedProfile;
     const navigate = useNavigate();
     const location = useLocation();
     const stats = useRequestStats();

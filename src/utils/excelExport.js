@@ -15,6 +15,14 @@ export const makeExcelFileName = (parts) =>
         .replace(/[^a-zA-Z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")}.xlsx`;
 
+export const makeCsvFileName = (parts) =>
+    `${parts
+        .filter(Boolean)
+        .join(" ")
+        .trim()
+        .replace(/[^a-zA-Z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")}.csv`;
+
 export const downloadBlob = (blob, fileName) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -24,6 +32,29 @@ export const downloadBlob = (blob, fileName) => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+};
+
+const escapeCsvValue = (value) => {
+    const text = String(value ?? "");
+    return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+};
+
+export const exportCsv = ({ columns, fileName, rows }) => {
+    const lines = [
+        columns.map((column) => escapeCsvValue(column.header)).join(","),
+        ...rows.map((row) =>
+            columns
+                .map((column) => escapeCsvValue(row[column.key]))
+                .join(","),
+        ),
+    ];
+
+    downloadBlob(
+        new Blob([`\uFEFF${lines.join("\r\n")}`], {
+            type: "text/csv;charset=utf-8",
+        }),
+        fileName,
+    );
 };
 
 const getCellTextLength = (value) => {
