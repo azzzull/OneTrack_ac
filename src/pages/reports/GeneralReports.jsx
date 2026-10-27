@@ -20,12 +20,6 @@ import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../context/useAuth";
 import supabase from "../../supabaseClient";
 import {
-    REIMBURSEMENT_STATUS_LABELS,
-    REIMBURSEMENT_STATUS_STYLES,
-} from "../../services/reimbursementService";
-import {
-    STATUS_LABELS,
-    STATUS_STYLES,
     formatCurrency,
     getDisplayName,
 } from "../../services/accommodationService";
@@ -68,16 +62,6 @@ const formatDate = (value) => {
 
 const categoryLabel = (category) =>
     category === "accommodation" ? "Akomodasi" : "Reimburse";
-
-const statusLabel = (row) =>
-    (row.category === "accommodation"
-        ? STATUS_LABELS[row.status]
-        : REIMBURSEMENT_STATUS_LABELS[row.status]) ?? row.status ?? "-";
-
-const statusStyle = (row) =>
-    (row.category === "accommodation"
-        ? STATUS_STYLES[row.status]
-        : REIMBURSEMENT_STATUS_STYLES[row.status]) ?? "bg-slate-100 text-slate-700";
 
 const getBusinessTripLabel = (row) =>
     [row.businessTripNo, row.businessTripTitle].filter(Boolean).join(" · ");
@@ -150,7 +134,6 @@ export default function GeneralReports({ preview = false }) {
         year: getYear(),
         category: "all",
         employeeId: "",
-        status: "all",
         search: "",
     });
     const channelRef = useRef(null);
@@ -266,12 +249,6 @@ export default function GeneralReports({ preview = false }) {
             if (filters.employeeId && row.employeeId !== filters.employeeId) {
                 return false;
             }
-            if (
-                filters.status !== "all" &&
-                row.statusGroup !== filters.status
-            ) {
-                return false;
-            }
             if (!keyword) return true;
 
             return [
@@ -281,7 +258,6 @@ export default function GeneralReports({ preview = false }) {
                 row.businessTripNo,
                 row.businessTripTitle,
                 row.description,
-                statusLabel(row),
             ]
                 .join(" ")
                 .toLowerCase()
@@ -330,7 +306,6 @@ export default function GeneralReports({ preview = false }) {
         { key: "businessTrip", header: "Business Trip" },
         { key: "description", header: "Judul / Keterangan" },
         { key: "approvedAmount", header: "Nominal Disetujui" },
-        { key: "status", header: "Status" },
         { key: "transferProof", header: "Bukti Transfer" },
     ];
 
@@ -344,7 +319,6 @@ export default function GeneralReports({ preview = false }) {
                 businessTrip: getBusinessTripLabel(row) || "-",
                 description: row.description,
                 approvedAmount: row.approvedAmount,
-                status: statusLabel(row),
                 transferProof: row.transferProofUrl || "-",
             })),
         [filteredRows],
@@ -365,15 +339,6 @@ export default function GeneralReports({ preview = false }) {
                     : categoryLabel(filters.category),
             ],
             ["Karyawan", selectedEmployeeLabel],
-            [
-                "Status",
-                {
-                    all: "Semua status",
-                    approved: "Approved / menunggu pembayaran",
-                    in_progress: "Dalam realisasi",
-                    completed: "Selesai / dibayar",
-                }[filters.status],
-            ],
             ["Tanggal Export", new Date()],
         ];
 
@@ -467,7 +432,7 @@ export default function GeneralReports({ preview = false }) {
                             <Filter size={16} />
                             Filter laporan
                         </div>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                        <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-4">
                             <label className="block">
                                 <span className="mb-1 block text-xs font-medium text-slate-500">
                                     Tahun
@@ -486,84 +451,74 @@ export default function GeneralReports({ preview = false }) {
                                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300"
                                 />
                             </label>
-                            <CustomSelect
-                                value={filters.category}
-                                onChange={(value) =>
-                                    setFilters((previous) => ({
-                                        ...previous,
-                                        category: value,
-                                    }))
-                                }
-                                options={[
-                                    { value: "all", label: "Semua kategori" },
-                                    {
-                                        value: "accommodation",
-                                        label: "Akomodasi",
-                                    },
-                                    {
-                                        value: "reimbursement",
-                                        label: "Reimburse",
-                                    },
-                                ]}
-                            />
-                            <CustomSelect
-                                value={filters.employeeId}
-                                onChange={(value) =>
-                                    setFilters((previous) => ({
-                                        ...previous,
-                                        employeeId: value,
-                                    }))
-                                }
-                                options={[
-                                    {
-                                        value: "",
-                                        label: "Semua karyawan",
-                                    },
-                                    ...employeeOptions,
-                                ]}
-                            />
-                            <CustomSelect
-                                value={filters.status}
-                                onChange={(value) =>
-                                    setFilters((previous) => ({
-                                        ...previous,
-                                        status: value,
-                                    }))
-                                }
-                                options={[
-                                    { value: "all", label: "Semua status" },
-                                    { value: "pending", label: "Pending" },
-                                    {
-                                        value: "approved",
-                                        label: "Approved / menunggu bayar",
-                                    },
-                                    {
-                                        value: "in_progress",
-                                        label: "Dalam realisasi",
-                                    },
-                                    {
-                                        value: "completed",
-                                        label: "Selesai / dibayar",
-                                    },
-                                ]}
-                            />
-                            <label className="relative block self-end">
-                                <Search
-                                    size={15}
-                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                                />
-                                <input
-                                    type="search"
-                                    value={filters.search}
-                                    onChange={(event) =>
+                            <label className="block">
+                                <span className="block text-xs font-medium text-slate-500">
+                                    Kategori
+                                </span>
+                                <CustomSelect
+                                    value={filters.category}
+                                    onChange={(value) =>
                                         setFilters((previous) => ({
                                             ...previous,
-                                            search: event.target.value,
+                                            category: value,
                                         }))
                                     }
-                                    placeholder="Cari project, trip, atau keterangan"
-                                    className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-sky-300"
+                                    options={[
+                                        { value: "all", label: "Semua kategori" },
+                                        {
+                                            value: "accommodation",
+                                            label: "Akomodasi",
+                                        },
+                                        {
+                                            value: "reimbursement",
+                                            label: "Reimburse",
+                                        },
+                                    ]}
                                 />
+                            </label>
+                            <label className="block">
+                                <span className="block text-xs font-medium text-slate-500">
+                                    Karyawan
+                                </span>
+                                <CustomSelect
+                                    value={filters.employeeId}
+                                    onChange={(value) =>
+                                        setFilters((previous) => ({
+                                            ...previous,
+                                            employeeId: value,
+                                        }))
+                                    }
+                                    options={[
+                                        {
+                                            value: "",
+                                            label: "Semua karyawan",
+                                        },
+                                        ...employeeOptions,
+                                    ]}
+                                />
+                            </label>
+                            <label className="block">
+                                <span className="mb-1 block text-xs font-medium text-slate-500">
+                                    Pencarian
+                                </span>
+                                <span className="relative block">
+                                    <Search
+                                        size={15}
+                                        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                                    />
+                                    <input
+                                        type="search"
+                                        value={filters.search}
+                                        onChange={(event) =>
+                                            setFilters((previous) => ({
+                                                ...previous,
+                                                search: event.target.value,
+                                            }))
+                                        }
+                                        placeholder="Cari project, trip, atau keterangan"
+                                        className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-sky-300"
+                                    />
+                                </span>
                             </label>
                         </div>
                     </section>
@@ -606,7 +561,7 @@ export default function GeneralReports({ preview = false }) {
                         </div>
 
                         <div className="overflow-x-auto">
-                            <table className="min-w-[60rem] w-full text-left text-sm">
+                            <table className="min-w-[52rem] w-full text-left text-sm">
                                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     <tr>
                                         <th className="px-4 py-3">Tanggal</th>
@@ -615,7 +570,6 @@ export default function GeneralReports({ preview = false }) {
                                         <th className="px-4 py-3">Project / Business Trip</th>
                                         <th className="px-4 py-3">Judul / Keterangan</th>
                                         <th className="px-4 py-3 text-right">Disetujui</th>
-                                        <th className="px-4 py-3">Status</th>
                                         <th className="px-4 py-3">Bukti Transfer</th>
                                     </tr>
                                 </thead>
@@ -623,7 +577,7 @@ export default function GeneralReports({ preview = false }) {
                                     {loading ? (
                                         <tr>
                                             <td
-                                                colSpan={8}
+                                                colSpan={7}
                                                 className="px-4 py-10 text-center text-slate-500"
                                             >
                                                 <span className="inline-flex items-center gap-2">
@@ -675,15 +629,6 @@ export default function GeneralReports({ preview = false }) {
                                                     {formatCurrency(row.approvedAmount)}
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <span
-                                                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle(
-                                                            row,
-                                                        )}`}
-                                                    >
-                                                        {statusLabel(row)}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
                                                     {row.transferProofUrl ? (
                                                         <button
                                                             type="button"
@@ -709,7 +654,7 @@ export default function GeneralReports({ preview = false }) {
                                     ) : (
                                         <tr>
                                             <td
-                                                colSpan={8}
+                                                colSpan={7}
                                                 className="px-4 py-10 text-center text-slate-500"
                                             >
                                                 <span className="inline-flex items-center gap-2">
